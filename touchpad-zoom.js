@@ -3,13 +3,11 @@ import * as THREE from "three";
 const BasePlayer = window.__STORE_PLAYER__;
 if (!BasePlayer) throw new Error("Player controller must load before touchpad zoom.");
 
-const THIRD_PERSON_DEFAULT = 4.0;
+const THIRD_PERSON_DEFAULT = 4.8;
 const THIRD_PERSON_MIN = 1.45;
-const THIRD_PERSON_MAX = 5.2;
-const FIRST_PERSON_SWITCH = 1.02;
-const OUT_FROM_FIRST = 1.72;
-const ZOOM_PIXELS_TO_DISTANCE = 0.0046;
-const ZOOM_SMOOTHING = 13;
+const THIRD_PERSON_MAX = 6.0;
+const OUT_FROM_FIRST = 1.85;
+const ZOOM_PIXELS_TO_DISTANCE = 0.0075;
 const CAMERA_TARGET_HEIGHT = 1.22;
 const CAMERA_FLOOR = 0.34;
 const CAMERA_PADDING = 0.10;
@@ -17,8 +15,6 @@ const CAMERA_PADDING = 0.10;
 const State = {
   ThirdPerson: true,
   Distance: THIRD_PERSON_DEFAULT,
-  TargetDistance: THIRD_PERSON_DEFAULT,
-  LastRenderAt: performance.now(),
   Scene: null,
   Camera: null,
   TempTarget: new THREE.Vector3(),
@@ -32,23 +28,34 @@ function HudActive() {
   return Boolean(Hud && !Hud.classList.contains("Hidden"));
 }
 
+function UpdateModeUi() {
+  const Mode = document.getElementById("CameraModeValue");
+  const Crosshair = document.querySelector(".Crosshair");
+  if (Mode) Mode.textContent = State.ThirdPerson ? "THIRD" : "FIRST";
+  if (Crosshair) Crosshair.style.display = State.ThirdPerson ? "none" : "block";
+}
+
 function SetBaseMode(ThirdPerson) {
   State.ThirdPerson = ThirdPerson;
   const BaseThirdPerson = Boolean(BasePlayer.IsThirdPerson?.());
-  if (BaseThirdPerson === ThirdPerson) return;
+  if (BaseThirdPerson === ThirdPerson) {
+    UpdateModeUi();
+    return;
+  }
   dispatchEvent(new KeyboardEvent("keydown", {
     code: "KeyV",
     key: "v",
     bubbles: true,
     cancelable: true
   }));
+  UpdateModeUi();
 }
 
 function NormalizeWheelDelta(Event) {
   let Delta = Event.deltaY;
   if (Event.deltaMode === WheelEvent.DOM_DELTA_LINE) Delta *= 16;
   else if (Event.deltaMode === WheelEvent.DOM_DELTA_PAGE) Delta *= Math.max(innerHeight, 600);
-  return THREE.MathUtils.clamp(Delta, -140, 140);
+  return THREE.MathUtils.clamp(Delta, -120, 120);
 }
 
 function SegmentAabbDistance(Start, End, Bounds, Padding = CAMERA_PADDING) {
@@ -127,13 +134,7 @@ function Attach(Context) {
 function Render(Renderer, Scene, Camera) {
   State.Scene = Scene;
   State.Camera = Camera;
-
-  const Now = performance.now();
-  const Delta = Math.min((Now - State.LastRenderAt) / 1000, 0.05);
-  State.LastRenderAt = Now;
-  const Alpha = 1 - Math.exp(-Delta * ZOOM_SMOOTHING);
-  State.Distance = THREE.MathUtils.lerp(State.Distance, State.TargetDistance, Alpha);
-  if (Math.abs(State.Distance - State.TargetDistance) < 0.002) State.Distance = State.TargetDistance;
+  UpdateModeUi();
 
   const OriginalRender = Renderer.render;
   Renderer.render = function(RenderScene, RenderCamera) {
@@ -158,43 +159,39 @@ addEventListener("wheel", Event => {
 
   if (!State.ThirdPerson) {
     if (Delta <= 0) return;
-    State.TargetDistance = OUT_FROM_FIRST;
-    State.Distance = Math.max(State.Distance, THIRD_PERSON_MIN);
+    State.Distance = OUT_FROM_FIRST;
     SetBaseMode(true);
     return;
   }
 
-  State.TargetDistance = THREE.MathUtils.clamp(
-    State.TargetDistance + Delta * ZOOM_PIXELS_TO_DISTANCE,
-    0,
-    THIRD_PERSON_MAX
-  );
-
-  if (State.TargetDistance <= FIRST_PERSON_SWITCH) {
-    State.TargetDistance = 0;
+  if (Delta < 0 && State.Distance <= THIRD_PERSON_MIN + 0.015) {
     State.Distance = 0;
     SetBaseMode(false);
-  } else {
-    State.TargetDistance = Math.max(THIRD_PERSON_MIN, State.TargetDistance);
+    return;
   }
+
+  State.Distance = THREE.MathUtils.clamp(
+    State.Distance + Delta * ZOOM_PIXELS_TO_DISTANCE,
+    THIRD_PERSON_MIN,
+    THIRD_PERSON_MAX
+  );
 }, { capture: true, passive: false });
 
 addEventListener("keydown", Event => {
-  if (Event.code !== "KeyV" || Event.repeat || !HudActive()) return;
-  queueMicrotask(() => {
-    const BaseThirdPerson = Boolean(BasePlayer.IsThirdPerson?.());
-    State.ThirdPerson = BaseThirdPerson;
-    if (BaseThirdPerson) {
-      State.TargetDistance = THIRD_PERSON_DEFAULT;
-      State.Distance = Math.max(State.Distance, THIRD_PERSON_MIN);
-    } else {
-      State.TargetDistance = 0;
-      State.Distance = 0;
-    }
-  });
-});
+  if (!Event.isTrusted || Event.code !== "KeyV" || Event.repeat || !HudActive()) return;
+  Event.preventDefault();
+  Event.stopImmediatePropagation();
+  if (State.ThirdPerson) {
+    State.Distance = 0;
+    SetBaseMode(false);
+  } else {
+    State.Distance = THIRD_PERSON_DEFAULT;
+    SetBaseMode(true);
+  }
+}, true);
 
 SetBaseMode(true);
+UpdateModeUi();
 
 window.__STORE_PLAYER__ = {
   ...BasePlayer,
@@ -204,4 +201,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_TOUCHPAD_ZOOM_BUILD__ = "V0.11-R11";
+window.__STORE_TOUCHPAD_ZOOM_BUILD__ = "V0.11-R12";
