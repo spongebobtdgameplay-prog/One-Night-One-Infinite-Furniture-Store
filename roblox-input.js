@@ -18,10 +18,13 @@ function ThirdPerson() {
 PointerLockControls.prototype.lock = function(...Args) {
   Controls = this;
   window.__STORE_POINTER_CONTROLS__ = this;
+
   if (ThirdPerson()) {
     this.isLocked = true;
+    this.pointerSpeed = OrbitHeld ? 1 : 0;
     return;
   }
+
   return OriginalLock.apply(this, Args);
 };
 
@@ -47,47 +50,51 @@ function EnterThirdPerson() {
   Canvas.style.cursor = "default";
 }
 
-function EnterFirstPerson(RequestLock = false) {
+function EnterFirstPerson() {
   const Current = CaptureKnownControls();
   OrbitHeld = false;
-  Canvas.style.cursor = "none";
-  if (!Current) return;
-  Current.pointerSpeed = 1;
-  Current.isLocked = Boolean(document.pointerLockElement);
-  if (RequestLock && !document.pointerLockElement) {
-    try {
-      OriginalLock.call(Current);
-    } catch {}
+  if (Current) {
+    Current.isLocked = Boolean(document.pointerLockElement);
+    Current.pointerSpeed = 1;
   }
+  Canvas.style.cursor = document.pointerLockElement ? "none" : "crosshair";
 }
 
-function SyncMode(RequestFirstPersonLock = false) {
+function SyncMode() {
   const IsThird = ThirdPerson();
   if (IsThird) EnterThirdPerson();
-  else EnterFirstPerson(RequestFirstPersonLock);
+  else EnterFirstPerson();
   LastThirdPerson = IsThird;
 }
 
 addEventListener("mousedown", Event => {
-  if (Event.button !== 2 || !ThirdPerson()) return;
-  OrbitHeld = true;
   const Current = CaptureKnownControls();
-  if (Current) {
+  if (!Current) return;
+
+  if (ThirdPerson()) {
+    if (Event.button !== 2) return;
+    OrbitHeld = true;
     Current.isLocked = true;
     Current.pointerSpeed = 1;
+    Event.preventDefault();
+    return;
   }
-  Event.preventDefault();
+
+  if (Event.button === 0 && !document.pointerLockElement) {
+    try {
+      OriginalLock.call(Current);
+    } catch {}
+  }
 });
 
 addEventListener("mouseup", Event => {
   if (Event.button !== 2) return;
   OrbitHeld = false;
-  if (ThirdPerson()) {
-    const Current = CaptureKnownControls();
-    if (Current) {
-      Current.isLocked = true;
-      Current.pointerSpeed = 0;
-    }
+  if (!ThirdPerson()) return;
+  const Current = CaptureKnownControls();
+  if (Current) {
+    Current.isLocked = true;
+    Current.pointerSpeed = 0;
   }
 });
 
@@ -95,24 +102,18 @@ Canvas.addEventListener("contextmenu", Event => {
   if (ThirdPerson()) Event.preventDefault();
 });
 
-addEventListener("wheel", () => {
-  queueMicrotask(() => SyncMode(!ThirdPerson()));
-}, { passive: true });
-
-addEventListener("keydown", Event => {
-  if (Event.code !== "KeyV" || Event.repeat) return;
-  queueMicrotask(() => SyncMode(!ThirdPerson()));
-});
-
 addEventListener("pointerlockchange", () => {
   const Current = CaptureKnownControls();
   if (!Current) return;
+
   if (ThirdPerson()) {
     Current.isLocked = true;
     Current.pointerSpeed = OrbitHeld ? 1 : 0;
+    Canvas.style.cursor = "default";
   } else {
     Current.isLocked = Boolean(document.pointerLockElement);
     Current.pointerSpeed = 1;
+    Canvas.style.cursor = document.pointerLockElement ? "none" : "crosshair";
   }
 });
 
@@ -120,7 +121,7 @@ function Tick() {
   const Current = CaptureKnownControls();
   const IsThird = ThirdPerson();
 
-  if (IsThird !== LastThirdPerson) SyncMode(false);
+  if (IsThird !== LastThirdPerson) SyncMode();
 
   if (Current && IsThird) {
     Current.isLocked = true;
@@ -132,4 +133,4 @@ function Tick() {
 }
 
 requestAnimationFrame(Tick);
-window.__STORE_ROBLOX_INPUT_BUILD__ = "V0.11-R10";
+window.__STORE_ROBLOX_INPUT_BUILD__ = "V0.11-R12";
