@@ -13,24 +13,23 @@ const GameClock = document.getElementById("GameClock");
 const ObjectiveText = document.getElementById("ObjectiveText");
 
 const Scene = new THREE.Scene();
-Scene.background = new THREE.Color(0x090b0d);
-Scene.fog = new THREE.FogExp2(0x090b0d, 0.015);
+Scene.background = new THREE.Color(0x171816);
+Scene.fog = new THREE.FogExp2(0x171816, 0.0085);
 
-const Camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 180);
+const Camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.08, 130);
 Camera.position.set(0, 1.72, 8);
 
 const Renderer = new THREE.WebGLRenderer({
   canvas: Canvas,
-  antialias: true,
+  antialias: false,
   powerPreference: "high-performance"
 });
-Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
 Renderer.setSize(innerWidth, innerHeight, false);
-Renderer.shadowMap.enabled = true;
-Renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+Renderer.shadowMap.enabled = false;
 Renderer.outputColorSpace = THREE.SRGBColorSpace;
 Renderer.toneMapping = THREE.ACESFilmicToneMapping;
-Renderer.toneMappingExposure = 0.78;
+Renderer.toneMappingExposure = 1.08;
 
 const Controls = new PointerLockControls(Camera, document.body);
 const Loader = new GLTFLoader();
@@ -38,31 +37,168 @@ const GameTimer = new THREE.Clock();
 const KeyState = new Set();
 const CollisionBoxes = [];
 const StoreLights = [];
+const LightPanels = [];
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
 let LoadedModels = 0;
 
-const Ambient = new THREE.HemisphereLight(0xaab2b8, 0x211b17, 0.42);
-Scene.add(Ambient);
-
-const KeyLight = new THREE.DirectionalLight(0xf0dfc7, 0.8);
-KeyLight.position.set(-9, 12, 7);
-KeyLight.castShadow = true;
-KeyLight.shadow.mapSize.set(2048, 2048);
-KeyLight.shadow.camera.left = -28;
-KeyLight.shadow.camera.right = 28;
-KeyLight.shadow.camera.top = 28;
-KeyLight.shadow.camera.bottom = -28;
-Scene.add(KeyLight);
-
-function Material(Color, Roughness = 0.8, Metalness = 0) {
-  return new THREE.MeshStandardMaterial({
-    color: Color,
-    roughness: Roughness,
-    metalness: Metalness
-  });
+function SeededRandom(Seed) {
+  const Value = Math.sin(Seed * 12.9898 + 78.233) * 43758.5453;
+  return Value - Math.floor(Value);
 }
+
+function CreateTexture(Size, RepeatX, RepeatY, Draw) {
+  const TextureCanvas = document.createElement("canvas");
+  TextureCanvas.width = Size;
+  TextureCanvas.height = Size;
+  const Context = TextureCanvas.getContext("2d", { alpha: false });
+  Draw(Context, Size);
+  const Texture = new THREE.CanvasTexture(TextureCanvas);
+  Texture.wrapS = THREE.RepeatWrapping;
+  Texture.wrapT = THREE.RepeatWrapping;
+  Texture.repeat.set(RepeatX, RepeatY);
+  Texture.colorSpace = THREE.SRGBColorSpace;
+  Texture.anisotropy = Math.min(4, Renderer.capabilities.getMaxAnisotropy());
+  Texture.needsUpdate = true;
+  return Texture;
+}
+
+const WallTexture = CreateTexture(256, 5, 5, (Context, Size) => {
+  Context.fillStyle = "#77766f";
+  Context.fillRect(0, 0, Size, Size);
+
+  for (let Index = 0; Index < 900; Index += 1) {
+    const X = SeededRandom(Index * 3 + 1) * Size;
+    const Y = SeededRandom(Index * 3 + 2) * Size;
+    const Shade = 90 + Math.floor(SeededRandom(Index * 3 + 3) * 55);
+    Context.fillStyle = `rgba(${Shade},${Shade},${Shade - 4},0.08)`;
+    Context.fillRect(X, Y, 1.2, 1.2);
+  }
+
+  Context.strokeStyle = "rgba(55,52,47,0.36)";
+  Context.lineWidth = 2;
+  Context.beginPath();
+  Context.moveTo(0, 2);
+  Context.lineTo(Size, 2);
+  Context.moveTo(0, Size - 2);
+  Context.lineTo(Size, Size - 2);
+  Context.stroke();
+
+  const Grime = Context.createLinearGradient(0, 0, 0, Size);
+  Grime.addColorStop(0, "rgba(255,255,255,0.035)");
+  Grime.addColorStop(0.72, "rgba(40,34,28,0.02)");
+  Grime.addColorStop(1, "rgba(28,22,18,0.23)");
+  Context.fillStyle = Grime;
+  Context.fillRect(0, 0, Size, Size);
+});
+
+const FloorTexture = CreateTexture(256, 10, 20, (Context, Size) => {
+  Context.fillStyle = "#5f5a51";
+  Context.fillRect(0, 0, Size, Size);
+
+  for (let Index = 0; Index < 1200; Index += 1) {
+    const X = SeededRandom(Index * 4 + 11) * Size;
+    const Y = SeededRandom(Index * 4 + 12) * Size;
+    const Bright = 62 + Math.floor(SeededRandom(Index * 4 + 13) * 52);
+    Context.fillStyle = `rgba(${Bright},${Bright - 3},${Bright - 8},0.11)`;
+    Context.fillRect(X, Y, 1.4, 1.4);
+  }
+
+  Context.strokeStyle = "rgba(36,32,27,0.38)";
+  Context.lineWidth = 2;
+  for (let Axis = 0; Axis <= Size; Axis += 64) {
+    Context.beginPath();
+    Context.moveTo(Axis, 0);
+    Context.lineTo(Axis, Size);
+    Context.stroke();
+    Context.beginPath();
+    Context.moveTo(0, Axis);
+    Context.lineTo(Size, Axis);
+    Context.stroke();
+  }
+
+  for (let Index = 0; Index < 8; Index += 1) {
+    const X = SeededRandom(Index * 7 + 40) * Size;
+    const Y = SeededRandom(Index * 7 + 41) * Size;
+    const Radius = 12 + SeededRandom(Index * 7 + 42) * 26;
+    const Stain = Context.createRadialGradient(X, Y, 0, X, Y, Radius);
+    Stain.addColorStop(0, "rgba(35,29,23,0.13)");
+    Stain.addColorStop(1, "rgba(35,29,23,0)");
+    Context.fillStyle = Stain;
+    Context.fillRect(X - Radius, Y - Radius, Radius * 2, Radius * 2);
+  }
+});
+
+const CeilingTexture = CreateTexture(256, 9, 18, (Context, Size) => {
+  Context.fillStyle = "#86857f";
+  Context.fillRect(0, 0, Size, Size);
+
+  Context.strokeStyle = "rgba(54,55,53,0.52)";
+  Context.lineWidth = 3;
+  for (let Axis = 0; Axis <= Size; Axis += 64) {
+    Context.beginPath();
+    Context.moveTo(Axis, 0);
+    Context.lineTo(Axis, Size);
+    Context.stroke();
+    Context.beginPath();
+    Context.moveTo(0, Axis);
+    Context.lineTo(Size, Axis);
+    Context.stroke();
+  }
+
+  for (let Index = 0; Index < 650; Index += 1) {
+    const X = SeededRandom(Index * 2 + 90) * Size;
+    const Y = SeededRandom(Index * 2 + 91) * Size;
+    Context.fillStyle = "rgba(48,48,45,0.13)";
+    Context.fillRect(X, Y, 1, 1);
+  }
+});
+
+const WallMaterial = new THREE.MeshStandardMaterial({
+  map: WallTexture,
+  color: 0xc0bdb3,
+  roughness: 0.93,
+  metalness: 0.02
+});
+
+const FloorMaterial = new THREE.MeshStandardMaterial({
+  map: FloorTexture,
+  color: 0x9b9285,
+  roughness: 0.96,
+  metalness: 0.01
+});
+
+const CeilingMaterial = new THREE.MeshStandardMaterial({
+  map: CeilingTexture,
+  color: 0xbcbab0,
+  roughness: 0.98,
+  metalness: 0
+});
+
+const TrimMaterial = new THREE.MeshStandardMaterial({
+  color: 0x322f2a,
+  roughness: 0.8,
+  metalness: 0.18
+});
+
+const SignMaterial = new THREE.MeshStandardMaterial({
+  color: 0x8b542a,
+  roughness: 0.72,
+  metalness: 0.04
+});
+
+const RugMaterial = new THREE.MeshStandardMaterial({
+  color: 0x443a32,
+  roughness: 1,
+  metalness: 0
+});
+
+const LightHousingMaterial = new THREE.MeshStandardMaterial({
+  color: 0x26282a,
+  roughness: 0.68,
+  metalness: 0.65
+});
 
 function AddCollisionBox(Object, Padding = 0) {
   Object.updateMatrixWorld(true);
@@ -71,84 +207,135 @@ function AddCollisionBox(Object, Padding = 0) {
   CollisionBoxes.push(Bounds);
 }
 
-function Box(Name, Size, Position, Mat, CastShadow = false, Collidable = false) {
-  const Mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(Size.x, Size.y, Size.z),
-    Mat
-  );
+function Box(Name, Size, Position, Material, Collidable = false) {
+  const Mesh = new THREE.Mesh(new THREE.BoxGeometry(Size.x, Size.y, Size.z), Material);
   Mesh.name = Name;
   Mesh.position.copy(Position);
-  Mesh.castShadow = CastShadow;
-  Mesh.receiveShadow = true;
+  Mesh.castShadow = false;
+  Mesh.receiveShadow = false;
   Scene.add(Mesh);
   if (Collidable) AddCollisionBox(Mesh);
   return Mesh;
 }
 
-const FloorMaterial = Material(0x5a544c, 0.94);
-const WallMaterial = Material(0xa39d93, 0.92);
-const CeilingMaterial = Material(0x6f7372, 0.96);
-const DarkMetal = Material(0x292c2e, 0.66, 0.58);
-const SignMaterial = Material(0x8e5b31, 0.73);
+function CreateLabelTexture(Text) {
+  const LabelCanvas = document.createElement("canvas");
+  LabelCanvas.width = 512;
+  LabelCanvas.height = 128;
+  const Context = LabelCanvas.getContext("2d");
+  Context.fillStyle = "#c89b62";
+  Context.fillRect(0, 0, LabelCanvas.width, LabelCanvas.height);
+  Context.strokeStyle = "#4b3421";
+  Context.lineWidth = 10;
+  Context.strokeRect(5, 5, LabelCanvas.width - 10, LabelCanvas.height - 10);
+  Context.fillStyle = "#211a14";
+  Context.font = "700 46px Arial";
+  Context.textAlign = "center";
+  Context.textBaseline = "middle";
+  Context.fillText(Text, LabelCanvas.width / 2, LabelCanvas.height / 2 + 2);
+  const Texture = new THREE.CanvasTexture(LabelCanvas);
+  Texture.colorSpace = THREE.SRGBColorSpace;
+  return Texture;
+}
 
-Box("Floor", new THREE.Vector3(34, 0.18, 68), new THREE.Vector3(0, -0.09, -19), FloorMaterial);
-Box("Ceiling", new THREE.Vector3(34, 0.18, 68), new THREE.Vector3(0, 3.72, -19), CeilingMaterial);
-Box("WallLeft", new THREE.Vector3(0.22, 3.8, 68), new THREE.Vector3(-17, 1.86, -19), WallMaterial);
-Box("WallRight", new THREE.Vector3(0.22, 3.8, 68), new THREE.Vector3(17, 1.86, -19), WallMaterial);
-Box("WallBack", new THREE.Vector3(34, 3.8, 0.22), new THREE.Vector3(0, 1.86, -53), WallMaterial);
+function AddSectionSign(Text, Z) {
+  const Texture = CreateLabelTexture(Text);
+  const Material = new THREE.MeshBasicMaterial({ map: Texture, side: THREE.DoubleSide });
+  const Sign = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 1.2), Material);
+  Sign.position.set(0, 2.88, Z);
+  Scene.add(Sign);
+  Box("SignMount", new THREE.Vector3(5.05, 0.06, 0.08), new THREE.Vector3(0, 3.52, Z), TrimMaterial);
+  Box("SignPostLeft", new THREE.Vector3(0.05, 0.7, 0.05), new THREE.Vector3(-2.25, 3.17, Z), TrimMaterial);
+  Box("SignPostRight", new THREE.Vector3(0.05, 0.7, 0.05), new THREE.Vector3(2.25, 3.17, Z), TrimMaterial);
+}
 
-for (let Z = 7; Z >= -49; Z -= 7) {
-  for (const X of [-10.5, 0, 10.5]) {
-    Box(
-      "LightHousing",
-      new THREE.Vector3(4.6, 0.08, 0.46),
-      new THREE.Vector3(X, 3.57, Z),
-      DarkMetal
-    );
+function AddPartition(X, Z) {
+  const Panel = Box(
+    "ShowroomPartition",
+    new THREE.Vector3(0.16, 2.36, 3.55),
+    new THREE.Vector3(X, 1.18, Z),
+    WallMaterial,
+    true
+  );
+  Box("PartitionCap", new THREE.Vector3(0.24, 0.08, 3.65), new THREE.Vector3(X, 2.39, Z), TrimMaterial);
+  Box("PartitionBase", new THREE.Vector3(0.23, 0.12, 3.62), new THREE.Vector3(X, 0.06, Z), TrimMaterial);
+  Panel.userData.IsPartition = true;
+}
 
-    const Light = new THREE.RectAreaLight(0xffedd0, 2.3, 4.15, 0.26);
-    Light.position.set(X, 3.48, Z);
-    Light.rotation.x = -Math.PI / 2;
-    Light.userData.BaseIntensity = 2.3;
-    Light.userData.FlickerSeed = Math.random() * 100;
-    StoreLights.push(Light);
-    Scene.add(Light);
+Box("Floor", new THREE.Vector3(34, 0.16, 68), new THREE.Vector3(0, -0.08, -19), FloorMaterial);
+Box("Ceiling", new THREE.Vector3(34, 0.14, 68), new THREE.Vector3(0, 3.72, -19), CeilingMaterial);
+Box("WallLeft", new THREE.Vector3(0.20, 3.8, 68), new THREE.Vector3(-17, 1.86, -19), WallMaterial);
+Box("WallRight", new THREE.Vector3(0.20, 3.8, 68), new THREE.Vector3(17, 1.86, -19), WallMaterial);
+Box("WallBack", new THREE.Vector3(34, 3.8, 0.20), new THREE.Vector3(0, 1.86, -53), WallMaterial);
+
+Box("BaseboardLeft", new THREE.Vector3(0.25, 0.18, 68), new THREE.Vector3(-16.87, 0.09, -19), TrimMaterial);
+Box("BaseboardRight", new THREE.Vector3(0.25, 0.18, 68), new THREE.Vector3(16.87, 0.09, -19), TrimMaterial);
+Box("BaseboardBack", new THREE.Vector3(34, 0.18, 0.25), new THREE.Vector3(0, 0.09, -52.87), TrimMaterial);
+
+for (const [X, Z] of [
+  [-6.35, 1.0],
+  [6.35, -7.0],
+  [-6.35, -15.0],
+  [6.35, -23.0],
+  [-6.35, -31.0],
+  [6.35, -39.0],
+  [-6.35, -47.0]
+]) {
+  AddPartition(X, Z);
+}
+
+for (const [X, Z, ScaleX] of [
+  [-10.3, 1.6, 4.8],
+  [9.3, -5.2, 5.4],
+  [9.5, -14.0, 5.2],
+  [-9.6, -18.0, 4.6],
+  [-9.0, -29.5, 6.3],
+  [9.3, -36.4, 5.0]
+]) {
+  Box("ShowroomRug", new THREE.Vector3(ScaleX, 0.018, 3.6), new THREE.Vector3(X, 0.012, Z), RugMaterial);
+}
+
+AddSectionSign("LIVING ROOM", 4.6);
+AddSectionSign("BEDROOMS", -11.0);
+AddSectionSign("KITCHENS", -26.0);
+AddSectionSign("BATHROOMS", -34.0);
+AddSectionSign("WAREHOUSE", -45.5);
+
+const Ambient = new THREE.AmbientLight(0xd9d2c5, 0.72);
+Scene.add(Ambient);
+
+const Hemisphere = new THREE.HemisphereLight(0xc7d0d1, 0x3b3026, 0.68);
+Scene.add(Hemisphere);
+
+const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.42);
+FillLight.position.set(-7, 9, 6);
+Scene.add(FillLight);
+
+const PanelGlowMaterial = new THREE.MeshBasicMaterial({ color: 0xffe8bd });
+
+for (let Z = 6; Z >= -50; Z -= 7) {
+  for (const X of [-9.5, 0, 9.5]) {
+    Box("LightHousing", new THREE.Vector3(4.0, 0.08, 0.44), new THREE.Vector3(X, 3.57, Z), LightHousingMaterial);
+    const Glow = Box("LightGlow", new THREE.Vector3(3.55, 0.018, 0.24), new THREE.Vector3(X, 3.515, Z), PanelGlowMaterial);
+    LightPanels.push(Glow);
   }
 }
 
-for (let Z = 1; Z >= -45; Z -= 8) {
-  Box(
-    "DividerLeft",
-    new THREE.Vector3(0.15, 2.68, 5.15),
-    new THREE.Vector3(-5.75, 1.34, Z),
-    WallMaterial,
-    false,
-    true
-  );
-  Box(
-    "DividerRight",
-    new THREE.Vector3(0.15, 2.68, 5.15),
-    new THREE.Vector3(5.75, 1.34, Z - 3.5),
-    WallMaterial,
-    false,
-    true
-  );
-}
-
-for (const [TextX, TextZ] of [[-11.2, 5.2], [10.7, -9.2], [-10.9, -22], [10.8, -34.5]]) {
-  Box(
-    "ShowroomSign",
-    new THREE.Vector3(3.8, 0.46, 0.1),
-    new THREE.Vector3(TextX, 2.72, TextZ),
-    SignMaterial
-  );
+for (const [Index, Z] of [6, -5, -16, -27, -38, -49].entries()) {
+  const Light = new THREE.PointLight(0xffe3b1, 2.25, 17, 1.75);
+  Light.position.set(Index % 2 === 0 ? -2.2 : 2.2, 3.18, Z);
+  Light.castShadow = false;
+  Light.userData.BaseIntensity = 2.25;
+  Light.userData.FlickerSeed = Index * 4.731 + 2;
+  Scene.add(Light);
+  StoreLights.push(Light);
 }
 
 const ModelPlacements = [
-  ["Couch_Large1", "Models/LivingRoom/GLB/Couch_Large1.glb", -10.6, 3.0, 0],
+  ["Couch_Large1", "Models/LivingRoom/GLB/Couch_Large1.glb", -10.6, 2.4, 0],
   ["Couch_L", "Models/LivingRoom/GLB/Couch_L.glb", 9.3, -4.8, Math.PI],
   ["Chair_2", "Models/LivingRoom/GLB/Chair_2.glb", -8.4, -6.5, 0.45],
-  ["Table_RoundLarge", "Models/LivingRoom/GLB/Table_RoundLarge.glb", -10.4, -3.4, 0],
+  ["Table_RoundLarge", "Models/LivingRoom/GLB/Table_RoundLarge.glb", -10.4, -2.6, 0],
   ["Bed_King", "Models/Bedroom/GLB/Bed_King.glb", 9.5, -13.8, Math.PI],
   ["Bed_Single", "Models/Bedroom/GLB/Bed_Single.glb", -9.7, -17.8, 0],
   ["NightStand_2", "Models/Bedroom/GLB/NightStand_2.glb", -8.5, -17.5, 0],
@@ -161,7 +348,7 @@ const ModelPlacements = [
   ["Bathroom_Bathtub", "Models/Bathroom/GLB/Bathroom_Bathtub.glb", 10.3, -36.3, Math.PI / 2],
   ["Bathroom_Toilet", "Models/Bathroom/GLB/Bathroom_Toilet.glb", 7.9, -37.0, Math.PI],
   ["Light_Floor1", "Models/Lighting/GLB/Light_Floor1.glb", -8.1, 2.4, 0],
-  ["Door_3", "Models/Architecture/GLB/Door_3.glb", -5.55, -43.1, Math.PI / 2],
+  ["Door_3", "Models/Architecture/GLB/Door_3.glb", -5.55, -50.7, Math.PI / 2],
   ["Window_Large1", "Models/Architecture/GLB/Window_Large1.glb", 5.55, -43.2, Math.PI / 2],
   ["Houseplant_3", "Models/Decor/GLB/Houseplant_3.glb", 8.0, -8.2, 0]
 ];
@@ -181,9 +368,17 @@ function PrepareModel(Model) {
 
   Model.traverse(Object => {
     if (!Object.isMesh) return;
-    Object.castShadow = true;
-    Object.receiveShadow = true;
-    if (Object.material) Object.material.side = THREE.FrontSide;
+    Object.castShadow = false;
+    Object.receiveShadow = false;
+
+    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
+    for (const Material of Materials) {
+      if (!Material) continue;
+      Material.side = THREE.FrontSide;
+      if (Material.color) Material.color.multiplyScalar(1.12);
+      if ("roughness" in Material) Material.roughness = Math.max(0.52, Material.roughness ?? 0.75);
+      Material.needsUpdate = true;
+    }
   });
 }
 
@@ -207,11 +402,9 @@ async function LoadModels() {
     }
   }
 
-  if (LoadedModels === ModelPlacements.length) {
-    BootStatus.textContent = `Store ready — ${LoadedModels} real models loaded.`;
-  } else {
-    BootStatus.textContent = `Store ready — ${LoadedModels}/${ModelPlacements.length} models loaded.`;
-  }
+  BootStatus.textContent = LoadedModels === ModelPlacements.length
+    ? `Store ready — ${LoadedModels} real models loaded.`
+    : `Store ready — ${LoadedModels}/${ModelPlacements.length} models loaded.`;
 }
 
 function ShowError(Message) {
@@ -226,31 +419,26 @@ function UpdateClock(Delta) {
   let Hours = Math.floor(StoreSeconds / 3600);
   const Minutes = Math.floor((StoreSeconds % 3600) / 60);
   const Suffix = Hours >= 12 ? "PM" : "AM";
-
   Hours %= 12;
   if (Hours === 0) Hours = 12;
-
   GameClock.textContent = `${Hours}:${String(Minutes).padStart(2, "0")} ${Suffix}`;
 }
 
 function UpdateObjective() {
   const Z = Camera.position.z;
   let Objective = "Find a way through the showroom.";
-
   if (Z < -7) Objective = "The aisles are longer than they were before.";
   if (Z < -17) Objective = "Keep moving past the bedroom displays.";
   if (Z < -27) Objective = "Find a route through the kitchen section.";
   if (Z < -35) Objective = "Something is wrong with the back of the store.";
-  if (Z < -42) Objective = "Reach the door at the end of the aisle.";
-
+  if (Z < -45) Objective = "Reach the warehouse door.";
   if (ObjectiveText.textContent !== Objective) ObjectiveText.textContent = Objective;
 }
 
 function IsBlocked(Position) {
-  const Radius = 0.34;
-
-  if (Position.x < -16.2 || Position.x > 16.2) return true;
-  if (Position.z < -52.1 || Position.z > 8.8) return true;
+  const Radius = 0.32;
+  if (Position.x < -16.25 || Position.x > 16.25) return true;
+  if (Position.z < -52.15 || Position.z > 8.85) return true;
 
   for (const Bounds of CollisionBoxes) {
     if (
@@ -268,11 +456,10 @@ function UpdateMovement(Delta) {
   if (!Controls.isLocked) return;
 
   const Running = KeyState.has("ShiftLeft") || KeyState.has("ShiftRight");
-  const Speed = Running ? 5.8 : 3.6;
+  const Speed = Running ? 5.6 : 3.55;
 
   let Forward = 0;
   let Right = 0;
-
   if (KeyState.has("KeyW")) Forward += 1;
   if (KeyState.has("KeyS")) Forward -= 1;
   if (KeyState.has("KeyD")) Right += 1;
@@ -296,15 +483,12 @@ function UpdateMovement(Delta) {
 function UpdateLights(Time) {
   for (let Index = 0; Index < StoreLights.length; Index += 1) {
     const Light = StoreLights[Index];
-    const BaseIntensity = Light.userData.BaseIntensity;
     const Seed = Light.userData.FlickerSeed;
-    const SlowPulse = Math.sin(Time * 0.45 + Seed * 2.7);
-    const FastBuzz = Math.sin(Time * 7.5 + Seed) * 0.035;
-    let Intensity = BaseIntensity * (0.97 + FastBuzz);
+    const Buzz = Math.sin(Time * 9.2 + Seed) * 0.025;
+    const Fault = Math.sin(Time * 0.72 + Seed * 1.9);
+    let Intensity = Light.userData.BaseIntensity * (1 + Buzz);
 
-    if (Index % 5 === 0 && SlowPulse > 0.96) Intensity *= 0.18;
-    if (Index % 11 === 0 && SlowPulse < -0.985) Intensity = 0;
-
+    if ((Index === 2 || Index === 5) && Fault > 0.988) Intensity *= 0.18;
     Light.intensity = Intensity;
   }
 }
@@ -312,7 +496,6 @@ function UpdateLights(Time) {
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
   const Time = performance.now() / 1000;
-
   UpdateLights(Time);
 
   if (Started) {
@@ -342,6 +525,7 @@ addEventListener("blur", () => KeyState.clear());
 addEventListener("resize", () => {
   Camera.aspect = innerWidth / innerHeight;
   Camera.updateProjectionMatrix();
+  Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
   Renderer.setSize(innerWidth, innerHeight, false);
 });
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
