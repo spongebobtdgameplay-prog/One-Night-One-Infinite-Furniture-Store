@@ -8,6 +8,11 @@ if (Game?.Scene && Game?.Camera && Game?.CollisionBoxes) {
   const TempA = new THREE.Vector3();
   const TempB = new THREE.Vector3();
   const TempC = new THREE.Vector3();
+  const TempAB = new THREE.Vector3();
+  const TempAC = new THREE.Vector3();
+  const TempNormal = new THREE.Vector3();
+  const MIN_PROJECTED_TRIANGLE_AREA = 0.006;
+  const MIN_UPWARD_NORMAL = 0.22;
 
   function DistanceSquaredToSegment(X, Z, A, B) {
     const DX = B.x - A.x;
@@ -39,12 +44,27 @@ if (Game?.Scene && Game?.Camera && Game?.CollisionBoxes) {
     const A = Triangle[0];
     const B = Triangle[1];
     const C = Triangle[2];
-    const Area = Math.abs((B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x));
-    if (Area > 0.000001 && PointInsideTriangle(X, Z, A, B, C)) return true;
+    if (PointInsideTriangle(X, Z, A, B, C)) return true;
     if (DistanceSquaredToSegment(X, Z, A, B) <= RadiusSquared) return true;
     if (DistanceSquaredToSegment(X, Z, B, C) <= RadiusSquared) return true;
     if (DistanceSquaredToSegment(X, Z, C, A) <= RadiusSquared) return true;
     return false;
+  }
+
+  function IsUsefulCollisionTriangle(A3, B3, C3) {
+    TempAB.copy(B3).sub(A3);
+    TempAC.copy(C3).sub(A3);
+    TempNormal.crossVectors(TempAB, TempAC);
+    const NormalLength = TempNormal.length();
+    if (NormalLength <= 0.000001) return false;
+    TempNormal.multiplyScalar(1 / NormalLength);
+    if (Math.abs(TempNormal.y) < MIN_UPWARD_NORMAL) return false;
+
+    const ProjectedArea = Math.abs(
+      (B3.x - A3.x) * (C3.z - A3.z) -
+      (B3.z - A3.z) * (C3.x - A3.x)
+    ) * 0.5;
+    return ProjectedArea >= MIN_PROJECTED_TRIANGLE_AREA;
   }
 
   function BuildTriangleFootprint(Model) {
@@ -67,6 +87,8 @@ if (Game?.Scene && Game?.Camera && Game?.CollisionBoxes) {
         TempA.fromBufferAttribute(Position, AIndex).applyMatrix4(Object.matrixWorld);
         TempB.fromBufferAttribute(Position, BIndex).applyMatrix4(Object.matrixWorld);
         TempC.fromBufferAttribute(Position, CIndex).applyMatrix4(Object.matrixWorld);
+
+        if (!IsUsefulCollisionTriangle(TempA, TempB, TempC)) continue;
 
         const A = new THREE.Vector2(TempA.x, TempA.z);
         const B = new THREE.Vector2(TempB.x, TempB.z);
@@ -118,7 +140,7 @@ if (Game?.Scene && Game?.Camera && Game?.CollisionBoxes) {
     function Evaluate() {
       const X = Game.Camera.position.x;
       const Z = Game.Camera.position.z;
-      const Radius = Player?.GetPlayerRadius?.() || 0.43;
+      const Radius = Player?.GetPlayerRadius?.() || 0.28;
       if (X !== LastX || Z !== LastZ || Radius !== LastRadius) {
         LastX = X;
         LastZ = Z;
@@ -147,10 +169,7 @@ if (Game?.Scene && Game?.Camera && Game?.CollisionBoxes) {
     }
 
     const Candidates = Game.CollisionBoxes.filter(Entry => Entry.ChunkId === ChunkId && Entry.Type === Name && !Entry.PreciseGeometry);
-    if (!Candidates.length) {
-      ProcessedModels.add(Model);
-      return;
-    }
+    if (!Candidates.length) return;
 
     const Geometry = BuildTriangleFootprint(Model);
     if (!Geometry.Triangles.length || Geometry.Bounds.isEmpty()) {
@@ -188,5 +207,5 @@ if (Game?.Scene && Game?.Camera && Game?.CollisionBoxes) {
   }
 
   requestAnimationFrame(ProcessScene);
-  window.__STORE_PRECISION_COLLISION_BUILD__ = "V0.12";
+  window.__STORE_PRECISION_COLLISION_BUILD__ = "V0.11-R3";
 }
