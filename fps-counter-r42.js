@@ -1,5 +1,9 @@
 const Counter = document.createElement("div");
 Counter.id = "FpsCounterR42";
+Counter.style.left = "auto";
+Counter.style.bottom = "auto";
+Counter.style.right = "16px";
+Counter.style.top = "96px";
 Counter.innerHTML = `FPS <strong>--</strong> <span>-- ms</span>`;
 document.body.appendChild(Counter);
 
