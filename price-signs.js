@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 const Game = window.__STORE_GAME__;
 
-if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes) throw new Error("Game must load before price signs.");
+if (!Game?.Scene || !Game?.CollisionBoxes) throw new Error("Game must load before price signs.");
 
 const FurniturePrices = {
   Couch_Large1: 699.99,
@@ -30,8 +30,8 @@ const ActiveSigns = new Map();
 const TempCenter = new THREE.Vector3();
 const TempSize = new THREE.Vector3();
 const TempLook = new THREE.Vector3();
-const SIGN_CLEARANCE = 0.62;
-const SIGN_SPACING = 1.35;
+const SIGN_CLEARANCE = 0.68;
+const SIGN_SPACING = 1.55;
 const MAX_SIGNS_PER_CHUNK = 2;
 
 function Hash(Text) {
@@ -152,9 +152,9 @@ function CandidatePositions(Model, Random) {
   Bounds.getCenter(TempCenter);
   Bounds.getSize(TempSize);
 
-  const Gap = 0.48 + Random() * 0.32;
-  const JitterX = (Random() - 0.5) * Math.min(0.72, Math.max(0.18, TempSize.x * 0.24));
-  const JitterZ = (Random() - 0.5) * Math.min(0.72, Math.max(0.18, TempSize.z * 0.24));
+  const Gap = 0.58 + Random() * 0.34;
+  const JitterX = (Random() - 0.5) * Math.min(0.68, Math.max(0.18, TempSize.x * 0.22));
+  const JitterZ = (Random() - 0.5) * Math.min(0.68, Math.max(0.18, TempSize.z * 0.22));
   const Candidates = [
     new THREE.Vector3(Bounds.max.x + Gap, 0, TempCenter.z + JitterZ),
     new THREE.Vector3(Bounds.min.x - Gap, 0, TempCenter.z - JitterZ),
@@ -167,7 +167,7 @@ function CandidatePositions(Model, Random) {
     [Candidates[Index], Candidates[Other]] = [Candidates[Other], Candidates[Index]];
   }
 
-  const Y = THREE.MathUtils.clamp(Bounds.min.y + 1.02 + (Random() - 0.5) * 0.12, 0.90, 1.40);
+  const Y = THREE.MathUtils.clamp(Bounds.min.y + 1.00 + (Random() - 0.5) * 0.10, 0.90, 1.34);
   for (const Candidate of Candidates) Candidate.y = Y;
   return Candidates;
 }
@@ -175,12 +175,24 @@ function CandidatePositions(Model, Random) {
 function FindSignPlacement(Model, Random) {
   const Candidates = CandidatePositions(Model, Random);
   for (const Candidate of Candidates) {
-    if (Math.abs(Candidate.x) > 16.1) continue;
+    if (Math.abs(Candidate.x) > 15.85) continue;
     if (IsBlockedByStructure(Candidate.x, Candidate.z)) continue;
     if (IsTooCloseToAnotherSign(Candidate.x, Candidate.z, Model)) continue;
     return Candidate;
   }
   return null;
+}
+
+function OrientPhysicalSign(Group, Model, Random) {
+  if (Math.abs(Group.position.x) > 2.5) {
+    TempLook.set(0, Group.position.y, Group.position.z);
+    Group.lookAt(TempLook);
+  } else {
+    const Direction = Random() < 0.5 ? 1 : -1;
+    TempLook.set(Group.position.x, Group.position.y, Group.position.z + Direction * 5);
+    Group.lookAt(TempLook);
+  }
+  Group.rotation.y += (Random() - 0.5) * 0.07;
 }
 
 function CreatePriceSign(Model) {
@@ -200,47 +212,56 @@ function CreatePriceSign(Model) {
   Group.userData.SourceModel = Model;
   Group.userData.Seed = Seed;
 
-  const FrameMaterial = new THREE.MeshStandardMaterial({ color: 0x29231e, roughness: 0.82, metalness: 0.12 });
-  const BoardMaterial = new THREE.MeshStandardMaterial({ color: 0xd8bd8b, roughness: 0.9, metalness: 0 });
+  const FrameMaterial = new THREE.MeshStandardMaterial({ color: 0x29231e, roughness: 0.80, metalness: 0.18 });
+  const BoardMaterial = new THREE.MeshStandardMaterial({ color: 0xd8bd8b, roughness: 0.90, metalness: 0 });
   const FaceMaterial = new THREE.MeshStandardMaterial({
     map: Texture,
     color: 0xffffff,
     roughness: 0.88,
     metalness: 0,
     emissive: 0x21170d,
-    emissiveIntensity: 0.055,
+    emissiveIntensity: 0.045,
     side: THREE.FrontSide
   });
 
-  const Frame = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.65, 0.09), FrameMaterial);
+  const Frame = new THREE.Mesh(new THREE.BoxGeometry(1.00, 0.69, 0.14), FrameMaterial);
+  Frame.name = "PriceSignFrame";
   Group.add(Frame);
 
-  const Board = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.57, 0.105), BoardMaterial);
+  const Board = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.59, 0.17), BoardMaterial);
+  Board.name = "PriceSignBoard";
   Group.add(Board);
 
-  const Front = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.53), FaceMaterial);
-  Front.position.z = 0.054;
+  const Front = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.55), FaceMaterial);
+  Front.name = "PriceSignFront";
+  Front.position.z = 0.087;
   Group.add(Front);
 
-  const Back = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.53), FaceMaterial.clone());
-  Back.position.z = -0.054;
+  const Back = new THREE.Mesh(new THREE.PlaneGeometry(0.86, 0.55), FaceMaterial.clone());
+  Back.name = "PriceSignBack";
+  Back.position.z = -0.087;
   Back.rotation.y = Math.PI;
   Group.add(Back);
 
-  const Pole = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.46, 0.035), FrameMaterial);
-  Pole.position.y = -0.54;
-  Group.add(Pole);
+  for (const X of [-0.24, 0.24]) {
+    const Pole = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.47, 0.05), FrameMaterial);
+    Pole.name = "PriceSignPole";
+    Pole.position.set(X, -0.56, 0);
+    Group.add(Pole);
 
-  const Base = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.035, 0.24), FrameMaterial);
-  Base.position.y = -0.77;
-  Group.add(Base);
+    const Foot = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.045, 0.28), FrameMaterial);
+    Foot.name = "PriceSignFoot";
+    Foot.position.set(X, -0.81, 0.02);
+    Group.add(Foot);
+  }
+
+  const RearBrace = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.04, 0.05), FrameMaterial);
+  RearBrace.name = "PriceSignBrace";
+  RearBrace.position.set(0, -0.47, -0.035);
+  Group.add(RearBrace);
 
   Group.position.copy(Placement);
-  const FacingDirection = Random() < 0.5 ? 1 : -1;
-  const FacingJitter = (Random() - 0.5) * 0.20;
-  TempLook.set(Group.position.x + Math.sin(FacingJitter), Group.position.y, Group.position.z + FacingDirection * 5);
-  Group.lookAt(TempLook);
-
+  OrientPhysicalSign(Group, Model, Random);
   Game.Scene.add(Group);
   return Group;
 }
@@ -258,7 +279,7 @@ function DesiredModels() {
   for (const [ChunkId, Models] of ByChunk) {
     Models.sort((Left, Right) => ModelKey(Left).localeCompare(ModelKey(Right)));
     const ChunkRandom = RandomFromSeed(Hash(`sign-density:${ChunkId}`));
-    const Quota = Math.min(Models.length, MAX_SIGNS_PER_CHUNK, ChunkRandom() < 0.72 ? 1 : 2);
+    const Quota = Math.min(Models.length, MAX_SIGNS_PER_CHUNK, ChunkRandom() < 0.78 ? 1 : 2);
     const Ranked = Models.map(Model => ({ Model, Score: Hash(`sign-choice:${ModelKey(Model)}`) / 4294967295 }));
     Ranked.sort((Left, Right) => Left.Score - Right.Score);
     for (let Index = 0; Index < Quota; Index += 1) Desired.add(Ranked[Index].Model);
@@ -290,4 +311,4 @@ function UpdateSigns() {
 }
 
 requestAnimationFrame(UpdateSigns);
-window.__STORE_PRICE_SIGN_BUILD__ = "V0.11-R6";
+window.__STORE_PRICE_SIGN_BUILD__ = "V0.11-R7";
