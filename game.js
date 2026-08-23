@@ -51,9 +51,8 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 5;
-const CHUNKS_BEHIND = 1;
-const MAX_ACTIVE_CHUNKS = CHUNKS_AHEAD + CHUNKS_BEHIND + 2;
+const CHUNK_STREAM_RADIUS = 3;
+const MAX_ACTIVE_CHUNKS = CHUNK_STREAM_RADIUS * 2 + 1;
 const TASK_DISTANCE = 1.85;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
@@ -73,6 +72,10 @@ function RandomRange(Seed, Min, Max) {
   return Min + SeededRandom(Seed) * (Max - Min);
 }
 
+function PositiveModulo(Value, Divisor) {
+  return ((Value % Divisor) + Divisor) % Divisor;
+}
+
 function ChunkCenterZ(Index) {
   return FIRST_CHUNK_TOP_Z - CHUNK_LENGTH * (Index + 0.5);
 }
@@ -86,7 +89,7 @@ function ChunkBottomZ(Index) {
 }
 
 function ChunkIndexForZ(Z) {
-  return Math.max(0, Math.floor((FIRST_CHUNK_TOP_Z - Z) / CHUNK_LENGTH));
+  return Math.floor((FIRST_CHUNK_TOP_Z - Z) / CHUNK_LENGTH);
 }
 
 function CreateTexture(Size, RepeatX, RepeatY, Draw) {
@@ -553,6 +556,7 @@ function AddTask(Chunk, Type, X, Z) {
 function PopulateLivingRoom(Chunk, CenterZ, Seed) {
   AddRug(Chunk, -9.5, CenterZ + 5.5, 5.0, 4.2, Seed + 1);
   AddRug(Chunk, 9.3, CenterZ - 5.5, 4.8, 4.0, Seed + 2);
+  AddRug(Chunk, -10.1, CenterZ - 6.2, 4.0, 3.3, Seed + 14);
   SpawnModel(Chunk, "Couch_Large1", -9.8, CenterZ + 5.6, 0);
   SpawnModel(Chunk, "Couch_L", 9.1, CenterZ - 5.6, Math.PI);
   SpawnModel(Chunk, "Chair_2", -7.7, CenterZ + 2.8, 0.4);
@@ -561,12 +565,17 @@ function PopulateLivingRoom(Chunk, CenterZ, Seed) {
   SpawnModel(Chunk, "Table_RoundLarge", 9.1, CenterZ - 3.3, 0);
   SpawnModel(Chunk, "Light_Floor1", -7.2, CenterZ + 5.8, 0);
   SpawnModel(Chunk, "Light_Floor1", 7.0, CenterZ - 5.0, 0);
-  if (Chunk.Index < 2) SpawnCactusMarker(Chunk, -12.0, CenterZ + 1.0, 0);
+  SpawnModel(Chunk, "Chair_2", -11.8, CenterZ - 6.0, 0.18);
+  SpawnModel(Chunk, "Chair_2", -8.4, CenterZ - 6.3, -0.22);
+  SpawnModel(Chunk, "Table_RoundLarge", -10.1, CenterZ - 4.8, 0);
+  SpawnModel(Chunk, "Bookshelf", 12.2, CenterZ + 5.8, Math.PI);
+  if (Math.abs(Chunk.Index) < 2) SpawnCactusMarker(Chunk, -12.0, CenterZ + 1.0, 0);
 }
 
 function PopulateBedroom(Chunk, CenterZ, Seed) {
   AddRug(Chunk, -9.4, CenterZ + 5.0, 5.2, 4.2, Seed + 3);
   AddRug(Chunk, 9.4, CenterZ - 5.0, 5.0, 4.2, Seed + 4);
+  AddRug(Chunk, 9.6, CenterZ + 6.0, 4.2, 3.4, Seed + 18);
   SpawnModel(Chunk, "Bed_King", -9.4, CenterZ + 4.8, 0);
   SpawnModel(Chunk, "Bed_King", 9.4, CenterZ - 4.8, Math.PI);
   SpawnModel(Chunk, "NightStand_2", -7.6, CenterZ + 4.8, 0);
@@ -575,6 +584,10 @@ function PopulateBedroom(Chunk, CenterZ, Seed) {
   SpawnModel(Chunk, "NightStand_2", 11.2, CenterZ - 4.8, 0);
   SpawnModel(Chunk, "Bed_Single", -9.3, CenterZ - 5.0, 0);
   SpawnModel(Chunk, "Light_Floor1", 7.0, CenterZ + 1.0, 0);
+  SpawnModel(Chunk, "Bed_Single", 9.7, CenterZ + 6.0, Math.PI);
+  SpawnModel(Chunk, "NightStand_2", 8.2, CenterZ + 6.0, 0);
+  SpawnModel(Chunk, "NightStand_2", 11.2, CenterZ + 6.0, 0);
+  SpawnModel(Chunk, "Bookshelf", -12.2, CenterZ - 6.7, 0);
 }
 
 function PopulateKitchen(Chunk, CenterZ) {
@@ -588,6 +601,10 @@ function PopulateKitchen(Chunk, CenterZ) {
   SpawnModel(Chunk, "Kitchen_Sink", -8.7, CenterZ + 2.4, Math.PI);
   SpawnModel(Chunk, "Kitchen_Oven", 10.4, CenterZ - 2.4, 0);
   SpawnModel(Chunk, "Kitchen_Sink", 8.7, CenterZ - 2.4, 0);
+  SpawnModel(Chunk, "Kitchen_Cabinet1", -12.7, CenterZ - 5.8, 0);
+  SpawnModel(Chunk, "Kitchen_Cabinet1", -11.6, CenterZ - 5.8, 0);
+  SpawnModel(Chunk, "Kitchen_Cabinet1", 12.7, CenterZ + 5.8, Math.PI);
+  SpawnModel(Chunk, "Kitchen_Cabinet1", 11.6, CenterZ + 5.8, Math.PI);
 }
 
 function PopulateBathroom(Chunk, CenterZ) {
@@ -599,26 +616,55 @@ function PopulateBathroom(Chunk, CenterZ) {
   SpawnModel(Chunk, "Bathroom_Toilet", 11.7, CenterZ - 1.8, Math.PI);
   SpawnModel(Chunk, "Window_Large1", -5.7, CenterZ + 0.6, -Math.PI / 2);
   SpawnModel(Chunk, "Window_Large1", 5.7, CenterZ - 0.6, Math.PI / 2);
+  SpawnModel(Chunk, "Bathroom_Bathtub", -10.4, CenterZ - 6.1, Math.PI / 2);
+  SpawnModel(Chunk, "Bathroom_Bathtub", 10.4, CenterZ + 6.1, -Math.PI / 2);
+  SpawnModel(Chunk, "Bathroom_Toilet", -7.9, CenterZ - 6.0, 0);
+  SpawnModel(Chunk, "Bathroom_Toilet", 7.9, CenterZ + 6.0, Math.PI);
 }
 
 function PopulateWarehouse(Chunk, CenterZ, Seed) {
-  for (const X of [-11.5, -8.0, 8.0, 11.5]) {
-    SpawnModel(Chunk, "Shelf_Large", X, CenterZ + RandomRange(Seed + X * 4, -7, 7), X < 0 ? 0 : Math.PI);
+  for (const X of [-12.3, -10.0, -7.7, 7.7, 10.0, 12.3]) {
+    SpawnModel(Chunk, "Shelf_Large", X, CenterZ + RandomRange(Seed + X * 4, -8.5, 8.5), X < 0 ? 0 : Math.PI);
   }
-  for (const X of [-10.5, 10.5]) {
-    SpawnModel(Chunk, "Bookshelf", X, CenterZ + RandomRange(Seed + X * 3, -7, 7), X < 0 ? 0 : Math.PI);
+  for (const X of [-11.2, -8.7, 8.7, 11.2]) {
+    SpawnModel(Chunk, "Bookshelf", X, CenterZ + RandomRange(Seed + X * 3, -8.0, 8.0), X < 0 ? 0 : Math.PI);
   }
+
+  const BoxPositions = [];
+  const StackCount = 14;
+  for (let Stack = 0; Stack < StackCount; Stack += 1) {
+    const Side = Stack % 2 === 0 ? -1 : 1;
+    const Lane = Math.floor(Stack / 2) % 3;
+    const Row = Math.floor(Stack / 6);
+    const StackSeed = Seed + Stack * 17;
+    const X = Side * (7.9 + Lane * 1.75 + RandomRange(StackSeed + 1, -0.12, 0.12));
+    const Z = CenterZ - 7.4 + Row * 6.5 + RandomRange(StackSeed + 2, -0.45, 0.45);
+    const Levels = 1 + Math.floor(SeededRandom(StackSeed + 3) * 3);
+    for (let Level = 0; Level < Levels; Level += 1) {
+      BoxPositions.push({
+        X: X + RandomRange(StackSeed + Level * 4 + 10, -0.035, 0.035),
+        Y: 0.28 + Level * 0.56,
+        Z: Z + RandomRange(StackSeed + Level * 4 + 11, -0.035, 0.035),
+        Rotation: RandomRange(StackSeed + Level * 4 + 12, -0.055, 0.055)
+      });
+    }
+  }
+
   const BoxGeometry = new THREE.BoxGeometry(0.72, 0.56, 0.9);
-  const Count = 20;
-  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, Count);
+  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, BoxPositions.length);
   Boxes.name = "WarehouseBoxes";
   Boxes.userData.ChunkId = Chunk.Id;
   const Matrix = new THREE.Matrix4();
-  for (let Index = 0; Index < Count; Index += 1) {
-    const Side = Index % 2 === 0 ? -1 : 1;
-    const Row = Math.floor(Index / 2) % 5;
-    const Level = Math.floor(Index / 10);
-    Matrix.makeTranslation(Side * (8.0 + (Index % 3) * 1.0), 0.28 + Level * 0.58, CenterZ - 6 + Row * 2.6);
+  const Position = new THREE.Vector3();
+  const Quaternion = new THREE.Quaternion();
+  const Scale = new THREE.Vector3(1, 1, 1);
+  const Euler = new THREE.Euler();
+  for (let Index = 0; Index < BoxPositions.length; Index += 1) {
+    const BoxPosition = BoxPositions[Index];
+    Position.set(BoxPosition.X, BoxPosition.Y, BoxPosition.Z);
+    Euler.set(0, BoxPosition.Rotation, 0);
+    Quaternion.setFromEuler(Euler);
+    Matrix.compose(Position, Quaternion, Scale);
     Boxes.setMatrixAt(Index, Matrix);
   }
   Boxes.instanceMatrix.needsUpdate = true;
@@ -628,12 +674,19 @@ function PopulateWarehouse(Chunk, CenterZ, Seed) {
 function PopulateShowroom(Chunk, CenterZ, Seed) {
   AddRug(Chunk, -9.5, CenterZ + 5.5, 4.4, 3.6, Seed + 8);
   AddRug(Chunk, 9.5, CenterZ - 5.5, 4.4, 3.6, Seed + 9);
+  AddRug(Chunk, -10.0, CenterZ - 6.2, 3.8, 3.0, Seed + 10);
   SpawnModel(Chunk, "Couch_Large1", -9.5, CenterZ + 5.5, 0);
   SpawnModel(Chunk, "Bed_Single", 9.5, CenterZ - 5.5, Math.PI);
   SpawnModel(Chunk, "Bookshelf", -11.5, CenterZ - 3.0, 0);
   SpawnModel(Chunk, "Kitchen_Fridge", 11.5, CenterZ + 2.0, Math.PI);
   SpawnModel(Chunk, "Chair_2", -7.8, CenterZ + 1.0, 0.4);
   SpawnModel(Chunk, "Table_RoundLarge", 8.6, CenterZ - 1.0, 0);
+  SpawnModel(Chunk, "Chair_2", -11.4, CenterZ - 6.0, 0.15);
+  SpawnModel(Chunk, "Chair_2", -8.7, CenterZ - 6.0, -0.2);
+  SpawnModel(Chunk, "Table_RoundLarge", -10.0, CenterZ - 4.7, 0);
+  SpawnModel(Chunk, "Kitchen_Oven", 11.8, CenterZ + 6.0, Math.PI);
+  SpawnModel(Chunk, "NightStand_2", 8.1, CenterZ + 6.2, 0);
+  SpawnModel(Chunk, "Light_Floor1", 7.2, CenterZ + 5.8, 0);
 }
 
 function BuildChunk(Index) {
@@ -643,7 +696,7 @@ function BuildChunk(Index) {
   const TopZ = ChunkTopZ(Index);
   const BottomZ = ChunkBottomZ(Index);
   const Seed = 1000 + Index * 37;
-  const Theme = Themes[Index % Themes.length];
+  const Theme = Themes[PositiveModulo(Index, Themes.length)];
   const Group = new THREE.Group();
   Group.name = Id;
   Group.userData.ChunkId = Id;
@@ -658,7 +711,7 @@ function BuildChunk(Index) {
   Box("BaseboardLeft", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(-16.87, 0.09, CenterZ), TrimMaterial, Chunk);
   Box("BaseboardRight", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(16.87, 0.09, CenterZ), TrimMaterial, Chunk);
 
-  const PartitionSide = Index % 2 === 0 ? -1 : 1;
+  const PartitionSide = PositiveModulo(Index, 2) === 0 ? -1 : 1;
   AddPartition(Chunk, PartitionSide * 6.35, CenterZ + 5.2, 4.0);
   AddPartition(Chunk, -PartitionSide * 6.35, CenterZ - 5.2, 4.0);
   if (SeededRandom(Seed + 4) > 0.62) AddPartition(Chunk, PartitionSide * 11.8, CenterZ - 1.5, 3.1);
@@ -677,22 +730,32 @@ function BuildChunk(Index) {
   else if (Theme === "WAREHOUSE" || Theme === "STORAGE") PopulateWarehouse(Chunk, CenterZ, Seed);
   else PopulateShowroom(Chunk, CenterZ, Seed);
 
-  if (Index > 0) {
-    const TypeRoll = Index % 3;
+  if (Index !== 0) {
+    const TypeRoll = PositiveModulo(Index, 3);
     const Type = TypeRoll === 0 ? "breaker" : TypeRoll === 1 ? "manifest" : "scanner";
-    const TaskX = Index % 2 === 0 ? -14.1 : 14.1;
+    const TaskX = PositiveModulo(Index, 2) === 0 ? -14.1 : 14.1;
     const TaskZ = CenterZ + RandomRange(Seed + 99, -5.0, 5.0);
     AddTask(Chunk, Type, TaskX, TaskZ);
   }
   return Chunk;
 }
 
+function DisposeGeometryTree(Object) {
+  Object?.traverse?.(Child => {
+    if (Child.geometry?.dispose) Child.geometry.dispose();
+  });
+}
+
 function RemoveChunk(Index) {
   const Chunk = ActiveChunks.get(Index);
   if (!Chunk) return;
+  DisposeGeometryTree(Chunk.Group);
   Scene.remove(Chunk.Group);
   for (const Model of Chunk.Models) Scene.remove(Model);
-  for (const Object of Chunk.TaskObjects) Scene.remove(Object);
+  for (const Object of Chunk.TaskObjects) {
+    DisposeGeometryTree(Object);
+    Scene.remove(Object);
+  }
   for (const TaskId of Chunk.Tasks) Tasks.delete(TaskId);
   for (let CollisionIndex = CollisionBoxes.length - 1; CollisionIndex >= 0; CollisionIndex -= 1) {
     if (CollisionBoxes[CollisionIndex].ChunkId === Chunk.Id) CollisionBoxes.splice(CollisionIndex, 1);
@@ -707,13 +770,13 @@ function RemoveChunk(Index) {
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
   LastChunkIndex = CurrentIndex;
-  const MinIndex = Math.max(0, CurrentIndex - CHUNKS_BEHIND);
-  const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
+  const MinIndex = CurrentIndex - CHUNK_STREAM_RADIUS;
+  const MaxIndex = CurrentIndex + CHUNK_STREAM_RADIUS;
   for (let Index = MinIndex; Index <= MaxIndex; Index += 1) BuildChunk(Index);
   for (const Index of [...ActiveChunks.keys()]) {
-    if (Index < MinIndex || Index > MaxIndex + 1 || ActiveChunks.size > MAX_ACTIVE_CHUNKS) RemoveChunk(Index);
+    if (Index < MinIndex || Index > MaxIndex || ActiveChunks.size > MAX_ACTIVE_CHUNKS) RemoveChunk(Index);
   }
-  if (AisleCounter) AisleCounter.textContent = `${CurrentIndex + 1}`;
+  if (AisleCounter) AisleCounter.textContent = `${Math.abs(CurrentIndex) + 1}`;
 }
 
 function UpdateClock(Delta) {
@@ -731,7 +794,7 @@ function FindNearestPendingTask() {
   let Best = null;
   let BestDistance = Infinity;
   for (const Task of Tasks.values()) {
-    if (Task.Completed || Task.ChunkIndex < LastChunkIndex - 1) continue;
+    if (Task.Completed) continue;
     const Distance = Camera.position.distanceTo(Task.Object.position);
     if (Distance < BestDistance) {
       Best = Task;
@@ -748,7 +811,7 @@ function UpdateObjective() {
   if (Task) {
     const DistanceText = Number.isFinite(Distance) ? ` • ${Math.max(1, Math.round(Distance))}m` : "";
     Text = `${Task.Label}${DistanceText}`;
-  } else Text = "Keep moving deeper. The store is still generating ahead of you.";
+  } else Text = "Keep moving. The store streams new rooms around you.";
   if (Text !== LastObjectiveText) {
     LastObjectiveText = Text;
     ObjectiveText.textContent = Text;
@@ -868,9 +931,9 @@ const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.34);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
-for (let Index = 0; Index <= CHUNKS_AHEAD; Index += 1) BuildChunk(Index);
+for (let Index = -CHUNK_STREAM_RADIUS; Index <= CHUNK_STREAM_RADIUS; Index += 1) BuildChunk(Index);
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
-BootStatus.textContent = "Store ready — endless aisles online.";
+BootStatus.textContent = "Store ready — streamed endless rooms online.";
 
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
@@ -914,6 +977,18 @@ addEventListener("resize", () => {
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
 
-window.__STORE_GAME_BUILD__ = "V0.10-R27";
-window.__STORE_GAME__ = { Scene, Camera, Renderer, CollisionBoxes, ActiveChunks, Tasks };
+window.__STORE_GAME_BUILD__ = "V0.10-R34";
+window.__STORE_GAME__ = {
+  Scene,
+  Camera,
+  Renderer,
+  CollisionBoxes,
+  ActiveChunks,
+  Tasks,
+  BuildChunk,
+  RemoveChunk,
+  ChunkIndexForZ,
+  StreamRadius: CHUNK_STREAM_RADIUS,
+  ChunkLength: CHUNK_LENGTH
+};
 Animate();
