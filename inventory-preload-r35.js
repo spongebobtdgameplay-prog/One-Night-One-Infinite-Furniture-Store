@@ -65,4 +65,3 @@ window.__STORE_PARSED_MODEL_CACHE__ = ParsedModels;
 window.__STORE_INVENTORY_PRELOAD_BUILD__ = "V0.11-R35";
 
 if (BootStatus) BootStatus.textContent = "Furniture loaded — building nearby rooms...";
-if (StartButton) StartButton.disabled = false;
