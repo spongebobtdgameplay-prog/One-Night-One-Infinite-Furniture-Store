@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#171816">
   <title>One Night, One Infinite Furniture Store</title>
-  <link rel="stylesheet" href="styles.css?v=20260822-6">
+  <link rel="stylesheet" href="styles.css?v=20260822-7">
+  <link rel="stylesheet" href="player-controller.css?v=20260822-7">
   <script type="importmap">
     {
       "imports": {
@@ -26,7 +27,7 @@
         <p class="Tagline">The doors are locked. The aisles keep changing. Make it until morning.</p>
         <button id="StartButton" class="PrimaryButton" type="button">ENTER THE STORE</button>
         <p id="BootStatus" class="BootStatus">Preparing store...</p>
-        <p id="BuildVersion" class="BuildVersion">BUILD V0.06</p>
+        <p id="BuildVersion" class="BuildVersion">BUILD V0.07</p>
       </div>
     </section>
 
@@ -44,9 +45,21 @@
 
       <div class="Crosshair" aria-hidden="true"></div>
 
+      <div id="StaminaWrap" class="StaminaHud">
+        <div class="StaminaHeader">
+          <span>STAMINA</span>
+          <strong id="StaminaValue">100</strong>
+        </div>
+        <div class="StaminaTrack"><div id="StaminaFill" class="StaminaFill"></div></div>
+      </div>
+
+      <div class="CameraMode">CAMERA <strong id="CameraModeValue">FIRST PERSON</strong></div>
+
       <div class="ControlsHint">
         <span>WASD MOVE</span>
-        <span>SHIFT RUN</span>
+        <span>SHIFT SPRINT</span>
+        <span>WHEEL ZOOM</span>
+        <span>V VIEW</span>
         <span>MOUSE LOOK</span>
         <span>ESC RELEASE MOUSE</span>
       </div>
@@ -58,6 +71,6 @@
     </section>
   </main>
 
-  <script type="module" src="bootstrap.js?v=20260822-6"></script>
+  <script type="module" src="bootstrap.js?v=20260822-7"></script>
 </body>
 </html>
