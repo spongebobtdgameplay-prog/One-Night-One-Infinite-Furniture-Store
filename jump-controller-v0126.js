@@ -197,7 +197,9 @@ function Render(Renderer, Scene, Camera) {
       const Pivot = RenderScene.getObjectByName("PlayerCharacterPivot");
       const ThirdPerson = BasePlayer.IsThirdPerson?.() !== false;
       let PivotRaised = false;
+      let ThirdPersonCameraRaised = false;
       let LandingCameraApplied = false;
+      const SavedThirdPersonCameraY = RenderCamera.position.y;
 
       if (Pivot) {
         if (ThirdPerson && State.Offset > 0) {
@@ -209,12 +211,22 @@ function Render(Renderer, Scene, Camera) {
         ApplyProceduralJumpPose(Pivot);
       }
 
-      if (!ThirdPerson) LandingCameraApplied = ApplyFirstPersonLandingCamera(RenderCamera);
+      if (ThirdPerson && State.Offset > 0) {
+        RenderCamera.position.y = SavedThirdPersonCameraY + State.Offset;
+        RenderCamera.updateMatrixWorld(true);
+        ThirdPersonCameraRaised = true;
+      } else if (!ThirdPerson) {
+        LandingCameraApplied = ApplyFirstPersonLandingCamera(RenderCamera);
+      }
 
       try {
         Renderer.render(RenderScene, RenderCamera);
       } finally {
         if (LandingCameraApplied) RestoreFirstPersonLandingCamera(RenderCamera);
+        if (ThirdPersonCameraRaised) {
+          RenderCamera.position.y = SavedThirdPersonCameraY;
+          RenderCamera.updateMatrixWorld(true);
+        }
         if (Pivot) {
           RestoreBones(Pivot);
           if (PivotRaised) {
@@ -247,4 +259,4 @@ window.__STORE_PLAYER__ = {
 };
 
 window.__STORE_JUMP_STATE__ = State;
-window.__STORE_JUMP_CONTROLLER_BUILD__ = "V0.12.7";
+window.__STORE_JUMP_CONTROLLER_BUILD__ = "V0.12.8";
