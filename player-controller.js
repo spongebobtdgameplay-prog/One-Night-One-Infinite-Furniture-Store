@@ -119,13 +119,34 @@ function FindBone(Model, Name) {
 }
 
 function SetupBones(Model) {
-  for (const Name of [
-    "pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "Head",
-    "clavicle_l", "upperarm_l", "lowerarm_l", "hand_l",
-    "clavicle_r", "upperarm_r", "lowerarm_r", "hand_r",
-    "thigh_l", "calf_l", "foot_l", "ball_l",
-    "thigh_r", "calf_r", "foot_r", "ball_r"
-  ]) FindBone(Model, Name);
+  const BoneMap = {
+    pelvis: "Hips",
+    spine_01: "Abdomen",
+    spine_02: "Torso",
+    spine_03: "Chest",
+    neck_01: "Neck",
+    Head: "Head",
+    clavicle_l: "Shoulder.L",
+    upperarm_l: "UpperArm.L",
+    lowerarm_l: "LowerArm.L",
+    hand_l: "Wrist.L",
+    clavicle_r: "Shoulder.R",
+    upperarm_r: "UpperArm.R",
+    lowerarm_r: "LowerArm.R",
+    hand_r: "Wrist.R",
+    thigh_l: "UpperLeg.L",
+    calf_l: "LowerLeg.L",
+    foot_l: "Foot.L",
+    thigh_r: "UpperLeg.R",
+    calf_r: "LowerLeg.R",
+    foot_r: "Foot.R"
+  };
+  for (const [CanonicalName, ActualName] of Object.entries(BoneMap)) {
+    const Bone = Model.getObjectByName(ActualName);
+    if (!Bone?.isBone) continue;
+    State.Bones.set(CanonicalName, Bone);
+    State.BaseBoneQuaternions.set(CanonicalName, Bone.quaternion.clone());
+  }
 }
 
 function ApplyBaseBoneRotation(Name, X = 0, Y = 0, Z = 0) {
@@ -174,8 +195,8 @@ function BuildFirstPersonArmMesh(Object) {
   for (let BoneIndex = 0; BoneIndex < Object.skeleton.bones.length; BoneIndex += 1) {
     const Name = (Object.skeleton.bones[BoneIndex]?.name || "").toLowerCase();
     if (
-      Name.includes("lowerarm_") || Name.includes("hand_") || Name.includes("thumb_") ||
-      Name.includes("index_") || Name.includes("middle_") || Name.includes("ring_") || Name.includes("pinky_")
+      Name.includes("lowerarm.") || Name.includes("wrist.") || Name.includes("thumb") ||
+      Name.includes("index") || Name.includes("middle") || Name.includes("ring") || Name.includes("pinky")
     ) ArmBones.add(BoneIndex);
   }
   if (!ArmBones.size) return null;
