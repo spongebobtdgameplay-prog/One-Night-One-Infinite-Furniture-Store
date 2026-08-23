@@ -42,6 +42,8 @@ const KeyState = new Set();
 const CollisionBoxes = [];
 const ModelCache = new Map();
 const ActiveChunks = new Map();
+const PreparedChunks = new Map();
+const PreparingChunks = new Map();
 const Tasks = new Map();
 const PlayerApi = window.__STORE_PLAYER__ || null;
 
@@ -53,8 +55,11 @@ const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
 const CHUNKS_AHEAD = 3;
 const CHUNKS_BEHIND = 3;
-const MAX_ACTIVE_CHUNKS = CHUNKS_AHEAD + CHUNKS_BEHIND + 2;
+const PREFETCH_CHUNKS = 1;
+const STREAM_PROMOTION_DISTANCE = 10;
 const TASK_DISTANCE = 1.85;
+const PLACEMENT_CLEARANCE = 0.10;
+const RESERVED_CLEARANCE = 0.035;
 const WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
@@ -124,7 +129,6 @@ function CreateSurfaceTexture(BaseColor, AccentColor, Pattern) {
   return CreateTexture(192, 3, 3, (Context, Size) => {
     Context.fillStyle = BaseColor;
     Context.fillRect(0, 0, Size, Size);
-
     if (Pattern === "fabric") {
       Context.strokeStyle = AccentColor;
       Context.globalAlpha = 0.16;
@@ -139,9 +143,7 @@ function CreateSurfaceTexture(BaseColor, AccentColor, Pattern) {
         Context.stroke();
       }
       Context.globalAlpha = 1;
-    }
-
-    if (Pattern === "wood") {
+    } else if (Pattern === "wood") {
       for (let Line = 0; Line < 44; Line += 1) {
         const Y = SeededRandom(Line * 7 + 2) * Size;
         Context.strokeStyle = AccentColor;
@@ -153,9 +155,7 @@ function CreateSurfaceTexture(BaseColor, AccentColor, Pattern) {
         Context.stroke();
       }
       Context.globalAlpha = 1;
-    }
-
-    if (Pattern === "metal") {
+    } else if (Pattern === "metal") {
       Context.globalAlpha = 0.13;
       for (let Line = 0; Line < 120; Line += 1) {
         const Y = SeededRandom(Line * 11 + 5) * Size;
@@ -163,9 +163,7 @@ function CreateSurfaceTexture(BaseColor, AccentColor, Pattern) {
         Context.fillRect(0, Y, Size, SeededRandom(Line * 11 + 6) > 0.7 ? 2 : 1);
       }
       Context.globalAlpha = 1;
-    }
-
-    if (Pattern === "ceramic") {
+    } else if (Pattern === "ceramic") {
       for (let Dot = 0; Dot < 320; Dot += 1) {
         const X = SeededRandom(Dot * 5 + 20) * Size;
         const Y = SeededRandom(Dot * 5 + 21) * Size;
@@ -306,27 +304,111 @@ const ModelDefinitions = {
 };
 
 const CollisionProfiles = {
-  Couch_Large1: [2.25, 0.90],
-  Couch_L: [2.45, 1.65],
-  Chair_2: [0.78, 0.76],
-  Table_RoundLarge: [1.38, 1.38],
-  Bed_King: [1.90, 2.02],
-  Bed_Single: [1.02, 1.96],
-  NightStand_2: [0.52, 0.48],
-  Shelf_Large: [1.75, 0.50],
-  Bookshelf: [1.45, 0.42],
-  Kitchen_Cabinet1: [1.05, 0.58],
-  Kitchen_Fridge: [0.84, 0.78],
-  Kitchen_Oven: [0.82, 0.70],
-  Kitchen_Sink: [1.10, 0.66],
-  Bathroom_Bathtub: [0.80, 1.72],
-  Bathroom_Toilet: [0.62, 0.78]
+  Couch_Large1: [2.25, 0.90], Couch_L: [2.45, 1.65], Chair_2: [0.78, 0.76], Table_RoundLarge: [1.38, 1.38],
+  Bed_King: [1.90, 2.02], Bed_Single: [1.02, 1.96], NightStand_2: [0.52, 0.48], Shelf_Large: [1.75, 0.50],
+  Bookshelf: [1.45, 0.42], Kitchen_Cabinet1: [1.05, 0.58], Kitchen_Fridge: [0.84, 0.78], Kitchen_Oven: [0.82, 0.70],
+  Kitchen_Sink: [1.10, 0.66], Bathroom_Bathtub: [0.80, 1.72], Bathroom_Toilet: [0.62, 0.78]
+};
+
+const PlacementProfiles = {
+  ...CollisionProfiles,
+  Light_Floor1: [0.48, 0.48],
+  Door_3: [1.0, 0.24],
+  Window_Large1: [1.45, 0.22]
 };
 
 const Themes = ["LIVING ROOM", "BEDROOMS", "KITCHENS", "BATHROOMS", "WAREHOUSE", "SHOWROOM", "CLEARANCE", "STORAGE"];
 
-function AddCollision(Bounds, ChunkId, Type = "world") {
-  CollisionBoxes.push({ Box: Bounds, ChunkId, Type });
+const GenerationQueue = [];
+let GenerationRunning = false;
+
+function ScheduleGenerationWork(Job) {
+  return new Promise((Resolve, Reject) => {
+    GenerationQueue.push({ Job, Resolve, Reject });
+    PumpGenerationQueue();
+  });
+}
+
+function PumpGenerationQueue() {
+  if (GenerationRunning || !GenerationQueue.length) return;
+  GenerationRunning = true;
+  const Run = async () => {
+    const Entry = GenerationQueue.shift();
+    try {
+      Entry.Resolve(await Entry.Job());
+    } catch (Error) {
+      Entry.Reject(Error);
+    } finally {
+      GenerationRunning = false;
+      PumpGenerationQueue();
+    }
+  };
+  if ("requestIdleCallback" in window) requestIdleCallback(() => Run(), { timeout: 55 });
+  else setTimeout(Run, 0);
+}
+
+function OverlapsXZ(A, B, Padding = 0) {
+  return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding && A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
+}
+
+function Footprint(Name, X, Z, Rotation = 0, Extra = 0) {
+  const [Width, Depth] = PlacementProfiles[Name] || [0.68, 0.68];
+  const C = Math.abs(Math.cos(Rotation));
+  const S = Math.abs(Math.sin(Rotation));
+  const RotatedWidth = Width * C + Depth * S;
+  const RotatedDepth = Width * S + Depth * C;
+  const HalfX = RotatedWidth * 0.5 + Extra;
+  const HalfZ = RotatedDepth * 0.5 + Extra;
+  return new THREE.Box3(new THREE.Vector3(X - HalfX, 0, Z - HalfZ), new THREE.Vector3(X + HalfX, 2.5, Z + HalfZ));
+}
+
+function IsFootprintClear(Chunk, Bounds, CheckReserved = true) {
+  if (Bounds.min.x < -STORE_HALF_WIDTH + 0.28 || Bounds.max.x > STORE_HALF_WIDTH - 0.28) return false;
+  if (Bounds.min.z < Chunk.BottomZ + 0.32 || Bounds.max.z > Chunk.TopZ - 0.32) return false;
+  for (const Structure of Chunk.StructureBounds) {
+    if (OverlapsXZ(Bounds, Structure, PLACEMENT_CLEARANCE)) return false;
+  }
+  if (CheckReserved) {
+    for (const Reserved of Chunk.ReservedBounds) {
+      if (OverlapsXZ(Bounds, Reserved, RESERVED_CLEARANCE)) return false;
+    }
+  }
+  return true;
+}
+
+function ShapeCastPlacement(Chunk, Name, X, Z, Rotation = 0, Reserve = true) {
+  const OriginalSide = Math.abs(X) > 4.5 ? Math.sign(X) : 0;
+  const Offsets = [[0, 0]];
+  for (const Radius of [0.45, 0.9, 1.35, 1.8, 2.25, 2.7, 3.15]) {
+    Offsets.push([0, Radius], [0, -Radius], [Radius, 0], [-Radius, 0]);
+    const Diagonal = Radius * 0.70710678;
+    Offsets.push([Diagonal, Diagonal], [-Diagonal, Diagonal], [Diagonal, -Diagonal], [-Diagonal, -Diagonal]);
+  }
+  for (const [OffsetX, OffsetZ] of Offsets) {
+    const CandidateX = X + OffsetX;
+    const CandidateZ = Z + OffsetZ;
+    if (OriginalSide && (Math.sign(CandidateX) !== OriginalSide || Math.abs(CandidateX) < 4.25)) continue;
+    const Bounds = Footprint(Name, CandidateX, CandidateZ, Rotation, 0.035);
+    if (!IsFootprintClear(Chunk, Bounds, true)) continue;
+    if (Reserve) Chunk.ReservedBounds.push(Bounds.clone());
+    return { X: CandidateX, Z: CandidateZ, Bounds };
+  }
+  return null;
+}
+
+function ResolveCustomPlacement(Chunk, X, Z, Width, Depth) {
+  const Name = `Custom-${Chunk.ReservedBounds.length}`;
+  PlacementProfiles[Name] = [Width, Depth];
+  const Placement = ShapeCastPlacement(Chunk, Name, X, Z, 0, true);
+  delete PlacementProfiles[Name];
+  return Placement;
+}
+
+function AddChunkCollision(Chunk, Bounds, Type = "world") {
+  const Entry = { Box: Bounds, ChunkId: Chunk.Id, Type, Active: false };
+  Chunk.CollisionEntries.push(Entry);
+  if (/Wall|Partition/i.test(Type)) Chunk.StructureBounds.push(Bounds.clone());
+  return Entry;
 }
 
 function Box(Name, Size, Position, Material, Chunk, Collidable = false) {
@@ -337,7 +419,7 @@ function Box(Name, Size, Position, Material, Chunk, Collidable = false) {
   Chunk.Group.add(Mesh);
   if (Collidable) {
     const Bounds = new THREE.Box3().setFromCenterAndSize(Position.clone(), Size.clone());
-    AddCollision(Bounds, Chunk.Id, Name);
+    AddChunkCollision(Chunk, Bounds, Name);
   }
   return Mesh;
 }
@@ -394,7 +476,6 @@ function AddLightFixture(Chunk, X, Z, Broken = false) {
     const Light = new THREE.PointLight(0xffe3b1, 1.75, 14, 1.85);
     Light.position.set(X, 3.12, Z);
     Light.userData.BaseIntensity = 1.75;
-    Light.userData.FlickerSeed = Chunk.Index * 5.17 + Z * 0.11;
     Light.userData.ChunkId = Chunk.Id;
     Chunk.Group.add(Light);
     Chunk.Lights.push(Light);
@@ -478,7 +559,7 @@ async function GetModelTemplate(Name) {
   return ModelCache.get(Name);
 }
 
-function AddModelCollision(Name, X, Z, Rotation, ChunkId) {
+function AddModelCollision(Chunk, Name, X, Z, Rotation) {
   const Profile = CollisionProfiles[Name];
   if (!Profile) return;
   const [Width, Depth] = Profile;
@@ -488,30 +569,40 @@ function AddModelCollision(Name, X, Z, Rotation, ChunkId) {
   const RotatedDepth = Width * S + Depth * C;
   const HalfX = Math.max(0.16, RotatedWidth * 0.5 - 0.055);
   const HalfZ = Math.max(0.16, RotatedDepth * 0.5 - 0.055);
-  AddCollision(new THREE.Box3(
+  AddChunkCollision(Chunk, new THREE.Box3(
     new THREE.Vector3(X - HalfX, 0, Z - HalfZ),
     new THREE.Vector3(X + HalfX, 2.5, Z + HalfZ)
-  ), ChunkId, Name);
+  ), Name);
 }
 
-async function SpawnModel(Chunk, Name, X, Z, Rotation = 0) {
-  if (!ActiveChunks.has(Chunk.Index)) return;
-  try {
-    const Template = await GetModelTemplate(Name);
-    if (!ActiveChunks.has(Chunk.Index)) return;
-    const Model = Template.clone(true);
-    Model.position.x += X;
-    Model.position.z += Z;
-    Model.rotation.y = Rotation;
-    Model.name = Name;
-    Model.userData.ChunkId = Chunk.Id;
-    Scene.add(Model);
-    Chunk.Models.push(Model);
-    AddModelCollision(Name, X, Z, Rotation, Chunk.Id);
-    LoadedDisplays += 1;
-  } catch (Error) {
-    console.warn(`Could not load ${Name}`, Error);
+function SpawnModel(Chunk, Name, X, Z, Rotation = 0) {
+  const Placement = ShapeCastPlacement(Chunk, Name, X, Z, Rotation, true);
+  if (!Placement) {
+    console.warn(`Skipped unsafe ${Name} spawn in ${Chunk.Id}`, { X, Z, Rotation });
+    return null;
   }
+  const Pending = GetModelTemplate(Name)
+    .then(Template => ScheduleGenerationWork(() => {
+      if (Chunk.Cancelled) return null;
+      const Model = Template.clone(true);
+      Model.position.x += Placement.X;
+      Model.position.z += Placement.Z;
+      Model.rotation.y = Rotation;
+      Model.name = Name;
+      Model.userData.ChunkId = Chunk.Id;
+      Model.userData.SpawnShapeChecked = true;
+      Chunk.Group.add(Model);
+      Chunk.Models.push(Model);
+      AddModelCollision(Chunk, Name, Placement.X, Placement.Z, Rotation);
+      LoadedDisplays += 1;
+      return Model;
+    }))
+    .catch(Error => {
+      console.warn(`Could not load ${Name}`, Error);
+      return null;
+    });
+  Chunk.PendingLoads.push(Pending);
+  return Pending;
 }
 
 function SpawnCactusMarker(Chunk, X, Z, Rotation = 0) {
@@ -520,7 +611,7 @@ function SpawnCactusMarker(Chunk, X, Z, Rotation = 0) {
   Marker.position.set(X, 0, Z);
   Marker.rotation.y = Rotation;
   Marker.userData.ChunkId = Chunk.Id;
-  Scene.add(Marker);
+  Chunk.ExternalObjects.push(Marker);
   Chunk.Models.push(Marker);
 }
 
@@ -531,9 +622,11 @@ function AddRug(Chunk, X, Z, Width, Depth, Seed) {
 }
 
 function AddTask(Chunk, Type, X, Z) {
+  const Placement = ResolveCustomPlacement(Chunk, X, Z, 0.70, 0.52);
+  if (!Placement) return null;
   const Group = new THREE.Group();
   Group.name = "StoreTask";
-  Group.position.set(X, 0, Z);
+  Group.position.set(Placement.X, 0, Placement.Z);
   Group.userData.ChunkId = Chunk.Id;
   const Base = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.92, 0.28), TaskMetalMaterial);
   Base.position.y = 0.46;
@@ -544,13 +637,9 @@ function AddTask(Chunk, Type, X, Z) {
   const Handle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, 0.06), TrimMaterial);
   Handle.position.set(0.16, 0.32, 0.17);
   Group.add(Handle);
-  Scene.add(Group);
+  Chunk.Group.add(Group);
   Chunk.TaskObjects.push(Group);
-  const Labels = {
-    breaker: "Reset the breaker",
-    manifest: "Check the stock manifest",
-    scanner: "Scan the damaged inventory"
-  };
+  const Labels = { breaker: "Reset the breaker", manifest: "Check the stock manifest", scanner: "Scan the damaged inventory" };
   const Task = {
     Id: `${Chunk.Id}:${Type}`,
     ChunkId: Chunk.Id,
@@ -561,7 +650,7 @@ function AddTask(Chunk, Type, X, Z) {
     Screen,
     Completed: false
   };
-  Tasks.set(Task.Id, Task);
+  Chunk.TaskRecords.push(Task);
   Chunk.Tasks.push(Task.Id);
   return Task;
 }
@@ -618,13 +707,8 @@ function PopulateBathroom(Chunk, CenterZ) {
 }
 
 function PopulateWarehouse(Chunk, CenterZ, Seed) {
-  for (const X of [-11.5, -8.0, 8.0, 11.5]) {
-    SpawnModel(Chunk, "Shelf_Large", X, CenterZ + RandomRange(Seed + X * 4, -7, 7), X < 0 ? 0 : Math.PI);
-  }
-  for (const X of [-10.5, 10.5]) {
-    SpawnModel(Chunk, "Bookshelf", X, CenterZ + RandomRange(Seed + X * 3, -7, 7), X < 0 ? 0 : Math.PI);
-  }
-
+  for (const X of [-11.5, -8.0, 8.0, 11.5]) SpawnModel(Chunk, "Shelf_Large", X, CenterZ + RandomRange(Seed + X * 4, -7, 7), X < 0 ? 0 : Math.PI);
+  for (const X of [-10.5, 10.5]) SpawnModel(Chunk, "Bookshelf", X, CenterZ + RandomRange(Seed + X * 3, -7, 7), X < 0 ? 0 : Math.PI);
   const BoxGeometry = new THREE.BoxGeometry(0.72, 0.56, 0.9);
   const StackCount = 10;
   const LevelsPerStack = 2;
@@ -633,21 +717,18 @@ function PopulateWarehouse(Chunk, CenterZ, Seed) {
   Boxes.userData.ChunkId = Chunk.Id;
   const Matrix = new THREE.Matrix4();
   let BoxIndex = 0;
-
   for (let Stack = 0; Stack < StackCount; Stack += 1) {
     const Side = Stack % 2 === 0 ? -1 : 1;
     const Row = Math.floor(Stack / 2);
     const LaneOffset = Row % 2 === 0 ? 0 : 0.9;
     const X = Side * (8.1 + LaneOffset);
     const Z = CenterZ - 5.8 + Row * 2.7;
-
     for (let Level = 0; Level < LevelsPerStack; Level += 1) {
       Matrix.makeTranslation(X, 0.28 + Level * 0.56, Z);
       Boxes.setMatrixAt(BoxIndex, Matrix);
       BoxIndex += 1;
     }
   }
-
   Boxes.instanceMatrix.needsUpdate = true;
   Chunk.Group.add(Boxes);
 }
@@ -663,8 +744,7 @@ function PopulateShowroom(Chunk, CenterZ, Seed) {
   SpawnModel(Chunk, "Table_RoundLarge", 8.6, CenterZ - 1.0, 0);
 }
 
-function BuildChunk(Index) {
-  if (ActiveChunks.has(Index)) return ActiveChunks.get(Index);
+function CreatePreparedChunk(Index) {
   const Id = `Chunk-${Index}`;
   const CenterZ = ChunkCenterZ(Index);
   const TopZ = ChunkTopZ(Index);
@@ -674,9 +754,12 @@ function BuildChunk(Index) {
   const Group = new THREE.Group();
   Group.name = Id;
   Group.userData.ChunkId = Id;
-  Scene.add(Group);
-  const Chunk = { Id, Index, Theme, Seed, CenterZ, TopZ, BottomZ, Group, Models: [], Lights: [], Tasks: [], TaskObjects: [] };
-  ActiveChunks.set(Index, Chunk);
+  const Chunk = {
+    Id, Index, Theme, Seed, CenterZ, TopZ, BottomZ, Group,
+    Models: [], Lights: [], Tasks: [], TaskObjects: [], TaskRecords: [], ExternalObjects: [],
+    CollisionEntries: [], StructureBounds: [], ReservedBounds: [], PendingLoads: [],
+    Ready: false, Active: false, Cancelled: false
+  };
 
   Box("Floor", new THREE.Vector3(34, 0.16, CHUNK_LENGTH + 0.25), new THREE.Vector3(0, -0.08, CenterZ), FloorMaterial, Chunk);
   Box("Ceiling", new THREE.Vector3(34, 0.14, CHUNK_LENGTH + 0.25), new THREE.Vector3(0, CEILING_HEIGHT, CenterZ), CeilingMaterial, Chunk);
@@ -714,21 +797,79 @@ function BuildChunk(Index) {
   return Chunk;
 }
 
-function RemoveChunk(Index) {
+function PrepareChunk(Index) {
+  if (ActiveChunks.has(Index)) return Promise.resolve(ActiveChunks.get(Index));
+  if (PreparedChunks.has(Index)) return Promise.resolve(PreparedChunks.get(Index));
+  if (PreparingChunks.has(Index)) return PreparingChunks.get(Index);
+  const PromiseValue = ScheduleGenerationWork(() => CreatePreparedChunk(Index))
+    .then(async Chunk => {
+      PreparedChunks.set(Index, Chunk);
+      await Promise.allSettled(Chunk.PendingLoads);
+      if (Chunk.Cancelled) {
+        PreparedChunks.delete(Index);
+        return null;
+      }
+      Chunk.Ready = true;
+      return Chunk;
+    })
+    .finally(() => PreparingChunks.delete(Index));
+  PreparingChunks.set(Index, PromiseValue);
+  return PromiseValue;
+}
+
+function ActivateChunk(Chunk) {
+  if (!Chunk || Chunk.Cancelled || !Chunk.Ready || Chunk.Active) return false;
+  PreparedChunks.delete(Chunk.Index);
+  Chunk.Active = true;
+  Scene.add(Chunk.Group);
+  for (const Object of Chunk.ExternalObjects) Scene.add(Object);
+  for (const Entry of Chunk.CollisionEntries) {
+    if (Entry.Active) continue;
+    Entry.Active = true;
+    CollisionBoxes.push(Entry);
+  }
+  for (const Task of Chunk.TaskRecords) Tasks.set(Task.Id, Task);
+  ActiveChunks.set(Chunk.Index, Chunk);
+  return true;
+}
+
+function DeactivateChunk(Index, KeepPrepared = true) {
   const Chunk = ActiveChunks.get(Index);
   if (!Chunk) return;
   Scene.remove(Chunk.Group);
-  for (const Model of Chunk.Models) Scene.remove(Model);
-  for (const Object of Chunk.TaskObjects) Scene.remove(Object);
-  for (const TaskId of Chunk.Tasks) Tasks.delete(TaskId);
+  for (const Object of Chunk.ExternalObjects) Scene.remove(Object);
+  for (const Task of Chunk.TaskRecords) Tasks.delete(Task.Id);
   for (let CollisionIndex = CollisionBoxes.length - 1; CollisionIndex >= 0; CollisionIndex -= 1) {
     if (CollisionBoxes[CollisionIndex].ChunkId === Chunk.Id) CollisionBoxes.splice(CollisionIndex, 1);
   }
+  for (const Entry of Chunk.CollisionEntries) Entry.Active = false;
   for (let ChildIndex = Scene.children.length - 1; ChildIndex >= 0; ChildIndex -= 1) {
     const Child = Scene.children[ChildIndex];
-    if (Child.userData?.ChunkId === Chunk.Id) Scene.remove(Child);
+    if (Child.userData?.ChunkId === Chunk.Id && Child !== Chunk.Group && !Chunk.ExternalObjects.includes(Child)) Scene.remove(Child);
   }
+  Chunk.Active = false;
   ActiveChunks.delete(Index);
+  if (KeepPrepared && !Chunk.Cancelled) PreparedChunks.set(Index, Chunk);
+  else Chunk.Cancelled = true;
+}
+
+function DropPreparedChunk(Index) {
+  const Chunk = PreparedChunks.get(Index);
+  if (!Chunk) return;
+  Chunk.Cancelled = true;
+  PreparedChunks.delete(Index);
+}
+
+function RequestChunk(Index) {
+  const Prepared = PreparedChunks.get(Index);
+  if (Prepared?.Ready) return Promise.resolve(Prepared);
+  return PrepareChunk(Index);
+}
+
+function TryActivateIndex(Index) {
+  if (ActiveChunks.has(Index)) return true;
+  const Prepared = PreparedChunks.get(Index);
+  return Prepared?.Ready ? ActivateChunk(Prepared) : false;
 }
 
 function EnsureChunksAroundPlayer() {
@@ -736,11 +877,42 @@ function EnsureChunksAroundPlayer() {
   LastChunkIndex = CurrentIndex;
   const MinIndex = CurrentIndex - CHUNKS_BEHIND;
   const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
-  for (let Index = MinIndex; Index <= MaxIndex; Index += 1) BuildChunk(Index);
-  for (const Index of [...ActiveChunks.keys()]) {
-    if (Index < MinIndex || Index > MaxIndex + 1 || ActiveChunks.size > MAX_ACTIVE_CHUNKS) RemoveChunk(Index);
+  const PrefetchMin = MinIndex - PREFETCH_CHUNKS;
+  const PrefetchMax = MaxIndex + PREFETCH_CHUNKS;
+  const WantedActive = new Set();
+
+  for (let Index = MinIndex; Index <= MaxIndex; Index += 1) {
+    WantedActive.add(Index);
+    if (!TryActivateIndex(Index)) RequestChunk(Index).catch(Error => console.warn(`Chunk ${Index} preparation failed`, Error));
   }
+
+  RequestChunk(PrefetchMin).catch(() => {});
+  RequestChunk(PrefetchMax).catch(() => {});
+
+  const DistanceToTop = Math.max(0, ChunkTopZ(CurrentIndex) - Camera.position.z);
+  const DistanceToBottom = Math.max(0, Camera.position.z - ChunkBottomZ(CurrentIndex));
+  if (DistanceToTop <= STREAM_PROMOTION_DISTANCE && TryActivateIndex(PrefetchMin)) WantedActive.add(PrefetchMin);
+  if (DistanceToBottom <= STREAM_PROMOTION_DISTANCE && TryActivateIndex(PrefetchMax)) WantedActive.add(PrefetchMax);
+
+  for (const Index of [...ActiveChunks.keys()]) {
+    if (!WantedActive.has(Index)) DeactivateChunk(Index, Index >= PrefetchMin && Index <= PrefetchMax);
+  }
+  for (const Index of [...PreparedChunks.keys()]) {
+    if (Index < PrefetchMin || Index > PrefetchMax) DropPreparedChunk(Index);
+  }
+
   if (AisleCounter) AisleCounter.textContent = CurrentIndex >= 0 ? `${CurrentIndex + 1}` : `B${Math.abs(CurrentIndex)}`;
+}
+
+async function PrepareInitialWorld() {
+  const Order = [0, -1, 1, -2, 2, -3, 3];
+  for (let Position = 0; Position < Order.length; Position += 1) {
+    if (BootStatus) BootStatus.textContent = `Assembling buffered store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
+    const Chunk = await PrepareChunk(Order[Position]);
+    if (Chunk) ActivateChunk(Chunk);
+  }
+  RequestChunk(-4).catch(() => {});
+  RequestChunk(4).catch(() => {});
 }
 
 function UpdateClock(Delta) {
@@ -759,7 +931,7 @@ function FindNearestPendingTask() {
   let BestDistance = Infinity;
   for (const Task of Tasks.values()) {
     if (Task.Completed || Task.ChunkIndex < LastChunkIndex - 1) continue;
-    const Distance = Camera.position.distanceTo(Task.Object.position);
+    const Distance = Camera.position.distanceTo(Task.Object.getWorldPosition(new THREE.Vector3()));
     if (Distance < BestDistance) {
       Best = Task;
       BestDistance = Distance;
@@ -775,12 +947,16 @@ function UpdateObjective() {
   if (Task) {
     const DistanceText = Number.isFinite(Distance) ? ` • ${Math.max(1, Math.round(Distance))}m` : "";
     Text = `${Task.Label}${DistanceText}`;
-  } else Text = "Keep moving deeper. The store is still generating ahead of you.";
+  } else Text = "Keep moving deeper. More aisles are already buffered ahead.";
   if (Text !== LastObjectiveText) {
     LastObjectiveText = Text;
     ObjectiveText.textContent = Text;
   }
   if (TaskCounter) TaskCounter.textContent = `${CompletedTasks}`;
+}
+
+function TaskWorldPosition(Task, Target = new THREE.Vector3()) {
+  return Task.Object.getWorldPosition(Target);
 }
 
 function UpdateInteractionPrompt() {
@@ -789,7 +965,7 @@ function UpdateInteractionPrompt() {
     InteractPrompt.classList.remove("Show");
     return;
   }
-  const Distance = Camera.position.distanceTo(CurrentTask.Object.position);
+  const Distance = Camera.position.distanceTo(TaskWorldPosition(CurrentTask));
   if (Distance <= TASK_DISTANCE) {
     InteractPrompt.textContent = `[ E ] ${CurrentTask.Label.toUpperCase()}`;
     InteractPrompt.classList.add("Show");
@@ -815,7 +991,7 @@ function CompleteTask(Task) {
 
 function TryInteract() {
   if (!Started || !Controls.isLocked || !CurrentTask || CurrentTask.Completed) return;
-  if (Camera.position.distanceTo(CurrentTask.Object.position) <= TASK_DISTANCE) CompleteTask(CurrentTask);
+  if (Camera.position.distanceTo(TaskWorldPosition(CurrentTask)) <= TASK_DISTANCE) CompleteTask(CurrentTask);
 }
 
 function IsBlocked(Position) {
@@ -826,10 +1002,7 @@ function IsBlocked(Position) {
       continue;
     }
     const Bounds = Entry.Box || Entry;
-    if (
-      Position.x + Radius > Bounds.min.x && Position.x - Radius < Bounds.max.x &&
-      Position.z + Radius > Bounds.min.z && Position.z - Radius < Bounds.max.z
-    ) return true;
+    if (Position.x + Radius > Bounds.min.x && Position.x - Radius < Bounds.max.x && Position.z + Radius > Bounds.min.z && Position.z - Radius < Bounds.max.z) return true;
   }
   return false;
 }
@@ -869,19 +1042,6 @@ function UpdateMovement(Delta) {
   Camera.position.y = PlayerEyeHeight;
 }
 
-function UpdateLights(Time) {
-  for (const Chunk of ActiveChunks.values()) {
-    for (const Light of Chunk.Lights) {
-      const Seed = Light.userData.FlickerSeed;
-      const Buzz = Math.sin(Time * 9.2 + Seed) * 0.025;
-      const Fault = Math.sin(Time * 0.72 + Seed * 1.9);
-      let Intensity = Light.userData.BaseIntensity * (1 + Buzz);
-      if (Fault > 0.992) Intensity *= 0.18;
-      Light.intensity = Intensity;
-    }
-  }
-}
-
 function ShowError(Message) {
   ErrorText.textContent = Message;
   ErrorPanel.classList.remove("Hidden");
@@ -895,14 +1055,12 @@ const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.34);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
-for (let Index = -CHUNKS_BEHIND; Index <= CHUNKS_AHEAD; Index += 1) BuildChunk(Index);
+await PrepareInitialWorld();
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
-BootStatus.textContent = `Store ready — endless aisles online • seed ${WorldSeed}.`;
+if (BootStatus) BootStatus.textContent = `Store ready — buffered endless aisles • seed ${WorldSeed}.`;
 
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
-  const Time = performance.now() / 1000;
-  UpdateLights(Time);
   if (Started) {
     UpdateMovement(Delta);
     EnsureChunksAroundPlayer();
@@ -941,15 +1099,36 @@ addEventListener("resize", () => {
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
 
-window.__STORE_GAME_BUILD__ = "V0.11-R39";
+const PlacementApi = {
+  IsCircleSafe(X, Z, Radius, ChunkId = null) {
+    for (const Entry of CollisionBoxes) {
+      if (ChunkId && Entry.ChunkId !== ChunkId) continue;
+      if (!/Wall|Partition/i.test(Entry.Type || "")) continue;
+      const Bounds = Entry.OriginalStructureBox || Entry.OriginalBox || Entry.Box || Entry;
+      if (!Bounds?.min || !Bounds?.max) continue;
+      if (X + Radius > Bounds.min.x && X - Radius < Bounds.max.x && Z + Radius > Bounds.min.z && Z - Radius < Bounds.max.z) return false;
+    }
+    return Math.abs(X) + Radius < STORE_HALF_WIDTH - 0.18;
+  },
+  ShapeCastPlacement
+};
+
+window.__STORE_GAME_BUILD__ = "V0.12.0";
+window.__STORE_VERSION__ = "0.12.0";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
   Renderer,
   CollisionBoxes,
   ActiveChunks,
+  PreparedChunks,
   Tasks,
   WorldSeed,
-  ChunkSeed
+  ChunkSeed,
+  ChunkIndexForZ,
+  ChunkLength: CHUNK_LENGTH,
+  PrepareChunk,
+  Placement: PlacementApi,
+  Version: "0.12.0"
 };
 Animate();
