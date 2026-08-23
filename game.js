@@ -55,6 +55,7 @@ const CHUNKS_AHEAD = 5;
 const CHUNKS_BEHIND = 1;
 const MAX_ACTIVE_CHUNKS = CHUNKS_AHEAD + CHUNKS_BEHIND + 2;
 const TASK_DISTANCE = 1.85;
+const WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -64,9 +65,24 @@ let CurrentTask = null;
 let LastChunkIndex = 0;
 let LastObjectiveText = "";
 
+function MixSeed32(Value) {
+  let Mixed = Value >>> 0;
+  Mixed ^= Mixed >>> 16;
+  Mixed = Math.imul(Mixed, 0x7feb352d);
+  Mixed ^= Mixed >>> 15;
+  Mixed = Math.imul(Mixed, 0x846ca68b);
+  Mixed ^= Mixed >>> 16;
+  return Mixed >>> 0;
+}
+
 function SeededRandom(Seed) {
-  const Value = Math.sin(Seed * 12.9898 + 78.233) * 43758.5453;
-  return Value - Math.floor(Value);
+  const Quantized = Math.trunc(Number(Seed) * 1000) >>> 0;
+  return MixSeed32(Quantized) / 4294967296;
+}
+
+function ChunkSeed(Index) {
+  const Coordinate = Math.imul((Index + 1) | 0, 0x9e3779b1);
+  return MixSeed32((WorldSeed ^ Coordinate) >>> 0);
 }
 
 function RandomRange(Seed, Min, Max) {
@@ -642,13 +658,13 @@ function BuildChunk(Index) {
   const CenterZ = ChunkCenterZ(Index);
   const TopZ = ChunkTopZ(Index);
   const BottomZ = ChunkBottomZ(Index);
-  const Seed = 1000 + Index * 37;
-  const Theme = Themes[Index % Themes.length];
+  const Seed = ChunkSeed(Index);
+  const Theme = Themes[Math.floor(SeededRandom(Seed + 11.17) * Themes.length)];
   const Group = new THREE.Group();
   Group.name = Id;
   Group.userData.ChunkId = Id;
   Scene.add(Group);
-  const Chunk = { Id, Index, Theme, CenterZ, TopZ, BottomZ, Group, Models: [], Lights: [], Tasks: [], TaskObjects: [] };
+  const Chunk = { Id, Index, Theme, Seed, CenterZ, TopZ, BottomZ, Group, Models: [], Lights: [], Tasks: [], TaskObjects: [] };
   ActiveChunks.set(Index, Chunk);
 
   Box("Floor", new THREE.Vector3(34, 0.16, CHUNK_LENGTH + 0.25), new THREE.Vector3(0, -0.08, CenterZ), FloorMaterial, Chunk);
@@ -658,7 +674,7 @@ function BuildChunk(Index) {
   Box("BaseboardLeft", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(-16.87, 0.09, CenterZ), TrimMaterial, Chunk);
   Box("BaseboardRight", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(16.87, 0.09, CenterZ), TrimMaterial, Chunk);
 
-  const PartitionSide = Index % 2 === 0 ? -1 : 1;
+  const PartitionSide = SeededRandom(Seed + 4.13) < 0.5 ? -1 : 1;
   AddPartition(Chunk, PartitionSide * 6.35, CenterZ + 5.2, 4.0);
   AddPartition(Chunk, -PartitionSide * 6.35, CenterZ - 5.2, 4.0);
   if (SeededRandom(Seed + 4) > 0.62) AddPartition(Chunk, PartitionSide * 11.8, CenterZ - 1.5, 3.1);
@@ -678,9 +694,9 @@ function BuildChunk(Index) {
   else PopulateShowroom(Chunk, CenterZ, Seed);
 
   if (Index > 0) {
-    const TypeRoll = Index % 3;
+    const TypeRoll = Math.floor(SeededRandom(Seed + 97.25) * 3);
     const Type = TypeRoll === 0 ? "breaker" : TypeRoll === 1 ? "manifest" : "scanner";
-    const TaskX = Index % 2 === 0 ? -14.1 : 14.1;
+    const TaskX = SeededRandom(Seed + 98.75) < 0.5 ? -14.1 : 14.1;
     const TaskZ = CenterZ + RandomRange(Seed + 99, -5.0, 5.0);
     AddTask(Chunk, Type, TaskX, TaskZ);
   }
@@ -870,7 +886,7 @@ Scene.add(FillLight);
 
 for (let Index = 0; Index <= CHUNKS_AHEAD; Index += 1) BuildChunk(Index);
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
-BootStatus.textContent = "Store ready — endless aisles online.";
+BootStatus.textContent = `Store ready — endless aisles online • seed ${WorldSeed}.`;
 
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
@@ -914,6 +930,15 @@ addEventListener("resize", () => {
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
 
-window.__STORE_GAME_BUILD__ = "V0.10-R27";
-window.__STORE_GAME__ = { Scene, Camera, Renderer, CollisionBoxes, ActiveChunks, Tasks };
+window.__STORE_GAME_BUILD__ = "V0.11-R38";
+window.__STORE_GAME__ = {
+  Scene,
+  Camera,
+  Renderer,
+  CollisionBoxes,
+  ActiveChunks,
+  Tasks,
+  WorldSeed,
+  ChunkSeed
+};
 Animate();
