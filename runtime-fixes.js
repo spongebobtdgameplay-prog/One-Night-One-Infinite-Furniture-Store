@@ -9,7 +9,9 @@ const StartButton = document.getElementById("StartButton");
 const BootStatus = document.getElementById("BootStatus");
 const CollisionBoxes = Game.CollisionBoxes;
 const ProcessedInstances = new WeakSet();
-const STRUCTURE_BODY_MARGIN = 0.15;
+const ProcessedStructures = new WeakSet();
+const TempClosest = new THREE.Vector2();
+
 const CollidableModels = new Set([
   "Couch_Large1",
   "Couch_L",
@@ -37,54 +39,23 @@ function PrimeDocumentFocus() {
   try {
     window.focus();
   } catch {}
-  if (Canvas) {
+  try {
+    document.body.focus({ preventScroll: true });
+  } catch {}
+  if (Canvas && document.activeElement !== Canvas) {
     if (!Canvas.hasAttribute("tabindex")) Canvas.tabIndex = -1;
     try {
       Canvas.focus({ preventScroll: true });
-    } catch {
-      Canvas.focus();
-    }
+    } catch {}
   }
 }
 
-if (StartButton) {
-  StartButton.addEventListener("pointerdown", PrimeDocumentFocus, true);
-  StartButton.addEventListener("click", Event => {
-    PrimeDocumentFocus();
-    if (document.hasFocus()) return;
-    Event.preventDefault();
-    Event.stopImmediatePropagation();
-    StartButton.textContent = "CLICK TO FOCUS & ENTER";
-    if (BootStatus) BootStatus.textContent = "Focus this game tab, then click ENTER again.";
-  }, true);
-}
-
+if (StartButton) StartButton.addEventListener("pointerdown", PrimeDocumentFocus, true);
 if (Canvas) Canvas.addEventListener("pointerdown", PrimeDocumentFocus, true);
 
-const PointerLockPrototype = typeof Element !== "undefined" ? Element.prototype : null;
-const OriginalRequestPointerLock = PointerLockPrototype?.requestPointerLock;
-
-if (OriginalRequestPointerLock && !PointerLockPrototype.__STORE_SAFE_POINTER_LOCK__) {
-  Object.defineProperty(PointerLockPrototype, "__STORE_SAFE_POINTER_LOCK__", { value: true });
-  PointerLockPrototype.requestPointerLock = function(...Args) {
-    PrimeDocumentFocus();
-    const HasUserActivation = navigator.userActivation ? navigator.userActivation.isActive : true;
-    if (!document.hasFocus() || !HasUserActivation) return Promise.resolve();
-    try {
-      const Result = OriginalRequestPointerLock.apply(this, Args);
-      if (!Result || typeof Result.catch !== "function") return Result;
-      return Result.catch(Error => {
-        const Message = String(Error?.message || Error || "");
-        if (Error?.name === "NotAllowedError" || /not focused|pointer lock/i.test(Message)) return;
-        throw Error;
-      });
-    } catch (Error) {
-      const Message = String(Error?.message || Error || "");
-      if (Error?.name === "NotAllowedError" || /not focused|pointer lock/i.test(Message)) return Promise.resolve();
-      throw Error;
-    }
-  };
-}
+document.addEventListener("pointerlockerror", () => {
+  if (BootStatus && !document.pointerLockElement) BootStatus.textContent = "Click the game view once to capture the mouse.";
+});
 
 function SyncRendererViewport() {
   const Renderer = Game.Renderer;
@@ -96,17 +67,48 @@ function SyncRendererViewport() {
 addEventListener("resize", () => requestAnimationFrame(SyncRendererViewport));
 requestAnimationFrame(SyncRendererViewport);
 
-function HardenStructuralCollision() {
+function GetPlayerRadius() {
+  return THREE.MathUtils.clamp(window.__STORE_PLAYER__?.GetPlayerRadius?.() ?? 0.34, 0.30, 0.42);
+}
+
+function CircleTouchesBox(Position, Radius, Bounds) {
+  if (!Bounds?.min || !Bounds?.max) return false;
+  const ClosestX = THREE.MathUtils.clamp(Position.x, Bounds.min.x, Bounds.max.x);
+  const ClosestZ = THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z);
+  TempClosest.set(Position.x - ClosestX, Position.z - ClosestZ);
+  return TempClosest.lengthSq() <= Radius * Radius;
+}
+
+function MakePreciseStructureBounds(OriginalBounds) {
+  function Touching() {
+    return CircleTouchesBox(Game.Camera.position, GetPlayerRadius(), OriginalBounds);
+  }
+
+  const Min = {};
+  const Max = {};
+  Object.defineProperties(Min, {
+    x: { get: () => Touching() ? Game.Camera.position.x : Infinity },
+    y: { get: () => OriginalBounds.min.y },
+    z: { get: () => Touching() ? Game.Camera.position.z : Infinity }
+  });
+  Object.defineProperties(Max, {
+    x: { get: () => Touching() ? Game.Camera.position.x : -Infinity },
+    y: { get: () => OriginalBounds.max.y },
+    z: { get: () => Touching() ? Game.Camera.position.z : -Infinity }
+  });
+  return { min: Min, max: Max };
+}
+
+function EnsurePreciseStructureCollision() {
   for (const Entry of CollisionBoxes) {
-    if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type) || Entry.BodyClearanceApplied) continue;
+    if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type)) continue;
+    if (Entry.PrecisePlayerStructure) continue;
     const Bounds = Entry.Box || Entry;
     if (!Bounds?.min || !Bounds?.max) continue;
     if (![Bounds.min.x, Bounds.min.z, Bounds.max.x, Bounds.max.z].every(Number.isFinite)) continue;
-    Bounds.min.x -= STRUCTURE_BODY_MARGIN;
-    Bounds.max.x += STRUCTURE_BODY_MARGIN;
-    Bounds.min.z -= STRUCTURE_BODY_MARGIN;
-    Bounds.max.z += STRUCTURE_BODY_MARGIN;
-    Entry.BodyClearanceApplied = true;
+    Entry.OriginalStructureBox = Bounds;
+    Entry.Box = MakePreciseStructureBounds(Bounds);
+    Entry.PrecisePlayerStructure = true;
   }
 }
 
@@ -154,11 +156,11 @@ function EnsureWarehouseBoxCollisions(Object) {
 }
 
 function EnsureObjectCollisions() {
-  HardenStructuralCollision();
+  EnsurePreciseStructureCollision();
   for (const Object of Game.Scene.children) EnsureModelCollision(Object);
   Game.Scene.traverse(EnsureWarehouseBoxCollisions);
   requestAnimationFrame(EnsureObjectCollisions);
 }
 
 EnsureObjectCollisions();
-window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R8";
+window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R9";
