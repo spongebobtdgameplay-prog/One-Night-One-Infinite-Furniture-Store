@@ -112,7 +112,7 @@ function InputDirection(Camera) {
   if (State.Forward.lengthSq() < 0.000001) State.Forward.set(0, 0, -1);
   State.Forward.normalize();
 
-  State.Right.set(State.Forward.z, 0, -State.Forward.x).normalize();
+  State.Right.set(-State.Forward.z, 0, State.Forward.x).normalize();
   State.MoveDirection.set(0, 0, 0);
 
   if (State.Keys.has("KeyW")) State.MoveDirection.add(State.Forward);
@@ -161,7 +161,7 @@ function UpdateShapecast(Camera) {
     return;
   }
 
-  State.Right.set(Direction.z, 0, -Direction.x).normalize();
+  State.Right.set(-Direction.z, 0, Direction.x).normalize();
   const Radius = Math.max(0.22, Number(BasePlayer.GetPlayerRadius?.()) || 0.22);
   const Length = BasePlayer.IsSprinting?.() ? SPRINT_PROBE : WALK_PROBE;
   const Origin = Camera.position;
