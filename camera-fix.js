@@ -7,6 +7,7 @@ if (!BasePlayer) throw new Error("Player controller must load before camera fix.
 const THIRD_PERSON_TARGET_HEIGHT = 1.22;
 const MIN_RENDER_CAMERA_Y = 0.34;
 const EYE_OFFSET = new THREE.Vector3(0, 0.045, 0.055);
+const PLAYER_CAPSULE_RADIUS = 0.34;
 
 const State = {
   Scene: null,
@@ -91,7 +92,7 @@ function Render(Renderer, Scene, Camera) {
 }
 
 function GetPlayerRadius() {
-  return Math.min(BasePlayer.GetPlayerRadius?.() ?? 0.43, 0.28);
+  return PLAYER_CAPSULE_RADIUS;
 }
 
 window.__STORE_PLAYER__ = {
@@ -101,4 +102,4 @@ window.__STORE_PLAYER__ = {
   GetPlayerRadius
 };
 
-window.__STORE_CAMERA_FIX_BUILD__ = "V0.11-R3";
+window.__STORE_CAMERA_FIX_BUILD__ = "V0.11-R9";
