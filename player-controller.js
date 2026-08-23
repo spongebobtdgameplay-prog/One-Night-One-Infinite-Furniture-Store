@@ -1,19 +1,22 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const PLAYER_MODEL_URL = "https://raw.githubusercontent.com/Seyamalam/blood-league-kickoff/aa02a4e6d8337a0604d2da131bcbbeb1f01badf0/public/assets/vendor/quaternius/night-striker.glb";
-const ANIMATION_URL = "https://raw.githubusercontent.com/Seyamalam/blood-league-kickoff/aa02a4e6d8337a0604d2da131bcbbeb1f01badf0/public/assets/vendor/quaternius/universal-animation-library.glb";
-const PLAYER_HEIGHT = 1.78;
-const PLAYER_RADIUS = 0.43;
-const WALK_SPEED = 3.55;
-const SPRINT_SPEED = 5.6;
+const PLAYER_MODEL_URL = "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb";
+const PLAYER_HEIGHT = 1.76;
+const PLAYER_RADIUS = 0.48;
+const WALK_SPEED = 3.45;
+const SPRINT_SPEED = 5.35;
 const STAMINA_MAX = 100;
-const STAMINA_DRAIN = 24;
+const STAMINA_DRAIN = 22;
 const STAMINA_REGEN = 18;
-const STAMINA_REGEN_DELAY = 0.8;
-const STAMINA_RECOVER_THRESHOLD = 25;
-const MAX_CAMERA_DISTANCE = 5.2;
-const THIRD_PERSON_HEIGHT = 0.58;
+const STAMINA_REGEN_DELAY = 0.75;
+const STAMINA_RECOVER_THRESHOLD = 24;
+const THIRD_PERSON_DEFAULT = 3.2;
+const THIRD_PERSON_MAX = 4.25;
+const THIRD_PERSON_MIN = 1.35;
+const CAMERA_SHOULDER = 0.22;
+const CAMERA_HEIGHT = 0.34;
+const ARM_WEIGHT_THRESHOLD = 0.78;
 
 const State = {
   Scene: null,
@@ -38,24 +41,23 @@ const State = {
   Stamina: STAMINA_MAX,
   Exhausted: false,
   LastSprintAt: -Infinity,
-  LastFrameAt: performance.now(),
+  Zoom: 0,
   ManualPhase: 0,
-  ZoomTarget: 0,
-  ZoomDistance: 0,
-  ThirdPerson: false,
   MouseSwayX: 0,
   MouseSwayY: 0,
   SmoothedSwayX: 0,
   SmoothedSwayY: 0,
+  LastFrameAt: performance.now(),
   TempDirection: new THREE.Vector3(),
   TempHorizontal: new THREE.Vector3(),
+  TempRight: new THREE.Vector3(),
   TempTarget: new THREE.Vector3(),
   TempDesired: new THREE.Vector3(),
   TempOffset: new THREE.Vector3(),
-  TempQuaternion: new THREE.Quaternion(),
-  TempEuler: new THREE.Euler(),
   SavedPosition: new THREE.Vector3(),
-  SavedQuaternion: new THREE.Quaternion()
+  SavedQuaternion: new THREE.Quaternion(),
+  TempEuler: new THREE.Euler(),
+  TempQuaternion: new THREE.Quaternion()
 };
 
 const Loader = new GLTFLoader();
@@ -79,15 +81,16 @@ function GetPlayerRadius() {
   return PLAYER_RADIUS;
 }
 
-function UpdateStamina(Delta, Now) {
+function UpdateStamina(Delta, Time) {
   if (State.Sprinting) {
     State.Stamina = Math.max(0, State.Stamina - STAMINA_DRAIN * Delta);
-    State.LastSprintAt = Now;
+    State.LastSprintAt = Time;
     if (State.Stamina <= 0.01) {
+      State.Stamina = 0;
       State.Exhausted = true;
       State.Sprinting = false;
     }
-  } else if (Now - State.LastSprintAt >= STAMINA_REGEN_DELAY) {
+  } else if (Time - State.LastSprintAt >= STAMINA_REGEN_DELAY) {
     State.Stamina = Math.min(STAMINA_MAX, State.Stamina + STAMINA_REGEN * Delta);
     if (State.Exhausted && State.Stamina >= STAMINA_RECOVER_THRESHOLD) State.Exhausted = false;
   }
@@ -104,7 +107,7 @@ function UpdateHud() {
     Wrap.classList.toggle("IsSprinting", State.Sprinting);
     Wrap.classList.toggle("IsExhausted", State.Exhausted);
   }
-  if (Mode) Mode.textContent = State.ZoomTarget < 0.15 ? "FIRST PERSON" : "THIRD PERSON";
+  if (Mode) Mode.textContent = State.Zoom >= 0.15 ? "THIRD" : "FIRST";
 }
 
 function FindBone(Model, Name) {
@@ -125,14 +128,6 @@ function SetupBones(Model) {
   ]) FindBone(Model, Name);
 }
 
-function ApplyRelativeBoneRotation(Name, X = 0, Y = 0, Z = 0) {
-  const Bone = State.Bones.get(Name);
-  if (!Bone) return;
-  State.TempEuler.set(X, Y, Z, "XYZ");
-  State.TempQuaternion.setFromEuler(State.TempEuler);
-  Bone.quaternion.multiply(State.TempQuaternion);
-}
-
 function ApplyBaseBoneRotation(Name, X = 0, Y = 0, Z = 0) {
   const Bone = State.Bones.get(Name);
   const Base = State.BaseBoneQuaternions.get(Name);
@@ -142,151 +137,116 @@ function ApplyBaseBoneRotation(Name, X = 0, Y = 0, Z = 0) {
   Bone.quaternion.copy(Base).multiply(State.TempQuaternion);
 }
 
-function ArmWeightForVertex(SkinIndex, SkinWeight, VertexIndex, ArmBoneIndices) {
+function ApplyRelativeBoneRotation(Name, X = 0, Y = 0, Z = 0) {
+  const Bone = State.Bones.get(Name);
+  if (!Bone) return;
+  State.TempEuler.set(X, Y, Z, "XYZ");
+  State.TempQuaternion.setFromEuler(State.TempEuler);
+  Bone.quaternion.multiply(State.TempQuaternion);
+}
+
+function BoneWeight(SkinIndex, SkinWeight, VertexIndex, BoneIndices) {
   let Total = 0;
   for (let Slot = 0; Slot < SkinIndex.itemSize; Slot += 1) {
     const BoneIndex = SkinIndex.getComponent(VertexIndex, Slot);
-    if (ArmBoneIndices.has(BoneIndex)) Total += SkinWeight.getComponent(VertexIndex, Slot) || 0;
+    if (BoneIndices.has(BoneIndex)) Total += SkinWeight.getComponent(VertexIndex, Slot) || 0;
   }
   return THREE.MathUtils.clamp(Total, 0, 1);
 }
 
-function MakeArmOnlyMaterial(Material) {
-  const Clone = Material.clone();
-  Clone.depthTest = true;
-  Clone.depthWrite = true;
-  Clone.transparent = false;
-  Clone.side = THREE.FrontSide;
-  Clone.onBeforeCompile = Shader => {
-    Shader.vertexShader = Shader.vertexShader.replace(
-      "#include <common>",
-      "#include <common>\nattribute float fpArmMask;\nvarying float vFpArmMask;"
-    );
-    Shader.vertexShader = Shader.vertexShader.replace(
-      "#include <begin_vertex>",
-      "#include <begin_vertex>\nvFpArmMask = fpArmMask;"
-    );
-    Shader.fragmentShader = Shader.fragmentShader.replace(
-      "#include <common>",
-      "#include <common>\nvarying float vFpArmMask;"
-    );
-    Shader.fragmentShader = Shader.fragmentShader.replace(
-      "#include <clipping_planes_fragment>",
-      "#include <clipping_planes_fragment>\nif (vFpArmMask < 0.60) discard;"
-    );
-  };
-  Clone.customProgramCacheKey = () => "store-first-person-arm-mask-v2";
-  Clone.needsUpdate = true;
-  return Clone;
+function MaterialIndexAt(Geometry, Offset) {
+  if (!Geometry.groups?.length) return 0;
+  for (const Group of Geometry.groups) {
+    if (Offset >= Group.start && Offset < Group.start + Group.count) return Group.materialIndex || 0;
+  }
+  return 0;
+}
+
+function BuildFirstPersonArmMesh(Object) {
+  if (!Object.isSkinnedMesh || !Object.skeleton || !Object.geometry) return null;
+  const Geometry = Object.geometry;
+  const SkinIndex = Geometry.getAttribute("skinIndex");
+  const SkinWeight = Geometry.getAttribute("skinWeight");
+  const Position = Geometry.getAttribute("position");
+  if (!SkinIndex || !SkinWeight || !Position) return null;
+
+  const ArmBones = new Set();
+  for (let BoneIndex = 0; BoneIndex < Object.skeleton.bones.length; BoneIndex += 1) {
+    const Name = (Object.skeleton.bones[BoneIndex]?.name || "").toLowerCase();
+    if (
+      Name.includes("lowerarm_") || Name.includes("hand_") || Name.includes("thumb_") ||
+      Name.includes("index_") || Name.includes("middle_") || Name.includes("ring_") || Name.includes("pinky_")
+    ) ArmBones.add(BoneIndex);
+  }
+  if (!ArmBones.size) return null;
+
+  const SourceIndex = Geometry.index;
+  const TriangleCount = SourceIndex ? SourceIndex.count / 3 : Position.count / 3;
+  const Buckets = new Map();
+  let KeptTriangles = 0;
+
+  for (let Triangle = 0; Triangle < TriangleCount; Triangle += 1) {
+    const Offset = Triangle * 3;
+    const A = SourceIndex ? SourceIndex.getX(Offset) : Offset;
+    const B = SourceIndex ? SourceIndex.getX(Offset + 1) : Offset + 1;
+    const C = SourceIndex ? SourceIndex.getX(Offset + 2) : Offset + 2;
+    const WA = BoneWeight(SkinIndex, SkinWeight, A, ArmBones);
+    const WB = BoneWeight(SkinIndex, SkinWeight, B, ArmBones);
+    const WC = BoneWeight(SkinIndex, SkinWeight, C, ArmBones);
+    if (WA < ARM_WEIGHT_THRESHOLD || WB < ARM_WEIGHT_THRESHOLD || WC < ARM_WEIGHT_THRESHOLD) continue;
+    const MaterialIndex = MaterialIndexAt(Geometry, Offset);
+    if (!Buckets.has(MaterialIndex)) Buckets.set(MaterialIndex, []);
+    Buckets.get(MaterialIndex).push(A, B, C);
+    KeptTriangles += 1;
+  }
+
+  if (KeptTriangles < 6) return null;
+  const ArmGeometry = Geometry.clone();
+  ArmGeometry.clearGroups();
+  const Indices = [];
+  for (const [MaterialIndex, Bucket] of [...Buckets.entries()].sort((Left, Right) => Left[0] - Right[0])) {
+    const Start = Indices.length;
+    Indices.push(...Bucket);
+    ArmGeometry.addGroup(Start, Bucket.length, MaterialIndex);
+  }
+  ArmGeometry.setIndex(Indices);
+  ArmGeometry.computeBoundingSphere();
+
+  const SourceMaterials = Array.isArray(Object.material) ? Object.material : [Object.material];
+  const Materials = SourceMaterials.map(Material => {
+    const Clone = Material.clone();
+    Clone.depthTest = true;
+    Clone.depthWrite = true;
+    Clone.side = THREE.FrontSide;
+    Clone.needsUpdate = true;
+    return Clone;
+  });
+
+  const Arms = new THREE.SkinnedMesh(ArmGeometry, Array.isArray(Object.material) ? Materials : Materials[0]);
+  Arms.name = `${Object.name || "Player"}_FirstPersonArms`;
+  Arms.bindMode = Object.bindMode;
+  Arms.bind(Object.skeleton, Object.bindMatrix);
+  Arms.bindMatrixInverse.copy(Object.bindMatrixInverse);
+  Arms.position.copy(Object.position);
+  Arms.quaternion.copy(Object.quaternion);
+  Arms.scale.copy(Object.scale);
+  Arms.frustumCulled = false;
+  Arms.renderOrder = 4;
+  return Arms;
 }
 
 function BuildFirstPersonArms(Model) {
-  const NewMeshes = [];
+  const Additions = [];
   Model.traverse(Object => {
-    if (!Object.isMesh || Object.userData.IsFirstPersonArms) return;
+    if (!Object.isMesh) return;
     State.BodyMeshes.push(Object);
-    if (!Object.isSkinnedMesh || !Object.skeleton || !Object.geometry) return;
-
-    const SkinIndex = Object.geometry.getAttribute("skinIndex");
-    const SkinWeight = Object.geometry.getAttribute("skinWeight");
-    const Position = Object.geometry.getAttribute("position");
-    if (!SkinIndex || !SkinWeight || !Position) return;
-
-    const ArmBoneIndices = new Set();
-    for (let BoneIndex = 0; BoneIndex < Object.skeleton.bones.length; BoneIndex += 1) {
-      const Name = (Object.skeleton.bones[BoneIndex]?.name || "").toLowerCase();
-      if (
-        Name.includes("upperarm_") || Name.includes("lowerarm_") || Name.includes("hand_") ||
-        Name.includes("thumb_") || Name.includes("index_") || Name.includes("middle_") ||
-        Name.includes("ring_") || Name.includes("pinky_")
-      ) ArmBoneIndices.add(BoneIndex);
-    }
-    if (!ArmBoneIndices.size) return;
-
-    const Geometry = Object.geometry.clone();
-    const Mask = new Float32Array(Position.count);
-    let MaxMask = 0;
-    for (let VertexIndex = 0; VertexIndex < Position.count; VertexIndex += 1) {
-      const Weight = ArmWeightForVertex(SkinIndex, SkinWeight, VertexIndex, ArmBoneIndices);
-      Mask[VertexIndex] = Weight;
-      MaxMask = Math.max(MaxMask, Weight);
-    }
-    if (MaxMask < 0.5) return;
-    Geometry.setAttribute("fpArmMask", new THREE.Float32BufferAttribute(Mask, 1));
-
-    const SourceMaterials = Array.isArray(Object.material) ? Object.material : [Object.material];
-    const Materials = SourceMaterials.map(MakeArmOnlyMaterial);
-    const Arms = new THREE.SkinnedMesh(Geometry, Array.isArray(Object.material) ? Materials : Materials[0]);
-    Arms.name = `${Object.name || "Player"}_FirstPersonArms`;
-    Arms.userData.IsFirstPersonArms = true;
-    Arms.bindMode = Object.bindMode;
-    Arms.bind(Object.skeleton, Object.bindMatrix);
-    Arms.bindMatrixInverse.copy(Object.bindMatrixInverse);
-    Arms.position.copy(Object.position);
-    Arms.quaternion.copy(Object.quaternion);
-    Arms.scale.copy(Object.scale);
-    Arms.frustumCulled = false;
-    Arms.renderOrder = 5;
-    NewMeshes.push([Object.parent, Arms]);
+    const Arms = BuildFirstPersonArmMesh(Object);
+    if (Arms) Additions.push([Object.parent, Arms]);
   });
-
-  for (const [Parent, Arms] of NewMeshes) {
+  for (const [Parent, Arms] of Additions) {
     Parent.add(Arms);
     State.ArmMeshes.push(Arms);
   }
-}
-
-function CreateAnatomyBumpTexture() {
-  const Canvas = document.createElement("canvas");
-  Canvas.width = 256;
-  Canvas.height = 256;
-  const Context = Canvas.getContext("2d");
-  Context.fillStyle = "#808080";
-  Context.fillRect(0, 0, 256, 256);
-  Context.globalAlpha = 0.14;
-  for (let Band = 0; Band < 12; Band += 1) {
-    const Y = 15 + Band * 20;
-    const Gradient = Context.createLinearGradient(0, Y - 8, 0, Y + 8);
-    Gradient.addColorStop(0, "#747474");
-    Gradient.addColorStop(0.5, "#929292");
-    Gradient.addColorStop(1, "#747474");
-    Context.fillStyle = Gradient;
-    Context.beginPath();
-    Context.ellipse(128 + Math.sin(Band) * 22, Y, 72, 8, Math.sin(Band * 0.7) * 0.16, 0, Math.PI * 2);
-    Context.fill();
-  }
-  Context.globalAlpha = 0.11;
-  Context.strokeStyle = "#a7a7a7";
-  Context.lineWidth = 1.2;
-  for (let Line = 0; Line < 18; Line += 1) {
-    Context.beginPath();
-    Context.moveTo((Line * 37) % 256, 0);
-    Context.bezierCurveTo((Line * 53) % 256, 75, (Line * 71) % 256, 165, (Line * 97) % 256, 256);
-    Context.stroke();
-  }
-  Context.globalAlpha = 1;
-  const Texture = new THREE.CanvasTexture(Canvas);
-  Texture.wrapS = THREE.RepeatWrapping;
-  Texture.wrapT = THREE.RepeatWrapping;
-  Texture.repeat.set(3, 4);
-  return Texture;
-}
-
-function ApplyAnatomyDetail(Model) {
-  const BumpTexture = CreateAnatomyBumpTexture();
-  Model.traverse(Object => {
-    if (!Object.isMesh) return;
-    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
-    for (const Material of Materials) {
-      if (!Material?.isMeshStandardMaterial) continue;
-      const Label = `${Object.name || ""} ${Material.name || ""}`.toLowerCase();
-      if (!/(skin|body|head|face|arm|leg)/.test(Label)) continue;
-      Material.bumpMap = BumpTexture;
-      Material.bumpScale = 0.014;
-      Material.roughness = Math.max(Material.roughness ?? 0.65, 0.62);
-      Material.needsUpdate = true;
-    }
-  });
 }
 
 function SetViewVisibility(FirstPerson) {
@@ -303,11 +263,11 @@ function PickClip(Clips, Patterns) {
 }
 
 function BuildAnimationActions(Clips) {
-  if (!State.Mixer) return;
+  if (!State.Mixer || !Clips?.length) return;
   const Definitions = {
-    idle: [/^idle_loop$/i, /idle/i],
-    walk: [/walk.*fwd/i, /walk/i, /jog.*fwd/i, /jog/i],
-    sprint: [/sprint.*loop/i, /sprint/i, /run.*fwd/i, /run/i]
+    idle: [/idle/i],
+    walk: [/walk/i, /jog/i],
+    sprint: [/run/i, /sprint/i]
   };
   for (const [Name, Patterns] of Object.entries(Definitions)) {
     const Clip = PickClip(Clips, Patterns);
@@ -324,44 +284,43 @@ function SetAnimationState(Name) {
   State.AnimationState = Name;
   const Next = State.Actions.get(Name);
   if (!Next) return;
-  Next.reset().fadeIn(0.18).play();
-  if (State.ActiveAction && State.ActiveAction !== Next) State.ActiveAction.fadeOut(0.18);
+  Next.reset().fadeIn(0.12).play();
+  if (State.ActiveAction && State.ActiveAction !== Next) State.ActiveAction.fadeOut(0.12);
   State.ActiveAction = Next;
 }
 
 function ManualPose(Delta, Time) {
-  const Moving = State.Moving && IsGameplayActive();
-  const Sprinting = State.Sprinting;
-  State.ManualPhase += Delta * (Moving ? (Sprinting ? 10.2 : 6.6) : 1.25);
-  const Swing = Moving ? Math.sin(State.ManualPhase) : 0;
-  const LegAmount = Sprinting ? 0.74 : 0.44;
-  const ArmAmount = Sprinting ? 0.58 : 0.34;
-  const Breath = Math.sin(Time * 1.8) * 0.018;
+  State.ManualPhase += Delta * (State.Moving ? (State.Sprinting ? 10.6 : 6.8) : 1.15);
+  const Swing = State.Moving ? Math.sin(State.ManualPhase) : 0;
+  const Breath = Math.sin(Time * 1.7) * 0.012;
+  const LegAmount = State.Sprinting ? 0.78 : 0.46;
+  const ArmAmount = State.Sprinting ? 0.62 : 0.38;
   ApplyBaseBoneRotation("pelvis", Breath, Swing * 0.018, 0);
-  ApplyBaseBoneRotation("spine_01", Sprinting ? 0.08 : 0.02, 0, Swing * 0.018);
-  ApplyBaseBoneRotation("spine_02", Sprinting ? 0.07 : 0.018, -Swing * 0.012, 0);
-  ApplyBaseBoneRotation("spine_03", Sprinting ? 0.05 : 0.012, 0, 0);
-  ApplyBaseBoneRotation("upperarm_l", -Swing * ArmAmount, 0, 1.18);
-  ApplyBaseBoneRotation("upperarm_r", Swing * ArmAmount, 0, -1.18);
-  ApplyBaseBoneRotation("lowerarm_l", -0.18 + Math.max(0, Swing) * 0.14, 0, 0);
-  ApplyBaseBoneRotation("lowerarm_r", -0.18 + Math.max(0, -Swing) * 0.14, 0, 0);
+  ApplyBaseBoneRotation("spine_01", State.Sprinting ? 0.08 : 0.02, 0, Swing * 0.015);
+  ApplyBaseBoneRotation("spine_02", State.Sprinting ? 0.055 : 0.012, -Swing * 0.012, 0);
+  ApplyBaseBoneRotation("upperarm_l", -Swing * ArmAmount, 0, 1.10);
+  ApplyBaseBoneRotation("upperarm_r", Swing * ArmAmount, 0, -1.10);
+  ApplyBaseBoneRotation("lowerarm_l", -0.17 + Math.max(0, Swing) * 0.12, 0, 0);
+  ApplyBaseBoneRotation("lowerarm_r", -0.17 + Math.max(0, -Swing) * 0.12, 0, 0);
   ApplyBaseBoneRotation("thigh_l", Swing * LegAmount, 0, 0);
   ApplyBaseBoneRotation("thigh_r", -Swing * LegAmount, 0, 0);
   ApplyBaseBoneRotation("calf_l", Math.max(0, -Swing) * LegAmount * 0.62, 0, 0);
   ApplyBaseBoneRotation("calf_r", Math.max(0, Swing) * LegAmount * 0.62, 0, 0);
 }
 
-function ApplyFirstPersonPoseOffsets(Delta) {
-  State.SmoothedSwayX = THREE.MathUtils.lerp(State.SmoothedSwayX, State.MouseSwayX, 1 - Math.exp(-Delta * 14));
-  State.SmoothedSwayY = THREE.MathUtils.lerp(State.SmoothedSwayY, State.MouseSwayY, 1 - Math.exp(-Delta * 14));
-  State.MouseSwayX *= Math.exp(-Delta * 9);
-  State.MouseSwayY *= Math.exp(-Delta * 9);
-  ApplyRelativeBoneRotation("clavicle_l", 0.08, State.SmoothedSwayX * 0.10, 0.16);
-  ApplyRelativeBoneRotation("clavicle_r", 0.08, State.SmoothedSwayX * 0.10, -0.16);
-  ApplyRelativeBoneRotation("upperarm_l", -0.72 + State.SmoothedSwayY * 0.18, 0.10, 0.32);
-  ApplyRelativeBoneRotation("upperarm_r", -0.72 + State.SmoothedSwayY * 0.18, -0.10, -0.32);
-  ApplyRelativeBoneRotation("lowerarm_l", -0.28, 0, 0.06);
-  ApplyRelativeBoneRotation("lowerarm_r", -0.28, 0, -0.06);
+function ApplyFirstPersonPose(Delta) {
+  State.SmoothedSwayX = THREE.MathUtils.lerp(State.SmoothedSwayX, State.MouseSwayX, 1 - Math.exp(-Delta * 16));
+  State.SmoothedSwayY = THREE.MathUtils.lerp(State.SmoothedSwayY, State.MouseSwayY, 1 - Math.exp(-Delta * 16));
+  State.MouseSwayX *= Math.exp(-Delta * 10);
+  State.MouseSwayY *= Math.exp(-Delta * 10);
+  const Step = State.Moving ? Math.sin(State.ManualPhase * 1.05) : 0;
+  const SprintLift = State.Sprinting ? 0.10 : 0;
+  ApplyRelativeBoneRotation("clavicle_l", 0.02, State.SmoothedSwayX * 0.08, 0.12);
+  ApplyRelativeBoneRotation("clavicle_r", 0.02, State.SmoothedSwayX * 0.08, -0.12);
+  ApplyRelativeBoneRotation("upperarm_l", -0.64 - SprintLift + Step * 0.06, 0.08, 0.30);
+  ApplyRelativeBoneRotation("upperarm_r", -0.64 - SprintLift - Step * 0.06, -0.08, -0.30);
+  ApplyRelativeBoneRotation("lowerarm_l", -0.28 + State.SmoothedSwayY * 0.12, 0, 0.04);
+  ApplyRelativeBoneRotation("lowerarm_r", -0.28 + State.SmoothedSwayY * 0.12, 0, -0.04);
 }
 
 function UpdateCharacterTransform() {
@@ -369,10 +328,9 @@ function UpdateCharacterTransform() {
   State.Pivot.position.set(State.Camera.position.x, 0, State.Camera.position.z);
   State.Camera.getWorldDirection(State.TempDirection);
   State.TempDirection.y = 0;
-  if (State.TempDirection.lengthSq() > 0.0001) {
-    State.TempDirection.normalize();
-    State.Pivot.rotation.y = Math.atan2(State.TempDirection.x, State.TempDirection.z) + Math.PI;
-  }
+  if (State.TempDirection.lengthSq() < 0.0001) return;
+  State.TempDirection.normalize();
+  State.Pivot.rotation.y = Math.atan2(State.TempDirection.x, State.TempDirection.z);
 }
 
 function UpdateCharacter(Delta, Time) {
@@ -382,74 +340,91 @@ function UpdateCharacter(Delta, Time) {
   if (State.Mixer && State.Actions.size) {
     SetAnimationState(DesiredState);
     State.Mixer.update(Delta);
-  } else {
-    ManualPose(Delta, Time);
-  }
-  const FirstPerson = State.ZoomDistance < 0.15;
-  if (FirstPerson) ApplyFirstPersonPoseOffsets(Delta);
-  SetViewVisibility(FirstPerson);
+  } else ManualPose(Delta, Time);
+  if (State.Zoom < 0.15) ApplyFirstPersonPose(Delta);
+  SetViewVisibility(State.Zoom < 0.15);
 }
 
-function SegmentAabbDistance(Start, End, Bounds) {
+function SegmentAabbDistance(Start, End, Bounds, Padding = 0.10) {
   const Direction = State.TempOffset.copy(End).sub(Start);
   let TMin = 0;
   let TMax = 1;
   for (const Axis of ["x", "y", "z"]) {
     const Origin = Start[Axis];
     const Delta = Direction[Axis];
+    const Min = Bounds.min[Axis] - Padding;
+    const Max = Bounds.max[Axis] + Padding;
     if (Math.abs(Delta) < 1e-8) {
-      if (Origin < Bounds.min[Axis] || Origin > Bounds.max[Axis]) return null;
+      if (Origin < Min || Origin > Max) return null;
       continue;
     }
-    let T1 = (Bounds.min[Axis] - Origin) / Delta;
-    let T2 = (Bounds.max[Axis] - Origin) / Delta;
-    if (T1 > T2) [T1, T2] = [T2, T1];
-    TMin = Math.max(TMin, T1);
-    TMax = Math.min(TMax, T2);
+    let A = (Min - Origin) / Delta;
+    let B = (Max - Origin) / Delta;
+    if (A > B) [A, B] = [B, A];
+    TMin = Math.max(TMin, A);
+    TMax = Math.min(TMax, B);
     if (TMin > TMax) return null;
   }
   return TMin;
 }
 
-function ResolveThirdPersonDistance(Target, Desired) {
+function CameraDistance(Target, Desired) {
   const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
   let Allowed = Target.distanceTo(Desired);
   const SegmentLength = Math.max(Allowed, 0.001);
+  const MinX = Math.min(Target.x, Desired.x) - 0.3;
+  const MaxX = Math.max(Target.x, Desired.x) + 0.3;
+  const MinZ = Math.min(Target.z, Desired.z) - 0.3;
+  const MaxZ = Math.max(Target.z, Desired.z) + 0.3;
   for (const Entry of Collisions) {
+    if (Entry?.Type && !/Wall|Partition/i.test(Entry.Type)) continue;
     const Bounds = Entry?.Box || Entry;
     if (!Bounds?.min || !Bounds?.max) continue;
-    const Expanded = Bounds.clone().expandByScalar(0.08);
-    const T = SegmentAabbDistance(Target, Desired, Expanded);
+    if (Bounds.max.x < MinX || Bounds.min.x > MaxX || Bounds.max.z < MinZ || Bounds.min.z > MaxZ) continue;
+    const T = SegmentAabbDistance(Target, Desired, Bounds);
     if (T === null) continue;
-    Allowed = Math.min(Allowed, Math.max(0.38, T * SegmentLength - 0.12));
+    Allowed = Math.min(Allowed, Math.max(0.48, T * SegmentLength - 0.14));
   }
   return Allowed;
 }
 
 function Render(Renderer, Scene, Camera) {
-  if (!Camera || !Renderer) return;
-  const ThirdPerson = State.ZoomDistance >= 0.15 && State.CharacterReady;
-  State.ThirdPerson = ThirdPerson;
-  SetViewVisibility(!ThirdPerson);
-  if (!ThirdPerson) {
+  if (!Renderer || !Camera) return;
+  if (State.Zoom < 0.15 || !State.CharacterReady) {
+    SetViewVisibility(true);
     Renderer.render(Scene, Camera);
     return;
   }
+
+  SetViewVisibility(false);
   State.SavedPosition.copy(Camera.position);
   State.SavedQuaternion.copy(Camera.quaternion);
-  Camera.getWorldDirection(State.TempDirection);
-  State.TempHorizontal.copy(State.TempDirection);
+  Camera.getWorldDirection(State.TempHorizontal);
   State.TempHorizontal.y = 0;
   if (State.TempHorizontal.lengthSq() < 0.0001) State.TempHorizontal.set(0, 0, -1);
   State.TempHorizontal.normalize();
-  State.TempTarget.copy(State.SavedPosition).addScaledVector(new THREE.Vector3(0, 1, 0), -0.42);
+  State.TempRight.set(1, 0, 0).applyQuaternion(State.SavedQuaternion);
+  State.TempRight.y = 0;
+  if (State.TempRight.lengthSq() < 0.0001) State.TempRight.set(1, 0, 0);
+  State.TempRight.normalize();
+
+  State.TempTarget.set(State.SavedPosition.x, 1.40, State.SavedPosition.z);
   State.TempDesired.copy(State.TempTarget)
-    .addScaledVector(State.TempHorizontal, -State.ZoomDistance)
-    .add(new THREE.Vector3(0, THIRD_PERSON_HEIGHT + State.ZoomDistance * 0.055, 0));
-  const Allowed = ResolveThirdPersonDistance(State.TempTarget, State.TempDesired);
-  State.TempOffset.copy(State.TempDesired).sub(State.TempTarget).normalize().multiplyScalar(Allowed);
+    .addScaledVector(State.TempHorizontal, -State.Zoom)
+    .addScaledVector(State.TempRight, CAMERA_SHOULDER)
+    .add(new THREE.Vector3(0, CAMERA_HEIGHT, 0));
+
+  State.TempDesired.x = THREE.MathUtils.clamp(State.TempDesired.x, -16.55, 16.55);
+  State.TempDesired.y = THREE.MathUtils.clamp(State.TempDesired.y, 0.55, 3.35);
+
+  const Allowed = CameraDistance(State.TempTarget, State.TempDesired);
+  State.TempOffset.copy(State.TempDesired).sub(State.TempTarget);
+  if (State.TempOffset.lengthSq() > 0.0001) State.TempOffset.normalize().multiplyScalar(Allowed);
   Camera.position.copy(State.TempTarget).add(State.TempOffset);
-  Camera.lookAt(State.TempTarget.x, State.TempTarget.y + 0.12, State.TempTarget.z);
+  Camera.position.x = THREE.MathUtils.clamp(Camera.position.x, -16.55, 16.55);
+  Camera.position.y = THREE.MathUtils.clamp(Camera.position.y, 0.55, 3.35);
+  Camera.lookAt(State.TempTarget.x, State.TempTarget.y + 0.08, State.TempTarget.z);
+  Camera.updateMatrixWorld(true);
   Renderer.render(Scene, Camera);
   Camera.position.copy(State.SavedPosition);
   Camera.quaternion.copy(State.SavedQuaternion);
@@ -461,16 +436,10 @@ async function LoadCharacter() {
   State.Loading = true;
   const Status = document.getElementById("BootStatus");
   const PreviousStatus = Status?.textContent || "";
-  if (Status) Status.textContent = "Loading rigged player...";
+  if (Status) Status.textContent = "Loading store worker...";
   try {
-    const [CharacterGltf, AnimationGltf] = await Promise.all([
-      Loader.loadAsync(PLAYER_MODEL_URL),
-      Loader.loadAsync(ANIMATION_URL).catch(Error => {
-        console.warn("Animation library unavailable; using procedural fallback pose.", Error);
-        return null;
-      })
-    ]);
-    const Model = CharacterGltf.scene;
+    const Gltf = await Loader.loadAsync(PLAYER_MODEL_URL);
+    const Model = Gltf.scene;
     Model.updateMatrixWorld(true);
     const RawBounds = new THREE.Box3().setFromObject(Model);
     const RawSize = RawBounds.getSize(new THREE.Vector3());
@@ -492,21 +461,20 @@ async function LoadCharacter() {
       for (const Material of Materials) {
         if (!Material) continue;
         Material.side = THREE.FrontSide;
+        if ("roughness" in Material) Material.roughness = Math.max(Material.roughness ?? 0.55, 0.58);
         Material.needsUpdate = true;
       }
     });
     SetupBones(Model);
-    ApplyAnatomyDetail(Model);
     BuildFirstPersonArms(Model);
     const Pivot = new THREE.Group();
     Pivot.name = "PlayerCharacterPivot";
-    Pivot.userData.SkipCameraCollision = true;
     Pivot.add(Model);
     State.Scene.add(Pivot);
     State.Pivot = Pivot;
     State.Model = Model;
     State.Mixer = new THREE.AnimationMixer(Model);
-    if (AnimationGltf?.animations?.length) BuildAnimationActions(AnimationGltf.animations);
+    BuildAnimationActions(Gltf.animations || []);
     if (State.Actions.has("idle")) {
       State.ActiveAction = State.Actions.get("idle");
       State.ActiveAction.play();
@@ -514,10 +482,10 @@ async function LoadCharacter() {
     }
     State.CharacterReady = true;
     SetViewVisibility(true);
-    if (Status && Status.textContent === "Loading rigged player...") Status.textContent = PreviousStatus || "Player ready.";
+    if (Status && Status.textContent === "Loading store worker...") Status.textContent = PreviousStatus || "Player ready.";
   } catch (Error) {
     console.error("Player model failed to load", Error);
-    if (Status) Status.textContent = "Store ready — player body failed to load.";
+    if (Status) Status.textContent = "Store ready — player model failed to load.";
   } finally {
     State.Loading = false;
   }
@@ -535,31 +503,31 @@ function Frame() {
   const NowMs = performance.now();
   const Delta = Math.min((NowMs - State.LastFrameAt) / 1000, 0.05);
   State.LastFrameAt = NowMs;
-  const Now = NowMs / 1000;
-  State.ZoomDistance = THREE.MathUtils.lerp(State.ZoomDistance, State.ZoomTarget, 1 - Math.exp(-Delta * 10));
-  UpdateStamina(Delta, Now);
-  UpdateCharacter(Delta, Now);
+  const Time = NowMs / 1000;
+  UpdateStamina(Delta, Time);
+  UpdateCharacter(Delta, Time);
   UpdateHud();
   requestAnimationFrame(Frame);
 }
 
 addEventListener("wheel", Event => {
   if (!IsGameplayActive()) return;
+  Event.preventDefault();
   const Direction = Math.sign(Event.deltaY);
-  State.ZoomTarget = THREE.MathUtils.clamp(State.ZoomTarget + Direction * 0.65, 0, MAX_CAMERA_DISTANCE);
-}, { passive: true });
+  if (Direction > 0 && State.Zoom < THIRD_PERSON_MIN) State.Zoom = THIRD_PERSON_MIN;
+  else State.Zoom = THREE.MathUtils.clamp(State.Zoom + Direction * 0.5, 0, THIRD_PERSON_MAX);
+}, { passive: false });
 
 addEventListener("keydown", Event => {
-  if (Event.code === "KeyV" && !Event.repeat) {
-    State.ZoomTarget = State.ZoomTarget < 0.15 ? 4.2 : 0;
-    Event.preventDefault();
-  }
+  if (Event.code !== "KeyV" || Event.repeat) return;
+  State.Zoom = State.Zoom < 0.15 ? THIRD_PERSON_DEFAULT : 0;
+  Event.preventDefault();
 });
 
 addEventListener("mousemove", Event => {
   if (!document.pointerLockElement) return;
-  State.MouseSwayX = THREE.MathUtils.clamp(State.MouseSwayX + Event.movementX * 0.0014, -0.18, 0.18);
-  State.MouseSwayY = THREE.MathUtils.clamp(State.MouseSwayY + Event.movementY * 0.0012, -0.14, 0.14);
+  State.MouseSwayX = THREE.MathUtils.clamp(State.MouseSwayX + Event.movementX * 0.0012, -0.16, 0.16);
+  State.MouseSwayY = THREE.MathUtils.clamp(State.MouseSwayY + Event.movementY * 0.0010, -0.12, 0.12);
 });
 
 window.__STORE_PLAYER__ = {
@@ -569,8 +537,8 @@ window.__STORE_PLAYER__ = {
   GetPlayerRadius,
   IsSprinting: () => State.Sprinting,
   GetStamina: () => State.Stamina,
-  IsThirdPerson: () => State.ZoomTarget >= 0.15
+  IsThirdPerson: () => State.Zoom >= 0.15
 };
 
-window.__STORE_PLAYER_BUILD__ = "V0.08";
+window.__STORE_PLAYER_BUILD__ = "V0.10";
 requestAnimationFrame(Frame);
