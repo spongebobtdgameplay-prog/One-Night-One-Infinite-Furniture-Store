@@ -135,14 +135,6 @@ addEventListener("keydown", Event => {
   State.Queued = true;
 });
 
-const ControlsHint = document.querySelector(".ControlsHint");
-if (ControlsHint && !ControlsHint.querySelector("[data-jump-hint]")) {
-  const Hint = document.createElement("span");
-  Hint.dataset.jumpHint = "1";
-  Hint.textContent = "SPACE JUMP";
-  ControlsHint.insertBefore(Hint, ControlsHint.children[2] || null);
-}
-
 window.__STORE_PLAYER__ = {
   ...BasePlayer,
   Attach,
