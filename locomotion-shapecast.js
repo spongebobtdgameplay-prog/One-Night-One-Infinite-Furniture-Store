@@ -5,17 +5,21 @@ if (!BasePlayer) throw new Error("Player system must load before locomotion shap
 
 const WALK_PROBE = 1.08;
 const SPRINT_PROBE = 1.46;
-const ARM_SIDE_PROBE = 0.78;
+const ARM_SIDE_PROBE = 0.80;
 const PROBE_STEPS = 16;
 const MOVE_LANE_OFFSET = 0.18;
 const MOVE_LANE_RADIUS = 0.10;
 const ARM_PROBE_RADIUS = 0.075;
-const ARM_SEGMENT_RADIUS = 0.072;
-const ARM_SEGMENT_STEPS = 6;
+const LIMB_RADIUS = 0.065;
+const ARM_SEGMENT_STEPS = 7;
+const LEG_SEGMENT_STEPS = 6;
 const IK_ITERATIONS = 5;
-const CONTACT_FRESH_MS = 170;
-const ENTER_RESPONSE = 20;
-const EXIT_RESPONSE = 10;
+const CONTACT_FRESH_MS = 190;
+const ENTER_RESPONSE = 22;
+const EXIT_RESPONSE = 11;
+const ROOT_PUSH_STEP = 0.014;
+const ROOT_PUSH_MAX = 0.084;
+const CONTACT_FACING_RESPONSE = 9.5;
 
 const State = {
   Scene: null,
@@ -26,6 +30,7 @@ const State = {
   PivotPosition: new THREE.Vector3(),
   HasLastPosition: false,
   LastTime: performance.now(),
+  FrameDelta: 1 / 60,
   Velocity: new THREE.Vector3(),
   MoveDirection: new THREE.Vector3(),
   Forward: new THREE.Vector3(),
@@ -59,7 +64,13 @@ const State = {
   ParentQuaternion: new THREE.Quaternion(),
   JointWorldQuaternion: new THREE.Quaternion(),
   DesiredWorldQuaternion: new THREE.Quaternion(),
-  InverseParentQuaternion: new THREE.Quaternion()
+  InverseParentQuaternion: new THREE.Quaternion(),
+  EscapeNormal: new THREE.Vector3(),
+  EscapeSum: new THREE.Vector3(),
+  SavedPivotPosition: new THREE.Vector3(),
+  VisualYaw: 0,
+  HasVisualYaw: false,
+  SavedPivotYaw: 0
 };
 
 const PoseBones = [
@@ -83,15 +94,27 @@ const ForwardDampWeights = new Map([
 
 const LeftArmBones = ["Shoulder.L", "UpperArm.L", "LowerArm.L", "Wrist.L"];
 const RightArmBones = ["Shoulder.R", "UpperArm.R", "LowerArm.R", "Wrist.R"];
+const LeftLegBones = ["UpperLeg.L", "LowerLeg.L", "Foot.L"];
+const RightLegBones = ["UpperLeg.R", "LowerLeg.R", "Foot.R"];
+const BodySamples = [
+  ["Chest", 0.13],
+  ["Hips", 0.14],
+  ["Shoulder.L", 0.115],
+  ["Shoulder.R", 0.115]
+];
 
 function ExpAlpha(Delta, Responsiveness) {
   return 1 - Math.exp(-Delta * Responsiveness);
 }
 
+function NormalizeAngle(Value) {
+  return Math.atan2(Math.sin(Value), Math.cos(Value));
+}
+
 function FiniteBounds(Bounds) {
   return Boolean(
     Bounds?.min && Bounds?.max &&
-    [Bounds.min.x, Bounds.min.z, Bounds.max.x, Bounds.max.z].every(Number.isFinite) &&
+    [Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite) &&
     Bounds.min.x < Bounds.max.x && Bounds.min.z < Bounds.max.z
   );
 }
@@ -104,14 +127,29 @@ function CircleHitsBox(Position, Radius, Bounds) {
   return DX * DX + DZ * DZ <= Radius * Radius;
 }
 
+function SphereHitsBox(Position, Radius, Bounds) {
+  if (!FiniteBounds(Bounds)) return false;
+  const ClosestX = THREE.MathUtils.clamp(Position.x, Bounds.min.x, Bounds.max.x);
+  const ClosestY = THREE.MathUtils.clamp(Position.y, Bounds.min.y, Bounds.max.y);
+  const ClosestZ = THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z);
+  const DX = Position.x - ClosestX;
+  const DY = Position.y - ClosestY;
+  const DZ = Position.z - ClosestZ;
+  return DX * DX + DY * DY + DZ * DZ <= Radius * Radius;
+}
+
+function EntryBounds(Entry) {
+  return Entry?.OriginalStructureBox || Entry?.OriginalBox || Entry?.Box || Entry || null;
+}
+
 function HitsCollision(Position, Radius) {
   const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
   for (const Entry of Collisions) {
     if (!Entry) continue;
-    const Bounds = Entry.OriginalStructureBox || Entry.Box || Entry;
+    const Bounds = EntryBounds(Entry);
     const IsStructure = Entry.PrecisePlayerStructure || /Wall|Partition/i.test(String(Entry.Type || ""));
 
-    if (IsStructure && FiniteBounds(Bounds)) {
+    if (IsStructure && Bounds?.min && Bounds?.max) {
       if (CircleHitsBox(Position, Radius, Bounds)) return true;
       continue;
     }
@@ -123,10 +161,48 @@ function HitsCollision(Position, Radius) {
       if (Entry.PreciseGeometry || Entry.LegacyCollisionDisabled) continue;
     }
 
-    if (!FiniteBounds(Bounds)) continue;
-    if (CircleHitsBox(Position, Radius, Bounds)) return true;
+    if (Bounds?.min && Bounds?.max && CircleHitsBox(Position, Radius, Bounds)) return true;
   }
   return false;
+}
+
+function LimbHitsCollision(Position, Radius) {
+  const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
+  for (const Entry of Collisions) {
+    if (!Entry) continue;
+    const Bounds = EntryBounds(Entry);
+    if (!FiniteBounds(Bounds)) continue;
+    if (SphereHitsBox(Position, Radius, Bounds)) return true;
+  }
+  return false;
+}
+
+function EscapeNormalFromBounds(Position, Radius, Bounds, Target) {
+  if (!FiniteBounds(Bounds)) return false;
+  if (Position.y + Radius < Bounds.min.y || Position.y - Radius > Bounds.max.y) return false;
+
+  const ClosestX = THREE.MathUtils.clamp(Position.x, Bounds.min.x, Bounds.max.x);
+  const ClosestZ = THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z);
+  const DX = Position.x - ClosestX;
+  const DZ = Position.z - ClosestZ;
+  const DistanceSq = DX * DX + DZ * DZ;
+  if (DistanceSq > Radius * Radius) return false;
+
+  if (DistanceSq > 0.000001) {
+    Target.set(DX, 0, DZ).normalize();
+    return true;
+  }
+
+  const Left = Math.abs(Position.x - Bounds.min.x);
+  const Right = Math.abs(Bounds.max.x - Position.x);
+  const Back = Math.abs(Position.z - Bounds.min.z);
+  const Front = Math.abs(Bounds.max.z - Position.z);
+  const Min = Math.min(Left, Right, Back, Front);
+  if (Min === Left) Target.set(-1, 0, 0);
+  else if (Min === Right) Target.set(1, 0, 0);
+  else if (Min === Back) Target.set(0, 0, -1);
+  else Target.set(0, 0, 1);
+  return true;
 }
 
 function SweepCircle(Origin, Direction, Radius, Length) {
@@ -160,11 +236,7 @@ function InputDirection(Camera) {
 
 function BlendFromHit(Distance, Length, NearDistance = 0.04) {
   if (!Number.isFinite(Distance)) return 0;
-  return 1 - THREE.MathUtils.clamp(
-    (Distance - NearDistance) / Math.max(Length - NearDistance, 0.01),
-    0,
-    1
-  );
+  return 1 - THREE.MathUtils.clamp((Distance - NearDistance) / Math.max(Length - NearDistance, 0.01), 0, 1);
 }
 
 function BodyRightDirection(Pivot) {
@@ -188,16 +260,17 @@ function DecayBlend(Delta) {
 function ContactTargets(Pivot) {
   const Contact = window.__STORE_MOVEMENT_CONTACT__;
   if (!Contact || Contact.Strength <= 0.001 || performance.now() - Contact.LastHit > CONTACT_FRESH_MS) {
-    return { Wall: 0, Left: 0, Right: 0 };
+    return { Wall: 0, Left: 0, Right: 0, Contact: null };
   }
 
   const BodyRight = BodyRightDirection(Pivot);
   const SideDot = Contact.Normal.dot(BodyRight);
   const Strength = THREE.MathUtils.clamp(Contact.Strength, 0, 1);
   return {
-    Wall: Strength * 0.62,
+    Wall: Strength * 0.70,
     Left: Math.max(0, SideDot) * Strength,
-    Right: Math.max(0, -SideDot) * Strength
+    Right: Math.max(0, -SideDot) * Strength,
+    Contact
   };
 }
 
@@ -205,6 +278,7 @@ function UpdateShapecast(Camera, Pivot) {
   const Now = performance.now();
   const Delta = THREE.MathUtils.clamp((Now - State.LastTime) / 1000, 0.001, 0.05);
   State.LastTime = Now;
+  State.FrameDelta = Delta;
 
   Pivot.getWorldPosition(State.PivotPosition);
   State.PivotPosition.y = 0;
@@ -224,7 +298,7 @@ function UpdateShapecast(Camera, Pivot) {
   }
 
   const ReportedRadius = Number(BasePlayer.GetPlayerRadius?.()) || 0.30;
-  const BodyRadius = THREE.MathUtils.clamp(ReportedRadius, 0.22, 0.42);
+  const BodyRadius = THREE.MathUtils.clamp(ReportedRadius, 0.24, 0.36);
   const Direction = InputDirection(Camera);
   const Moving = Direction.lengthSq() > 0.000001;
   const Length = BasePlayer.IsSprinting?.() ? SPRINT_PROBE : WALK_PROBE;
@@ -245,9 +319,9 @@ function UpdateShapecast(Camera, Pivot) {
   const BodyRight = BodyRightDirection(Pivot);
   State.LeftDirection.copy(BodyRight).multiplyScalar(-1);
   State.RightDirection.copy(BodyRight);
-
   const LeftSideHit = SweepCircle(State.PivotPosition, State.LeftDirection, ARM_PROBE_RADIUS, ARM_SIDE_PROBE);
   const RightSideHit = SweepCircle(State.PivotPosition, State.RightDirection, ARM_PROBE_RADIUS, ARM_SIDE_PROBE);
+
   const ClosestMoveHit = Math.min(CenterHit, LeftMoveHit, RightMoveHit);
   const ForwardBlend = Moving ? BlendFromHit(ClosestMoveHit, Length, 0.08) : 0;
   const LeftMoveBlend = Moving ? BlendFromHit(LeftMoveHit, Length, 0.08) : 0;
@@ -258,14 +332,11 @@ function UpdateShapecast(Camera, Pivot) {
 
   const TargetLeft = Math.max(LeftMoveBlend, LeftSideBlend, Contact.Left);
   const TargetRight = Math.max(RightMoveBlend, RightSideBlend, Contact.Right);
-  const TargetWall = Math.max(ForwardBlend, Contact.Wall, Math.max(TargetLeft, TargetRight) * 0.16);
-  const WallResponse = TargetWall > State.WallBlend ? ENTER_RESPONSE : EXIT_RESPONSE;
-  const LeftResponse = TargetLeft > State.LeftBlend ? ENTER_RESPONSE : EXIT_RESPONSE;
-  const RightResponse = TargetRight > State.RightBlend ? ENTER_RESPONSE : EXIT_RESPONSE;
+  const TargetWall = Math.max(ForwardBlend, Contact.Wall, Math.max(TargetLeft, TargetRight) * 0.18);
 
-  State.WallBlend = THREE.MathUtils.lerp(State.WallBlend, TargetWall, ExpAlpha(Delta, WallResponse));
-  State.LeftBlend = THREE.MathUtils.lerp(State.LeftBlend, TargetLeft, ExpAlpha(Delta, LeftResponse));
-  State.RightBlend = THREE.MathUtils.lerp(State.RightBlend, TargetRight, ExpAlpha(Delta, RightResponse));
+  State.WallBlend = THREE.MathUtils.lerp(State.WallBlend, TargetWall, ExpAlpha(Delta, TargetWall > State.WallBlend ? ENTER_RESPONSE : EXIT_RESPONSE));
+  State.LeftBlend = THREE.MathUtils.lerp(State.LeftBlend, TargetLeft, ExpAlpha(Delta, TargetLeft > State.LeftBlend ? ENTER_RESPONSE : EXIT_RESPONSE));
+  State.RightBlend = THREE.MathUtils.lerp(State.RightBlend, TargetRight, ExpAlpha(Delta, TargetRight > State.RightBlend ? ENTER_RESPONSE : EXIT_RESPONSE));
   State.HitDistance = ClosestMoveHit;
   State.LeftDistance = Math.min(LeftMoveHit, LeftSideHit);
   State.RightDistance = Math.min(RightMoveHit, RightSideHit);
@@ -304,14 +375,35 @@ function DampBoneToRest(Pivot, Name, Blend) {
   Bone.quaternion.slerp(Rest, THREE.MathUtils.clamp(Blend, 0, 0.985));
 }
 
-function SegmentHitsCollision(BoneA, BoneB, Radius = ARM_SEGMENT_RADIUS) {
+function ApplyStableContactFacing(Pivot) {
+  const Contact = window.__STORE_MOVEMENT_CONTACT__;
+  const Fresh = Contact && Contact.Sliding && Contact.Strength > 0.04 && performance.now() - Contact.LastHit <= CONTACT_FRESH_MS;
+  if (!Fresh || Contact.DesiredDirection?.lengthSq?.() <= 0.001) {
+    State.VisualYaw = Pivot.rotation.y;
+    State.HasVisualYaw = true;
+    return;
+  }
+
+  if (!State.HasVisualYaw) {
+    State.VisualYaw = Pivot.rotation.y;
+    State.HasVisualYaw = true;
+  }
+
+  const DesiredYaw = Math.atan2(Contact.DesiredDirection.x, Contact.DesiredDirection.z);
+  const Difference = NormalizeAngle(DesiredYaw - State.VisualYaw);
+  State.VisualYaw += Difference * ExpAlpha(State.FrameDelta, CONTACT_FACING_RESPONSE);
+  Pivot.rotation.y = State.VisualYaw;
+  Pivot.updateMatrixWorld(true);
+}
+
+function SegmentHitsCollision(BoneA, BoneB, Radius, Steps) {
   if (!BoneA?.isBone || !BoneB?.isBone) return false;
   BoneA.getWorldPosition(State.SegmentA);
   BoneB.getWorldPosition(State.SegmentB);
-  for (let Step = 1; Step <= ARM_SEGMENT_STEPS; Step += 1) {
-    const Alpha = Step / ARM_SEGMENT_STEPS;
+  for (let Step = 1; Step <= Steps; Step += 1) {
+    const Alpha = Step / Steps;
     State.Sample.lerpVectors(State.SegmentA, State.SegmentB, Alpha);
-    if (HitsCollision(State.Sample, Radius)) return true;
+    if (LimbHitsCollision(State.Sample, Radius)) return true;
   }
   return false;
 }
@@ -321,11 +413,17 @@ function ArmChainHits(Pivot, Side) {
   const UpperArm = Pivot.getObjectByName(`UpperArm.${Side}`);
   const LowerArm = Pivot.getObjectByName(`LowerArm.${Side}`);
   const Wrist = Pivot.getObjectByName(`Wrist.${Side}`);
-  return (
-    SegmentHitsCollision(Shoulder, UpperArm) ||
-    SegmentHitsCollision(UpperArm, LowerArm) ||
-    SegmentHitsCollision(LowerArm, Wrist)
-  );
+  return SegmentHitsCollision(Shoulder, UpperArm, LIMB_RADIUS, ARM_SEGMENT_STEPS) ||
+    SegmentHitsCollision(UpperArm, LowerArm, LIMB_RADIUS, ARM_SEGMENT_STEPS) ||
+    SegmentHitsCollision(LowerArm, Wrist, LIMB_RADIUS, ARM_SEGMENT_STEPS);
+}
+
+function LegChainHits(Pivot, Side) {
+  const Upper = Pivot.getObjectByName(`UpperLeg.${Side}`);
+  const Lower = Pivot.getObjectByName(`LowerLeg.${Side}`);
+  const Foot = Pivot.getObjectByName(`Foot.${Side}`);
+  return SegmentHitsCollision(Upper, Lower, LIMB_RADIUS, LEG_SEGMENT_STEPS) ||
+    SegmentHitsCollision(Lower, Foot, LIMB_RADIUS, LEG_SEGMENT_STEPS);
 }
 
 function RotateJointToward(Joint, Effector, Target, Strength) {
@@ -354,14 +452,14 @@ function SolveArmTowardTorso(Pivot, Side, Strength) {
   if (!UpperArm?.isBone || !LowerArm?.isBone || !Wrist?.isBone) return;
 
   UpperArm.getWorldPosition(State.TargetPosition);
-  State.TargetPosition.y -= 0.42;
+  State.TargetPosition.y -= 0.40;
   const BodyRight = BodyRightDirection(Pivot);
-  State.TargetPosition.addScaledVector(BodyRight, Side === "L" ? 0.17 : -0.17);
+  State.TargetPosition.addScaledVector(BodyRight, Side === "L" ? 0.145 : -0.145);
 
-  const SolveStrength = THREE.MathUtils.lerp(0.38, 0.82, THREE.MathUtils.clamp(Strength, 0, 1));
+  const SolveStrength = THREE.MathUtils.lerp(0.42, 0.86, THREE.MathUtils.clamp(Strength, 0, 1));
   for (let Iteration = 0; Iteration < IK_ITERATIONS; Iteration += 1) {
     RotateJointToward(LowerArm, Wrist, State.TargetPosition, SolveStrength);
-    RotateJointToward(UpperArm, Wrist, State.TargetPosition, SolveStrength * 0.82);
+    RotateJointToward(UpperArm, Wrist, State.TargetPosition, SolveStrength * 0.84);
     Pivot.updateMatrixWorld(true);
   }
 }
@@ -369,18 +467,65 @@ function SolveArmTowardTorso(Pivot, Side, Strength) {
 function EnforceArmClearance(Pivot, Side, RequestedBlend) {
   const ArmBones = Side === "L" ? LeftArmBones : RightArmBones;
   let Colliding = ArmChainHits(Pivot, Side);
-  if (!Colliding && RequestedBlend < 0.08) return;
+  if (!Colliding && RequestedBlend < 0.06) return;
 
   const Strength = Math.max(RequestedBlend, Colliding ? 1 : 0);
-  for (const Name of ArmBones) DampBoneToRest(Pivot, Name, Strength * 0.58);
+  for (const Name of ArmBones) DampBoneToRest(Pivot, Name, Strength * 0.62);
   Pivot.updateMatrixWorld(true);
   SolveArmTowardTorso(Pivot, Side, Strength);
   Colliding = ArmChainHits(Pivot, Side);
 
   if (Colliding) {
-    for (const Name of ArmBones) DampBoneToRest(Pivot, Name, 0.92);
+    for (const Name of ArmBones) DampBoneToRest(Pivot, Name, 0.95);
     Pivot.updateMatrixWorld(true);
     SolveArmTowardTorso(Pivot, Side, 1);
+  }
+}
+
+function EnforceLegClearance(Pivot, Side) {
+  if (!LegChainHits(Pivot, Side)) return;
+  const Bones = Side === "L" ? LeftLegBones : RightLegBones;
+  for (const Name of Bones) DampBoneToRest(Pivot, Name, 0.88);
+  Pivot.updateMatrixWorld(true);
+  if (LegChainHits(Pivot, Side)) {
+    for (const Name of Bones) DampBoneToRest(Pivot, Name, 0.98);
+    AddBoneRotation(Pivot, `UpperLeg.${Side}`, -0.06, 0, Side === "L" ? 0.035 : -0.035);
+    Pivot.updateMatrixWorld(true);
+  }
+}
+
+function ApplyBodyClearance(Pivot) {
+  let TotalPush = 0;
+  const Contact = window.__STORE_MOVEMENT_CONTACT__;
+
+  for (let Iteration = 0; Iteration < 6 && TotalPush < ROOT_PUSH_MAX; Iteration += 1) {
+    State.EscapeSum.set(0, 0, 0);
+    let HitCount = 0;
+
+    for (const [Name, Radius] of BodySamples) {
+      const Bone = Pivot.getObjectByName(Name);
+      if (!Bone?.isBone) continue;
+      Bone.getWorldPosition(State.Sample);
+
+      const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
+      for (const Entry of Collisions) {
+        const Bounds = EntryBounds(Entry);
+        if (!EscapeNormalFromBounds(State.Sample, Radius, Bounds, State.EscapeNormal)) continue;
+        State.EscapeSum.add(State.EscapeNormal);
+        HitCount += 1;
+      }
+    }
+
+    if (!HitCount) break;
+    if (State.EscapeSum.lengthSq() <= 0.0001 && Contact?.Normal?.lengthSq?.() > 0.5) State.EscapeSum.copy(Contact.Normal);
+    if (State.EscapeSum.lengthSq() <= 0.0001) break;
+
+    State.EscapeSum.y = 0;
+    State.EscapeSum.normalize();
+    const Step = Math.min(ROOT_PUSH_STEP, ROOT_PUSH_MAX - TotalPush);
+    Pivot.position.addScaledVector(State.EscapeSum, Step);
+    TotalPush += Step;
+    Pivot.updateMatrixWorld(true);
   }
 }
 
@@ -416,8 +561,11 @@ function ApplyCollisionPose(Pivot) {
   AddBoneRotation(Pivot, "Hips", 0.03 * ForwardBlend, 0, SideBalance * 0.012);
   Pivot.updateMatrixWorld(true);
 
+  ApplyBodyClearance(Pivot);
   EnforceArmClearance(Pivot, "L", LeftBlend);
   EnforceArmClearance(Pivot, "R", RightBlend);
+  EnforceLegClearance(Pivot, "L");
+  EnforceLegClearance(Pivot, "R");
   Pivot.updateMatrixWorld(true);
 }
 
@@ -451,11 +599,18 @@ function Render(Renderer, Scene, Camera) {
       UpdateShapecast(RenderCamera, Pivot);
       CaptureRestPose(Pivot);
       SaveCurrentPose(Pivot);
+      State.SavedPivotPosition.copy(Pivot.position);
+      State.SavedPivotYaw = Pivot.rotation.y;
+
       try {
+        ApplyStableContactFacing(Pivot);
         ApplyCollisionPose(Pivot);
         Renderer.render(RenderScene, RenderCamera);
       } finally {
         RestoreCurrentPose(Pivot);
+        Pivot.position.copy(State.SavedPivotPosition);
+        Pivot.rotation.y = State.SavedPivotYaw;
+        Pivot.updateMatrixWorld(true);
       }
     }
   };
@@ -474,4 +629,4 @@ window.__STORE_PLAYER__ = {
 };
 
 window.__STORE_LOCOMOTION_SHAPECAST__ = State;
-window.__STORE_LOCOMOTION_SHAPECAST_BUILD__ = "V0.12.3";
+window.__STORE_LOCOMOTION_SHAPECAST_BUILD__ = "V0.12.4";
