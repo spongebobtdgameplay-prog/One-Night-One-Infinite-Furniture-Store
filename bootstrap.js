@@ -13,6 +13,7 @@ try {
 
 await import("./player-controller.js?v=20260823-33");
 await import("./player-system-r24.js?v=20260823-33");
+await import("./sprint-animation-rate-r40.js?v=20260823-35");
 await import("./first-person-fullbody-r32.js?v=20260823-33");
 await import("./first-person-walk-bob-r33.js?v=20260823-33");
 await import("./game.js?v=20260823-34");
