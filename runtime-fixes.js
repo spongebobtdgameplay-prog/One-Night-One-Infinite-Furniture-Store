@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.Scene || !Game?.Renderer || !Game?.CollisionBoxes) throw new Error("Game must load before runtime fixes.");
@@ -11,6 +12,13 @@ const ProcessedInstances = new WeakSet();
 const ProcessedModels = new WeakSet();
 const BODY_HALF_WIDTH = 0.18;
 const BODY_HALF_DEPTH = 0.12;
+const MOVEMENT_MIN_RADIUS = 0.235;
+const MOVEMENT_MAX_RADIUS = 0.285;
+const MOVEMENT_SKIN = 0.009;
+const SLIDE_ITERATIONS = 4;
+const SWEEP_BINARY_STEPS = 9;
+const DEPENETRATION_RINGS = 12;
+const DEPENETRATION_DIRECTIONS = 16;
 
 const CollidableModels = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
@@ -18,6 +26,31 @@ const CollidableModels = new Set([
   "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1",
   "Door_3", "Window_Large1", "StoreTask", "FurniturePriceSign"
 ]);
+
+const MovementContact = {
+  Normal: new THREE.Vector3(),
+  Position: new THREE.Vector3(),
+  Strength: 0,
+  Sliding: false,
+  Type: "",
+  LastHit: -Infinity
+};
+window.__STORE_MOVEMENT_CONTACT__ = MovementContact;
+
+const MoveScratch = {
+  Position: new THREE.Vector3(),
+  Candidate: new THREE.Vector3(),
+  Start: new THREE.Vector3(),
+  Desired: new THREE.Vector3(),
+  Remaining: new THREE.Vector3(),
+  Leftover: new THREE.Vector3(),
+  Normal: new THREE.Vector3(),
+  Forward: new THREE.Vector3(),
+  Right: new THREE.Vector3(),
+  Depenetration: new THREE.Vector3(),
+  BestNormal: new THREE.Vector3(),
+  ContactPosition: new THREE.Vector3()
+};
 
 function Settings() {
   return window.__STORE_USER_SETTINGS__ || { Sensitivity: 0.92, TrackpadSmoothing: 58 };
@@ -77,6 +110,242 @@ function BodyTouchesRealBox(Position, Bounds) {
   if (Distance <= 0.000001) return true;
   return Distance <= EllipseRadiusInDirection(DX, DZ);
 }
+
+function FiniteBounds(Bounds) {
+  return Boolean(
+    Bounds?.min && Bounds?.max &&
+    [Bounds.min.x, Bounds.min.z, Bounds.max.x, Bounds.max.z].every(Number.isFinite) &&
+    Bounds.min.x < Bounds.max.x && Bounds.min.z < Bounds.max.z
+  );
+}
+
+function CircleTouchesBox(Position, Radius, Bounds) {
+  if (!FiniteBounds(Bounds)) return false;
+  const ClosestX = THREE.MathUtils.clamp(Position.x, Bounds.min.x, Bounds.max.x);
+  const ClosestZ = THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z);
+  const DX = Position.x - ClosestX;
+  const DZ = Position.z - ClosestZ;
+  return DX * DX + DZ * DZ <= Radius * Radius;
+}
+
+function EntryTouchesPlayer(Entry, Position, Radius) {
+  if (!Entry) return false;
+
+  if (typeof Entry.TestPlayerCollision === "function") {
+    try {
+      if (Entry.TestPlayerCollision(Position, Radius)) return true;
+    } catch {}
+
+    if (
+      Entry.PreciseGeometry ||
+      Entry.PrecisePlayerStructure ||
+      Entry.LegacyCollisionDisabled
+    ) {
+      return false;
+    }
+  }
+
+  const Bounds = Entry.Box || Entry;
+  return CircleTouchesBox(Position, Radius, Bounds);
+}
+
+function MovementBlocked(Position, Radius) {
+  for (const Entry of CollisionBoxes) {
+    if (EntryTouchesPlayer(Entry, Position, Radius)) return true;
+  }
+  return false;
+}
+
+function BoundsNormal(Position, Radius, Bounds, Motion, Target) {
+  if (!FiniteBounds(Bounds)) return false;
+  const MinX = Bounds.min.x - Radius;
+  const MaxX = Bounds.max.x + Radius;
+  const MinZ = Bounds.min.z - Radius;
+  const MaxZ = Bounds.max.z + Radius;
+
+  if (Position.x >= MinX && Position.x <= MaxX && Position.z >= MinZ && Position.z <= MaxZ) {
+    const DistLeft = Position.x - MinX;
+    const DistRight = MaxX - Position.x;
+    const DistBack = Position.z - MinZ;
+    const DistFront = MaxZ - Position.z;
+    const MinDistance = Math.min(DistLeft, DistRight, DistBack, DistFront);
+
+    if (MinDistance === DistLeft) Target.set(-1, 0, 0);
+    else if (MinDistance === DistRight) Target.set(1, 0, 0);
+    else if (MinDistance === DistBack) Target.set(0, 0, -1);
+    else Target.set(0, 0, 1);
+
+    if (Motion && Motion.dot(Target) > 0) Target.multiplyScalar(-1);
+    return true;
+  }
+
+  const ClosestX = THREE.MathUtils.clamp(Position.x, Bounds.min.x, Bounds.max.x);
+  const ClosestZ = THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z);
+  Target.set(Position.x - ClosestX, 0, Position.z - ClosestZ);
+  if (Target.lengthSq() <= 0.000001) return false;
+  Target.normalize();
+  return true;
+}
+
+function FindContact(Position, Radius, Motion) {
+  let BestEntry = null;
+  let BestScore = -Infinity;
+  MoveScratch.BestNormal.set(0, 0, 0);
+
+  for (const Entry of CollisionBoxes) {
+    if (!EntryTouchesPlayer(Entry, Position, Radius)) continue;
+    const Bounds = Entry.OriginalStructureBox || Entry.Box || Entry;
+    if (!BoundsNormal(Position, Radius, Bounds, Motion, MoveScratch.Normal)) continue;
+    const Score = Motion?.lengthSq() > 0.000001 ? -Motion.dot(MoveScratch.Normal) : 1;
+    if (Score > BestScore) {
+      BestScore = Score;
+      BestEntry = Entry;
+      MoveScratch.BestNormal.copy(MoveScratch.Normal);
+    }
+  }
+
+  if (!BestEntry) {
+    if (Motion?.lengthSq() > 0.000001) MoveScratch.BestNormal.copy(Motion).normalize().multiplyScalar(-1);
+    else MoveScratch.BestNormal.set(0, 0, 1);
+  }
+
+  return { Entry: BestEntry, Normal: MoveScratch.BestNormal };
+}
+
+function MovementRadius() {
+  const Reported = Number(Player()?.GetPlayerRadius?.()) || 0.23;
+  return THREE.MathUtils.clamp(Reported + 0.015, MOVEMENT_MIN_RADIUS, MOVEMENT_MAX_RADIUS);
+}
+
+function Depenetrate(Position, Radius) {
+  if (!MovementBlocked(Position, Radius)) return true;
+  MoveScratch.Start.copy(Position);
+
+  for (let Ring = 1; Ring <= DEPENETRATION_RINGS; Ring += 1) {
+    const Distance = Ring * 0.018;
+    for (let DirectionIndex = 0; DirectionIndex < DEPENETRATION_DIRECTIONS; DirectionIndex += 1) {
+      const Angle = Math.PI * 2 * DirectionIndex / DEPENETRATION_DIRECTIONS;
+      MoveScratch.Candidate.copy(MoveScratch.Start);
+      MoveScratch.Candidate.x += Math.cos(Angle) * Distance;
+      MoveScratch.Candidate.z += Math.sin(Angle) * Distance;
+      if (!MovementBlocked(MoveScratch.Candidate, Radius)) {
+        Position.copy(MoveScratch.Candidate);
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function SweepFraction(Start, Motion, Radius) {
+  MoveScratch.Candidate.copy(Start).add(Motion);
+  if (!MovementBlocked(MoveScratch.Candidate, Radius)) return 1;
+
+  let Low = 0;
+  let High = 1;
+  for (let Step = 0; Step < SWEEP_BINARY_STEPS; Step += 1) {
+    const Mid = (Low + High) * 0.5;
+    MoveScratch.Candidate.copy(Start).addScaledVector(Motion, Mid);
+    if (MovementBlocked(MoveScratch.Candidate, Radius)) High = Mid;
+    else Low = Mid;
+  }
+  return Low;
+}
+
+function RecordMovementContact(Position, Normal, Entry, Sliding, Desired) {
+  MovementContact.Position.copy(Position);
+  MovementContact.Normal.copy(Normal);
+  MovementContact.Sliding = Sliding;
+  MovementContact.Type = Entry?.Type || "Collision";
+  MovementContact.LastHit = performance.now();
+  const Inward = Desired?.lengthSq() > 0.000001 ? Math.max(0, -Desired.clone().normalize().dot(Normal)) : 1;
+  MovementContact.Strength = THREE.MathUtils.clamp(0.55 + Inward * 0.45, 0, 1);
+}
+
+function ResolveSlideMove(Camera, Desired) {
+  if (!Desired || Desired.lengthSq() <= 0.00000001) return;
+  const Radius = MovementRadius();
+  MoveScratch.Position.copy(Camera.position);
+  Depenetrate(MoveScratch.Position, Radius);
+  MoveScratch.Remaining.copy(Desired);
+
+  let HitSomething = false;
+  let LastEntry = null;
+  MoveScratch.BestNormal.set(0, 0, 0);
+
+  for (let Iteration = 0; Iteration < SLIDE_ITERATIONS; Iteration += 1) {
+    if (MoveScratch.Remaining.lengthSq() <= 0.00000001) break;
+
+    MoveScratch.Start.copy(MoveScratch.Position);
+    const Fraction = SweepFraction(MoveScratch.Start, MoveScratch.Remaining, Radius);
+    if (Fraction >= 0.9995) {
+      MoveScratch.Position.add(MoveScratch.Remaining);
+      MoveScratch.Remaining.set(0, 0, 0);
+      break;
+    }
+
+    HitSomething = true;
+    const RemainingLength = MoveScratch.Remaining.length();
+    const SkinFraction = RemainingLength > 0.000001 ? MOVEMENT_SKIN / RemainingLength : 0;
+    const SafeFraction = Math.max(0, Fraction - SkinFraction);
+    MoveScratch.Position.addScaledVector(MoveScratch.Remaining, SafeFraction);
+
+    MoveScratch.ContactPosition.copy(MoveScratch.Start).addScaledVector(MoveScratch.Remaining, Math.min(1, Fraction + 0.002));
+    const Contact = FindContact(MoveScratch.ContactPosition, Radius, MoveScratch.Remaining);
+    LastEntry = Contact.Entry;
+    MoveScratch.BestNormal.copy(Contact.Normal);
+
+    MoveScratch.Position.addScaledVector(MoveScratch.BestNormal, MOVEMENT_SKIN);
+    Depenetrate(MoveScratch.Position, Radius);
+
+    MoveScratch.Leftover.copy(MoveScratch.Remaining).multiplyScalar(1 - SafeFraction);
+    const IntoWall = MoveScratch.Leftover.dot(MoveScratch.BestNormal);
+    if (IntoWall < 0) MoveScratch.Leftover.addScaledVector(MoveScratch.BestNormal, -IntoWall);
+    MoveScratch.Leftover.multiplyScalar(0.995);
+    MoveScratch.Remaining.copy(MoveScratch.Leftover);
+  }
+
+  Camera.position.x = MoveScratch.Position.x;
+  Camera.position.z = MoveScratch.Position.z;
+
+  if (HitSomething) {
+    RecordMovementContact(
+      MoveScratch.Position,
+      MoveScratch.BestNormal,
+      LastEntry,
+      MoveScratch.Remaining.lengthSq() > 0.000001,
+      Desired
+    );
+  }
+}
+
+const OriginalMoveForward = PointerLockControls.prototype.moveForward;
+const OriginalMoveRight = PointerLockControls.prototype.moveRight;
+
+function GameControlCamera(Control) {
+  return Control?.object || Control?.camera || Game.Camera;
+}
+
+PointerLockControls.prototype.moveForward = function MoveForwardWithSlide(Distance) {
+  const Camera = GameControlCamera(this);
+  if (Camera !== Game.Camera || !Number.isFinite(Distance)) return OriginalMoveForward.call(this, Distance);
+  MoveScratch.Forward.set(0, 0, -1).applyQuaternion(Camera.quaternion);
+  MoveScratch.Forward.y = 0;
+  if (MoveScratch.Forward.lengthSq() <= 0.000001) return;
+  MoveScratch.Forward.normalize().multiplyScalar(Distance);
+  ResolveSlideMove(Camera, MoveScratch.Forward);
+};
+
+PointerLockControls.prototype.moveRight = function MoveRightWithSlide(Distance) {
+  const Camera = GameControlCamera(this);
+  if (Camera !== Game.Camera || !Number.isFinite(Distance)) return OriginalMoveRight.call(this, Distance);
+  MoveScratch.Right.set(1, 0, 0).applyQuaternion(Camera.quaternion);
+  MoveScratch.Right.y = 0;
+  if (MoveScratch.Right.lengthSq() <= 0.000001) return;
+  MoveScratch.Right.normalize().multiplyScalar(Distance);
+  ResolveSlideMove(Camera, MoveScratch.Right);
+};
 
 function EnsurePreciseStructureCollision() {
   for (const Entry of CollisionBoxes) {
@@ -197,6 +466,18 @@ document.addEventListener("mousemove", Event => {
   Event.stopImmediatePropagation();
 }, true);
 
+function DecayMovementContact(Delta, Now) {
+  if (Now - MovementContact.LastHit <= 110) return;
+  const Alpha = 1 - Math.exp(-Delta * 12);
+  MovementContact.Strength = THREE.MathUtils.lerp(MovementContact.Strength, 0, Alpha);
+  if (MovementContact.Strength < 0.015) {
+    MovementContact.Strength = 0;
+    MovementContact.Sliding = false;
+    MovementContact.Type = "";
+    MovementContact.Normal.set(0, 0, 0);
+  }
+}
+
 function CameraTick() {
   const Now = performance.now();
   const Delta = Math.min((Now - Orbit.LastTime) / 1000, 0.05);
@@ -204,6 +485,8 @@ function CameraTick() {
   const Controls = window.__STORE_POINTER_CONTROLS__ || null;
   const User = Settings();
   const Sensitivity = THREE.MathUtils.clamp(Number(User.Sensitivity) || 0.92, 0.35, 2);
+
+  DecayMovementContact(Delta, Now);
 
   if (Controls && !Player()?.IsThirdPerson?.()) Controls.pointerSpeed = Sensitivity;
 
@@ -225,4 +508,4 @@ function CameraTick() {
 CollisionMaintenance();
 setInterval(CollisionMaintenance, 250);
 requestAnimationFrame(CameraTick);
-window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R43";
+window.__STORE_RUNTIME_FIX_BUILD__ = "V0.12.3";
