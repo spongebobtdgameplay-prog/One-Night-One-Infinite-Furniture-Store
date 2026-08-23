@@ -5,7 +5,7 @@ const BasePlayer = window.__STORE_PLAYER__;
 if (!BasePlayer) throw new Error("Player controller must load before camera fix.");
 
 const THIRD_PERSON_TARGET_HEIGHT = 1.22;
-const THIRD_PERSON_CAMERA_HEIGHT = 0.18;
+const MIN_RENDER_CAMERA_Y = 0.34;
 const EYE_OFFSET = new THREE.Vector3(0, 0.045, 0.055);
 
 const State = {
@@ -15,6 +15,7 @@ const State = {
   Head: null,
   TempDirection: new THREE.Vector3(),
   TempEye: new THREE.Vector3(),
+  TempCorrection: new THREE.Vector3(),
   TempTarget: new THREE.Vector3(),
   SavedLogicalPosition: new THREE.Vector3()
 };
@@ -42,17 +43,8 @@ function AlignFirstPersonRig() {
   if (!State.Head?.isBone) return;
   State.TempEye.copy(EYE_OFFSET);
   State.Head.localToWorld(State.TempEye);
-  State.Pivot.position.x += State.Camera.position.x - State.TempEye.x;
-  State.Pivot.position.z += State.Camera.position.z - State.TempEye.z;
-  State.Pivot.updateMatrixWorld(true);
-}
-
-function AlignThirdPersonRig() {
-  RefreshRig();
-  if (!State.Pivot || !State.Camera) return;
-  State.Pivot.position.x = State.Camera.position.x;
-  State.Pivot.position.y = 0;
-  State.Pivot.position.z = State.Camera.position.z;
+  State.TempCorrection.copy(State.Camera.position).sub(State.TempEye);
+  State.Pivot.position.add(State.TempCorrection);
   State.Pivot.updateMatrixWorld(true);
 }
 
@@ -73,20 +65,20 @@ function Render(Renderer, Scene, Camera) {
     return;
   }
 
-  AlignThirdPersonRig();
+  if (State.Pivot) State.Pivot.position.y = 0;
   State.SavedLogicalPosition.copy(Camera.position);
   State.TempTarget.set(State.SavedLogicalPosition.x, THIRD_PERSON_TARGET_HEIGHT, State.SavedLogicalPosition.z);
 
   const OriginalRender = Renderer.render;
-  let Corrected = false;
-
+  let Checked = false;
   Renderer.render = function(RenderScene, RenderCamera) {
-    if (!Corrected && RenderCamera === Camera) {
-      Corrected = true;
-      const OrbitCenterY = THIRD_PERSON_TARGET_HEIGHT + THIRD_PERSON_CAMERA_HEIGHT;
-      RenderCamera.position.y = OrbitCenterY * 2 - RenderCamera.position.y;
-      RenderCamera.lookAt(State.TempTarget);
-      RenderCamera.updateMatrixWorld(true);
+    if (!Checked && RenderCamera === Camera) {
+      Checked = true;
+      if (RenderCamera.position.y < MIN_RENDER_CAMERA_Y) {
+        RenderCamera.position.y = MIN_RENDER_CAMERA_Y;
+        RenderCamera.lookAt(State.TempTarget);
+        RenderCamera.updateMatrixWorld(true);
+      }
     }
     return OriginalRender.call(Renderer, RenderScene, RenderCamera);
   };
@@ -99,7 +91,7 @@ function Render(Renderer, Scene, Camera) {
 }
 
 function GetPlayerRadius() {
-  return Math.min(BasePlayer.GetPlayerRadius?.() ?? 0.43, 0.30);
+  return Math.min(BasePlayer.GetPlayerRadius?.() ?? 0.43, 0.28);
 }
 
 window.__STORE_PLAYER__ = {
@@ -109,4 +101,4 @@ window.__STORE_PLAYER__ = {
   GetPlayerRadius
 };
 
-window.__STORE_CAMERA_FIX_BUILD__ = "V0.11-R2";
+window.__STORE_CAMERA_FIX_BUILD__ = "V0.11-R3";
