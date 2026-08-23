@@ -19,10 +19,10 @@ const STAMINA_REGEN = 18;
 const STAMINA_REGEN_DELAY = 0.75;
 const STAMINA_RECOVER_THRESHOLD = 24;
 const THIRD_PERSON_DEFAULT = 4.8;
-const THIRD_PERSON_MIN = 1.45;
+const THIRD_PERSON_MIN = 0.48;
 const THIRD_PERSON_MAX = 6.0;
-const FIRST_PERSON_SWITCH = 1.08;
-const OUT_FROM_FIRST = 2.0;
+const FIRST_PERSON_SWITCH = 0.32;
+const OUT_FROM_FIRST = 1.35;
 const ZOOM_PIXELS_TO_DISTANCE = 0.0135;
 const CAMERA_TARGET_HEIGHT = 1.26;
 const CAMERA_SHOULDER = 0.26;
@@ -584,7 +584,7 @@ function CameraDistance(Target, Desired) {
     if (![Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite)) continue;
     const Hit = SegmentAabbDistance(Target, Desired, Bounds);
     if (Hit === null) continue;
-    Allowed = Math.min(Allowed, Math.max(0.55, Hit * SegmentLength - 0.12));
+    Allowed = Math.min(Allowed, Math.max(0.36, Hit * SegmentLength - 0.08));
   }
 
   return Allowed;
@@ -790,4 +790,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R24";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R29";
