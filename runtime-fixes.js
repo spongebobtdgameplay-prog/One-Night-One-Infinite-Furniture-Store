@@ -8,8 +8,8 @@ const StartButton = document.getElementById("StartButton");
 const BootStatus = document.getElementById("BootStatus");
 const CollisionBoxes = Game.CollisionBoxes;
 const ProcessedInstances = new WeakSet();
-const BODY_HALF_WIDTH = 0.32;
-const BODY_HALF_DEPTH = 0.20;
+const BODY_HALF_WIDTH = 0.24;
+const BODY_HALF_DEPTH = 0.15;
 
 const CollidableModels = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
@@ -76,19 +76,6 @@ function BodyTouchesRealBox(Position, Bounds) {
   return Distance <= EllipseRadiusInDirection(DX, DZ);
 }
 
-function MakePreciseStructureBounds(RealBounds) {
-  function Touching() {
-    return BodyTouchesRealBox(Game.Camera.position, RealBounds);
-  }
-  const Min = { y: RealBounds.min.y };
-  const Max = { y: RealBounds.max.y };
-  Object.defineProperty(Min, "x", { get: () => Touching() ? Game.Camera.position.x : Infinity });
-  Object.defineProperty(Min, "z", { get: () => Touching() ? Game.Camera.position.z : Infinity });
-  Object.defineProperty(Max, "x", { get: () => Touching() ? Game.Camera.position.x : -Infinity });
-  Object.defineProperty(Max, "z", { get: () => Touching() ? Game.Camera.position.z : -Infinity });
-  return { min: Min, max: Max };
-}
-
 function EnsurePreciseStructureCollision() {
   for (const Entry of CollisionBoxes) {
     if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type) || Entry.PrecisePlayerStructure) continue;
@@ -96,7 +83,7 @@ function EnsurePreciseStructureCollision() {
     if (!Bounds?.min || !Bounds?.max) continue;
     if (![Bounds.min.x, Bounds.min.z, Bounds.max.x, Bounds.max.z].every(Number.isFinite)) continue;
     Entry.OriginalStructureBox = Bounds;
-    Entry.Box = MakePreciseStructureBounds(Bounds);
+    Entry.TestPlayerCollision = Position => BodyTouchesRealBox(Position, Bounds);
     Entry.PrecisePlayerStructure = true;
   }
 }
@@ -148,4 +135,4 @@ function Tick() {
 }
 
 Tick();
-window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R10";
+window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R24";
