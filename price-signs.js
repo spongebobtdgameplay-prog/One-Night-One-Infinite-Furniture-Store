@@ -2,7 +2,7 @@ import * as THREE from "three";
 
 const Game = window.__STORE_GAME__;
 
-if (!Game?.Scene || !Game?.Camera) throw new Error("Game must load before price signs.");
+if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes) throw new Error("Game must load before price signs.");
 
 const FurniturePrices = {
   Couch_Large1: 699.99,
@@ -25,9 +25,14 @@ const FurniturePrices = {
   Window_Large1: 319.99
 };
 
-const Discounts = [15, 20, 25, 30, 35, 40, 50];
+const Discounts = [10, 15, 20, 25, 30, 35, 40, 50];
 const ActiveSigns = new Map();
 const TempCenter = new THREE.Vector3();
+const TempSize = new THREE.Vector3();
+const TempLook = new THREE.Vector3();
+const SIGN_CLEARANCE = 0.62;
+const SIGN_SPACING = 1.35;
+const MAX_SIGNS_PER_CHUNK = 2;
 
 function Hash(Text) {
   let Value = 2166136261;
@@ -38,21 +43,47 @@ function Hash(Text) {
   return Value >>> 0;
 }
 
+function RandomFromSeed(Seed) {
+  let Value = Seed >>> 0;
+  return () => {
+    Value += 0x6D2B79F5;
+    let Result = Value;
+    Result = Math.imul(Result ^ Result >>> 15, Result | 1);
+    Result ^= Result + Math.imul(Result ^ Result >>> 7, Result | 61);
+    return ((Result ^ Result >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function ModelKey(Model) {
+  return `${Model.userData?.ChunkId || "store"}:${Model.name}:${Model.position.x.toFixed(3)}:${Model.position.z.toFixed(3)}`;
+}
+
 function Money(Value) {
   return `$${Value.toFixed(2)}`;
 }
 
-function SalePrice(BasePrice, Discount) {
-  const Raw = BasePrice * (1 - Discount / 100);
-  return Math.max(9.99, Math.floor(Raw / 10) * 10 - 0.01);
+function RoundRetailPrice(Value) {
+  const Rounded = Math.max(10, Math.round(Value / 10) * 10);
+  return Rounded - 0.01;
 }
 
-function CreatePriceTexture(Name, BasePrice, Discount) {
+function PriceForModel(Model, Random) {
+  const Base = FurniturePrices[Model.name];
+  const Variation = 0.88 + Random() * 0.24;
+  return RoundRetailPrice(Base * Variation);
+}
+
+function SalePrice(BasePrice, Discount) {
+  return RoundRetailPrice(BasePrice * (1 - Discount / 100));
+}
+
+function CreatePriceTexture(Name, BasePrice, Discount, Variant) {
   const Canvas = document.createElement("canvas");
   Canvas.width = 640;
   Canvas.height = 400;
   const Context = Canvas.getContext("2d");
   const Sale = SalePrice(BasePrice, Discount);
+  const Banner = Variant === 0 ? `${Discount}% OFF` : Variant === 1 ? "STORE SPECIAL" : Variant === 2 ? "LIMITED DEAL" : "CLEARANCE";
 
   Context.fillStyle = "#f4e8cb";
   Context.fillRect(0, 0, Canvas.width, Canvas.height);
@@ -60,13 +91,13 @@ function CreatePriceTexture(Name, BasePrice, Discount) {
   Context.lineWidth = 18;
   Context.strokeRect(9, 9, Canvas.width - 18, Canvas.height - 18);
 
-  Context.fillStyle = "#b72f25";
+  Context.fillStyle = Variant === 3 ? "#8f251f" : "#b72f25";
   Context.fillRect(0, 0, Canvas.width, 92);
   Context.fillStyle = "#fff7e8";
-  Context.font = "900 58px Arial";
+  Context.font = "900 54px Arial";
   Context.textAlign = "center";
   Context.textBaseline = "middle";
-  Context.fillText(`${Discount}% OFF`, Canvas.width / 2, 46);
+  Context.fillText(Banner, Canvas.width / 2, 46);
 
   Context.fillStyle = "#1f1a16";
   Context.font = "800 34px Arial";
@@ -78,13 +109,13 @@ function CreatePriceTexture(Name, BasePrice, Discount) {
 
   Context.fillStyle = "#66584a";
   Context.font = "700 31px Arial";
-  Context.fillText(`WAS ${Money(BasePrice)}`, Canvas.width / 2, 286);
+  Context.fillText(`WAS ${Money(BasePrice)} • SAVE ${Discount}%`, Canvas.width / 2, 286);
 
   Context.fillStyle = "#2d5a39";
   Context.fillRect(70, 322, Canvas.width - 140, 48);
   Context.fillStyle = "#eff8ec";
   Context.font = "800 24px Arial";
-  Context.fillText("IN-STORE SPECIAL • WHILE STOCK LASTS", Canvas.width / 2, 346);
+  Context.fillText("IN-STORE OFFER • WHILE STOCK LASTS", Canvas.width / 2, 346);
 
   const Texture = new THREE.CanvasTexture(Canvas);
   Texture.colorSpace = THREE.SRGBColorSpace;
@@ -92,18 +123,82 @@ function CreatePriceTexture(Name, BasePrice, Discount) {
   return Texture;
 }
 
-function CreatePriceSign(Model) {
-  const BasePrice = FurniturePrices[Model.name];
-  if (!BasePrice) return null;
+function IsBlockedByStructure(X, Z, Radius = SIGN_CLEARANCE) {
+  for (const Entry of Game.CollisionBoxes) {
+    if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type)) continue;
+    const Bounds = Entry.Box || Entry;
+    if (!Bounds?.min || !Bounds?.max) continue;
+    if (
+      X + Radius > Bounds.min.x && X - Radius < Bounds.max.x &&
+      Z + Radius > Bounds.min.z && Z - Radius < Bounds.max.z
+    ) return true;
+  }
+  return false;
+}
 
-  const Seed = Hash(`${Model.name}:${Model.userData?.ChunkId || "store"}:${Model.position.x.toFixed(2)}:${Model.position.z.toFixed(2)}`);
-  const Discount = Discounts[Seed % Discounts.length];
-  const Texture = CreatePriceTexture(Model.name, BasePrice, Discount);
+function IsTooCloseToAnotherSign(X, Z, IgnoreModel = null) {
+  const MinimumSquared = SIGN_SPACING * SIGN_SPACING;
+  for (const [Model, Sign] of ActiveSigns) {
+    if (Model === IgnoreModel || !Sign?.parent) continue;
+    const DX = Sign.position.x - X;
+    const DZ = Sign.position.z - Z;
+    if (DX * DX + DZ * DZ < MinimumSquared) return true;
+  }
+  return false;
+}
+
+function CandidatePositions(Model, Random) {
+  const Bounds = new THREE.Box3().setFromObject(Model);
+  Bounds.getCenter(TempCenter);
+  Bounds.getSize(TempSize);
+
+  const Gap = 0.48 + Random() * 0.32;
+  const JitterX = (Random() - 0.5) * Math.min(0.72, Math.max(0.18, TempSize.x * 0.24));
+  const JitterZ = (Random() - 0.5) * Math.min(0.72, Math.max(0.18, TempSize.z * 0.24));
+  const Candidates = [
+    new THREE.Vector3(Bounds.max.x + Gap, 0, TempCenter.z + JitterZ),
+    new THREE.Vector3(Bounds.min.x - Gap, 0, TempCenter.z - JitterZ),
+    new THREE.Vector3(TempCenter.x + JitterX, 0, Bounds.max.z + Gap),
+    new THREE.Vector3(TempCenter.x - JitterX, 0, Bounds.min.z - Gap)
+  ];
+
+  for (let Index = Candidates.length - 1; Index > 0; Index -= 1) {
+    const Other = Math.floor(Random() * (Index + 1));
+    [Candidates[Index], Candidates[Other]] = [Candidates[Other], Candidates[Index]];
+  }
+
+  const Y = THREE.MathUtils.clamp(Bounds.min.y + 1.02 + (Random() - 0.5) * 0.12, 0.90, 1.40);
+  for (const Candidate of Candidates) Candidate.y = Y;
+  return Candidates;
+}
+
+function FindSignPlacement(Model, Random) {
+  const Candidates = CandidatePositions(Model, Random);
+  for (const Candidate of Candidates) {
+    if (Math.abs(Candidate.x) > 16.1) continue;
+    if (IsBlockedByStructure(Candidate.x, Candidate.z)) continue;
+    if (IsTooCloseToAnotherSign(Candidate.x, Candidate.z, Model)) continue;
+    return Candidate;
+  }
+  return null;
+}
+
+function CreatePriceSign(Model) {
+  const Seed = Hash(ModelKey(Model));
+  const Random = RandomFromSeed(Seed);
+  const Placement = FindSignPlacement(Model, Random);
+  if (!Placement) return null;
+
+  const BasePrice = PriceForModel(Model, Random);
+  const Discount = Discounts[Math.floor(Random() * Discounts.length) % Discounts.length];
+  const Variant = Math.floor(Random() * 4);
+  const Texture = CreatePriceTexture(Model.name, BasePrice, Discount, Variant);
 
   const Group = new THREE.Group();
   Group.name = "FurniturePriceSign";
   Group.userData.ChunkId = Model.userData?.ChunkId;
   Group.userData.SourceModel = Model;
+  Group.userData.Seed = Seed;
 
   const FrameMaterial = new THREE.MeshStandardMaterial({ color: 0x29231e, roughness: 0.82, metalness: 0.12 });
   const BoardMaterial = new THREE.MeshStandardMaterial({ color: 0xd8bd8b, roughness: 0.9, metalness: 0 });
@@ -127,8 +222,7 @@ function CreatePriceSign(Model) {
   Front.position.z = 0.054;
   Group.add(Front);
 
-  const BackMaterial = FaceMaterial.clone();
-  const Back = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.53), BackMaterial);
+  const Back = new THREE.Mesh(new THREE.PlaneGeometry(0.84, 0.53), FaceMaterial.clone());
   Back.position.z = -0.054;
   Back.rotation.y = Math.PI;
   Group.add(Back);
@@ -141,36 +235,59 @@ function CreatePriceSign(Model) {
   Base.position.y = -0.77;
   Group.add(Base);
 
-  const Bounds = new THREE.Box3().setFromObject(Model);
-  Bounds.getCenter(TempCenter);
-  const Side = TempCenter.x < 0 ? 1 : -1;
-  const X = Side > 0 ? Bounds.max.x + 0.48 : Bounds.min.x - 0.48;
-  const Y = THREE.MathUtils.clamp(Bounds.min.y + 1.02, 0.92, 1.42);
-  Group.position.set(X, Y, TempCenter.z);
+  Group.position.copy(Placement);
+  const FacingDirection = Random() < 0.5 ? 1 : -1;
+  const FacingJitter = (Random() - 0.5) * 0.20;
+  TempLook.set(Group.position.x + Math.sin(FacingJitter), Group.position.y, Group.position.z + FacingDirection * 5);
+  Group.lookAt(TempLook);
 
   Game.Scene.add(Group);
   return Group;
 }
 
-function UpdateSigns() {
+function DesiredModels() {
+  const ByChunk = new Map();
   for (const Object of Game.Scene.children) {
-    if (!Object?.isObject3D || !FurniturePrices[Object.name]) continue;
-    if (!Object.userData?.ChunkId || ActiveSigns.has(Object)) continue;
-    const Sign = CreatePriceSign(Object);
-    if (Sign) ActiveSigns.set(Object, Sign);
+    if (!Object?.isObject3D || !FurniturePrices[Object.name] || !Object.userData?.ChunkId) continue;
+    const ChunkId = Object.userData.ChunkId;
+    if (!ByChunk.has(ChunkId)) ByChunk.set(ChunkId, []);
+    ByChunk.get(ChunkId).push(Object);
   }
 
-  for (const [Model, Sign] of ActiveSigns) {
-    if (!Model.parent) {
-      Sign.parent?.remove(Sign);
-      ActiveSigns.delete(Model);
-      continue;
+  const Desired = new Set();
+  for (const [ChunkId, Models] of ByChunk) {
+    Models.sort((Left, Right) => ModelKey(Left).localeCompare(ModelKey(Right)));
+    const ChunkRandom = RandomFromSeed(Hash(`sign-density:${ChunkId}`));
+    const Quota = Math.min(Models.length, MAX_SIGNS_PER_CHUNK, ChunkRandom() < 0.72 ? 1 : 2);
+    const Ranked = Models.map(Model => ({ Model, Score: Hash(`sign-choice:${ModelKey(Model)}`) / 4294967295 }));
+    Ranked.sort((Left, Right) => Left.Score - Right.Score);
+    for (let Index = 0; Index < Quota; Index += 1) Desired.add(Ranked[Index].Model);
+  }
+  return Desired;
+}
+
+let FrameCounter = 0;
+function UpdateSigns() {
+  FrameCounter += 1;
+  if (FrameCounter % 18 === 1) {
+    const Desired = DesiredModels();
+
+    for (const [Model, Sign] of ActiveSigns) {
+      if (!Model.parent || !Desired.has(Model)) {
+        Sign.parent?.remove(Sign);
+        ActiveSigns.delete(Model);
+      }
     }
-    Sign.lookAt(Game.Camera.position.x, Sign.position.y, Game.Camera.position.z);
+
+    for (const Model of Desired) {
+      if (ActiveSigns.has(Model)) continue;
+      const Sign = CreatePriceSign(Model);
+      if (Sign) ActiveSigns.set(Model, Sign);
+    }
   }
 
   requestAnimationFrame(UpdateSigns);
 }
 
 requestAnimationFrame(UpdateSigns);
-window.__STORE_PRICE_SIGN_BUILD__ = "V0.11-R3";
+window.__STORE_PRICE_SIGN_BUILD__ = "V0.11-R6";
