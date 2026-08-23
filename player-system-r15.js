@@ -30,6 +30,9 @@ const CAMERA_FLOOR = 0.34;
 const CAMERA_CEILING = 3.48;
 const CAMERA_PADDING = 0.10;
 const EYE_OFFSET = new THREE.Vector3(0, 0.035, 0.065);
+const FIRST_PERSON_BODY_FORWARD = 0.16;
+const FIRST_PERSON_BODY_DROP = 0.035;
+const FIRST_PERSON_NEAR = 0.018;
 const PLAYER_RADIUS = 0.34;
 
 const State = {
@@ -301,6 +304,14 @@ function AlignFirstPersonBody() {
   State.Head.localToWorld(State.TempEye);
   State.TempCorrection.copy(State.Camera.position).sub(State.TempEye);
   State.Pivot.position.add(State.TempCorrection);
+
+  State.TempForward.set(0, 0, -1).applyQuaternion(State.Camera.quaternion);
+  State.TempForward.y = 0;
+  if (State.TempForward.lengthSq() > 0.000001) {
+    State.TempForward.normalize();
+    State.Pivot.position.addScaledVector(State.TempForward, FIRST_PERSON_BODY_FORWARD);
+  }
+  State.Pivot.position.y -= FIRST_PERSON_BODY_DROP;
   State.Pivot.updateMatrixWorld(true);
 }
 
@@ -311,19 +322,21 @@ function ApplyFirstPersonPose() {
   const Swing = State.Moving ? Math.sin(State.Phase) : 0;
   const Step = State.Moving ? Math.sin(State.Phase * 2 + 0.4) : 0;
   const SpeedRatio = THREE.MathUtils.clamp(State.SmoothedSpeed / (State.Sprinting ? SPRINT_SPEED : WALK_SPEED), 0, 1.1);
-  const SprintLift = State.Sprinting ? 0.12 : 0;
+  const WalkSwing = Swing * 0.34 * SpeedRatio;
+  const ArmReach = (State.Sprinting ? -1.30 : -1.16) - Pitch * 0.10;
+  const ElbowBend = State.Sprinting ? -0.98 : -0.76;
 
-  ApplyBone("Torso", Pitch * 0.08, 0, 0);
-  ApplyBone("Chest", Pitch * 0.22, 0, Step * 0.008 * SpeedRatio);
-  ApplyBone("Neck", -Pitch * 0.16, 0, 0);
-  ApplyBone("ShoulderL", 0.04, 0.02, 0.11);
-  ApplyBone("ShoulderR", 0.04, -0.02, -0.11);
-  ApplyBone("UpperArmL", -0.86 - SprintLift + Swing * 0.10 * SpeedRatio - Pitch * 0.10, 0.10, 0.36);
-  ApplyBone("UpperArmR", -0.86 - SprintLift - Swing * 0.10 * SpeedRatio - Pitch * 0.10, -0.10, -0.36);
-  ApplyBone("LowerArmL", -0.40 + Math.max(0, -Swing) * 0.08 * SpeedRatio, 0, 0.05);
-  ApplyBone("LowerArmR", -0.40 + Math.max(0, Swing) * 0.08 * SpeedRatio, 0, -0.05);
-  ApplyBone("WristL", Step * 0.025 * SpeedRatio, 0, 0);
-  ApplyBone("WristR", -Step * 0.025 * SpeedRatio, 0, 0);
+  ApplyBone("Torso", Pitch * 0.06, 0, 0);
+  ApplyBone("Chest", Pitch * 0.16, 0, Step * 0.010 * SpeedRatio);
+  ApplyBone("Neck", -Pitch * 0.12, 0, 0);
+  ApplyBone("ShoulderL", 0.06, 0.035, 0.065);
+  ApplyBone("ShoulderR", 0.06, -0.035, -0.065);
+  ApplyBone("UpperArmL", ArmReach + WalkSwing, 0.10, 0.18);
+  ApplyBone("UpperArmR", ArmReach - WalkSwing, -0.10, -0.18);
+  ApplyBone("LowerArmL", ElbowBend - Math.max(0, -Swing) * 0.12 * SpeedRatio, 0.015, 0.025);
+  ApplyBone("LowerArmR", ElbowBend - Math.max(0, Swing) * 0.12 * SpeedRatio, -0.015, -0.025);
+  ApplyBone("WristL", Step * 0.04 * SpeedRatio, 0, 0.015);
+  ApplyBone("WristR", -Step * 0.04 * SpeedRatio, 0, -0.015);
 }
 
 function SegmentAabbDistance(Start, End, Bounds) {
@@ -419,6 +432,12 @@ function RenderFirstPerson(Renderer, Scene, Camera) {
   ApplyFirstPersonPose();
   AlignFirstPersonBody();
 
+  const SavedNear = Camera.near;
+  if (Camera.near > FIRST_PERSON_NEAR) {
+    Camera.near = FIRST_PERSON_NEAR;
+    Camera.updateProjectionMatrix();
+  }
+
   if (State.Head) {
     State.SavedHeadScale.copy(State.Head.scale);
     State.Head.scale.setScalar(0.001);
@@ -431,6 +450,10 @@ function RenderFirstPerson(Renderer, Scene, Camera) {
     if (State.Head) {
       State.Head.scale.copy(State.SavedHeadScale);
       State.Head.updateMatrixWorld(true);
+    }
+    if (Camera.near !== SavedNear) {
+      Camera.near = SavedNear;
+      Camera.updateProjectionMatrix();
     }
     RestorePose();
   }
@@ -554,4 +577,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R15";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R17";
