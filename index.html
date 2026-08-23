@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#090b0d">
+  <title>One Night, One Infinite Furniture Store</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <main id="GameRoot">
+    <canvas id="GameCanvas" aria-label="3D game view"></canvas>
+
+    <section id="BootScreen" class="Overlay ScreenVisible">
+      <div class="BootCard">
+        <p class="Eyebrow">GREAT OLD GAMES</p>
+        <h1>ONE NIGHT,<br>ONE INFINITE<br>FURNITURE STORE</h1>
+        <p class="Tagline">The doors are locked. The aisles keep changing. Make it until morning.</p>
+        <button id="StartButton" class="PrimaryButton" type="button">ENTER THE STORE</button>
+        <p id="BootStatus" class="BootStatus">Preparing store...</p>
+      </div>
+    </section>
+
+    <section id="Hud" class="Hud Hidden" aria-live="polite">
+      <div class="HudTop">
+        <div class="ClockCard">
+          <span class="HudLabel">STORE TIME</span>
+          <strong id="GameClock">11:57 PM</strong>
+        </div>
+        <div class="ObjectiveCard">
+          <span class="HudLabel">OBJECTIVE</span>
+          <strong id="ObjectiveText">Find a way through the showroom.</strong>
+        </div>
+      </div>
+
+      <div class="Crosshair" aria-hidden="true"></div>
+
+      <div class="ControlsHint">
+        <span>WASD MOVE</span>
+        <span>SHIFT RUN</span>
+        <span>MOUSE LOOK</span>
+        <span>ESC RELEASE MOUSE</span>
+      </div>
+    </section>
+
+    <section id="ErrorPanel" class="ErrorPanel Hidden">
+      <strong>STORE LOAD ERROR</strong>
+      <span id="ErrorText"></span>
+    </section>
+  </main>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>
