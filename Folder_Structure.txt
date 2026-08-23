@@ -1,0 +1,39 @@
+OneNightStore/
+├── assets/
+│   ├── models/
+│   │   ├── environment/
+│   │   ├── furniture/
+│   │   ├── store/
+│   │   ├── food_court/
+│   │   ├── maintenance/
+│   │   ├── lighting/
+│   │   ├── items/
+│   │   └── characters/
+│   ├── textures/
+│   │   ├── pbr/
+│   │   ├── decals/
+│   │   ├── signs/
+│   │   └── ui/
+│   ├── animations/
+│   ├── audio/
+│   │   ├── ambience/
+│   │   ├── footsteps/
+│   │   ├── entities/
+│   │   ├── props/
+│   │   ├── ui/
+│   │   └── music/
+│   └── fonts/
+├── data/
+│   ├── asset-manifest.json
+│   ├── procgen-modules.json
+│   └── item-definitions.json
+├── src/
+│   ├── rendering/
+│   ├── procgen/
+│   ├── gameplay/
+│   ├── multiplayer/
+│   ├── audio/
+│   └── ui/
+└── tools/
+    ├── blender/
+    └── asset-validation/

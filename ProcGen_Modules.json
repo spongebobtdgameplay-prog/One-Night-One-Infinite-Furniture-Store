@@ -1,0 +1,213 @@
+{
+  "gridMeters": 4,
+  "moduleRules": {
+    "showroom_living": {
+      "weight": 18,
+      "minSize": [
+        2,
+        2
+      ],
+      "maxSize": [
+        5,
+        4
+      ],
+      "required": [
+        "FUR_Sofa_2Seat",
+        "FUR_CoffeeTable",
+        "FUR_LampFloor"
+      ],
+      "optional": [
+        "FUR_Armchair",
+        "FUR_Rug",
+        "FUR_PlantArtificial",
+        "FUR_PictureFrame",
+        "FUR_TVStand"
+      ]
+    },
+    "showroom_bedroom": {
+      "weight": 16,
+      "minSize": [
+        2,
+        2
+      ],
+      "maxSize": [
+        4,
+        4
+      ],
+      "required": [
+        "FUR_BedDouble",
+        "FUR_Nightstand"
+      ],
+      "optional": [
+        "FUR_Dresser",
+        "FUR_Wardrobe",
+        "FUR_LampTable",
+        "FUR_Rug",
+        "FUR_Mirror"
+      ]
+    },
+    "showroom_dining": {
+      "weight": 14,
+      "minSize": [
+        2,
+        2
+      ],
+      "maxSize": [
+        4,
+        4
+      ],
+      "required": [
+        "FUR_DiningTable",
+        "FUR_DiningChair"
+      ],
+      "optional": [
+        "FUR_CabinetGlass",
+        "FUR_LampCeiling",
+        "FUR_Rug"
+      ]
+    },
+    "showroom_kitchen": {
+      "weight": 12,
+      "minSize": [
+        2,
+        2
+      ],
+      "maxSize": [
+        5,
+        3
+      ],
+      "required": [
+        "FUR_KitchenCabinet",
+        "FUR_Countertop"
+      ],
+      "optional": [
+        "FUR_KitchenIsland",
+        "FUR_SinkCabinet",
+        "FUR_Stool"
+      ]
+    },
+    "warehouse": {
+      "weight": 14,
+      "minSize": [
+        3,
+        4
+      ],
+      "maxSize": [
+        8,
+        8
+      ],
+      "required": [
+        "STR_WarehouseRack",
+        "STR_Pallet",
+        "STR_FlatPackBox"
+      ],
+      "optional": [
+        "STR_Forklift",
+        "STR_PalletJack",
+        "STR_FlatbedCart"
+      ]
+    },
+    "food_court": {
+      "weight": 6,
+      "minSize": [
+        3,
+        3
+      ],
+      "maxSize": [
+        6,
+        5
+      ],
+      "required": [
+        "FOOD_Counter",
+        "FOOD_Table",
+        "FOOD_Chair"
+      ],
+      "optional": [
+        "FOOD_MenuBoard",
+        "FOOD_Tray",
+        "FOOD_Cup",
+        "FOOD_FoodProp"
+      ]
+    },
+    "maintenance": {
+      "weight": 7,
+      "minSize": [
+        2,
+        2
+      ],
+      "maxSize": [
+        4,
+        4
+      ],
+      "required": [
+        "BKR_BreakerPanel",
+        "BKR_UtilityShelf"
+      ],
+      "optional": [
+        "BKR_Generator",
+        "BKR_Workbench",
+        "BKR_ToolCabinet",
+        "ENV_PipeSet"
+      ]
+    },
+    "loading_dock": {
+      "weight": 5,
+      "minSize": [
+        4,
+        4
+      ],
+      "maxSize": [
+        7,
+        6
+      ],
+      "required": [
+        "ENV_LoadingDock",
+        "ENV_Door_Loading",
+        "STR_Pallet"
+      ],
+      "optional": [
+        "STR_Forklift",
+        "STR_PalletJack",
+        "STR_LoadingBollard"
+      ]
+    },
+    "bathroom_display": {
+      "weight": 4,
+      "minSize": [
+        2,
+        2
+      ],
+      "maxSize": [
+        3,
+        3
+      ],
+      "required": [
+        "FUR_BathVanity",
+        "FUR_Mirror"
+      ],
+      "optional": [
+        "FUR_ToiletDisplay",
+        "FUR_SinkCabinet"
+      ]
+    },
+    "dead_end_fake_room": {
+      "weight": 4,
+      "minSize": [
+        1,
+        1
+      ],
+      "maxSize": [
+        2,
+        2
+      ],
+      "required": [
+        "ENV_Wall_Clean"
+      ],
+      "optional": [
+        "STR_DirectorySign",
+        "FUR_LampFloor",
+        "FUR_PictureFrame"
+      ]
+    }
+  }
+}

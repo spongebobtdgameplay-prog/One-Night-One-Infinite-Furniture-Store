@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "basePath": "./assets/models/",
+  "assets": {
+    "ENV_Wall_Clean_A": {
+      "url": "environment/ENV_Wall_Clean_A_LOD0.glb",
+      "category": "environment",
+      "collision": "box"
+    },
+    "FUR_Sofa_3Seat_A": {
+      "url": "furniture/FUR_Sofa_3Seat_A_LOD0.glb",
+      "category": "furniture",
+      "collision": "compound"
+    },
+    "STR_WarehouseRack_A": {
+      "url": "store/STR_WarehouseRack_A_LOD0.glb",
+      "category": "store",
+      "collision": "box"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+MaterialID,Use,Maps,PreferredSource
+MAT_PaintedWall_Cream,painted plaster/drywall,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_PaintedWall_Dirty,dirty painted wall,"BaseColor,Roughness,Normal,AO",ambientCG
+MAT_RustySteel_Heavy,heavy corroded steel,"BaseColor,Roughness,Metallic,Normal,AO,Height",Poly Haven/ambientCG
+MAT_RustySteel_Light,light surface rust steel,"BaseColor,Roughness,Metallic,Normal,AO",Poly Haven/ambientCG
+MAT_BrushedSteel,brushed metal,"BaseColor,Roughness,Metallic,Normal",Poly Haven/ambientCG
+MAT_GalvanizedSteel,galvanized metal,"BaseColor,Roughness,Metallic,Normal",Poly Haven/ambientCG
+MAT_Concrete_Polished,polished concrete,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Concrete_Dirty,dirty warehouse concrete,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Carpet_LowPile,commercial carpet,"BaseColor,Roughness,Normal,AO",ambientCG
+MAT_Carpet_Showroom,showroom carpet,"BaseColor,Roughness,Normal,AO",ambientCG
+MAT_Tile_Ceramic,ceramic floor tile,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Linoleum,retail linoleum,"BaseColor,Roughness,Normal",ambientCG
+MAT_Laminate_Oak,oak laminate,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Laminate_Dark,dark laminate,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Wood_Plywood,plywood,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Wood_Pallet,rough pallet wood,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Cardboard,corrugated cardboard,"BaseColor,Roughness,Normal,AO",ambientCG
+MAT_Plastic_White,white plastic,"BaseColor,Roughness",Custom
+MAT_Plastic_Black,black plastic,"BaseColor,Roughness",Custom
+MAT_Rubber,black rubber,"BaseColor,Roughness,Normal",ambientCG
+MAT_Glass_Clear,clear glass,"Transmission,Roughness",Custom shader
+MAT_Glass_Dirty,dirty glass,"BaseColor,Roughness,Normal,Opacity",Custom + grime
+MAT_Fabric_Sofa,woven upholstery,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_Leather,worn leather,"BaseColor,Roughness,Normal,AO",Poly Haven/ambientCG
+MAT_CeilingTile,acoustic ceiling tile,"BaseColor,Roughness,Normal,AO",ambientCG
+MAT_Grime,generic dirt/grime decal,"BaseColor,Normal,Opacity",Custom/CC0
+MAT_RustDecal,rust edge/decal sheet,"BaseColor,Roughness,Normal,Opacity",Custom/CC0
+MAT_Scratches,scratch/scuff decal,"Normal,Roughness,Opacity",Custom/CC0
+MAT_WetFloor,wet/puddle material,"Roughness,Normal,Opacity",Custom shader

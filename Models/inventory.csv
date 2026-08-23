@@ -1,0 +1,20 @@
+Category,Model,Description,Triangles,Vertices
+LivingRoom,Couch_Large1,"Large showroom sofa",1460,804
+LivingRoom,Couch_L,"L-shaped sectional sofa",1428,816
+LivingRoom,Chair_2,"Upholstered chair",352,535
+LivingRoom,Table_RoundLarge,"Large round table",592,736
+Storage,Shelf_Large,"Large shelving unit",220,416
+Storage,Bookshelf,"Bookshelf / display shelf",120,240
+Bedroom,Bed_King,"King-size showroom bed",676,643
+Bedroom,Bed_Single,"Single showroom bed",536,546
+Bedroom,NightStand_2,"Nightstand",184,304
+Kitchen,Kitchen_Cabinet1,"Kitchen cabinet",68,108
+Kitchen,Kitchen_Fridge,"Refrigerator",404,508
+Kitchen,Kitchen_Oven,"Oven / stove",524,830
+Kitchen,Kitchen_Sink,"Sink unit",444,754
+Bathroom,Bathroom_Bathtub,"Bathtub",248,278
+Bathroom,Bathroom_Toilet,"Toilet",402,426
+Lighting,Light_Floor1,"Floor lamp",226,208
+Architecture,Door_3,"Interior door",856,952
+Architecture,Window_Large1,"Large window",252,378
+Decor,Houseplant_3,"Houseplant",412,656

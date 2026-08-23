@@ -1,0 +1,297 @@
+{
+  "game": "One Night, One Infinite Furniture Store",
+  "source": "Quaternius Ultimate Home Interior Pack",
+  "license": "CC0 / Public Domain",
+  "notes": [
+    "These are curated base meshes for the store.",
+    "GLB versions preserve the original source material colors.",
+    "For the final horror look, retexture selected hero assets with the PBR material kit."
+  ],
+  "models": [
+    {
+      "name": "Couch_Large1",
+      "category": "LivingRoom",
+      "description": "Large showroom sofa",
+      "glb": "LivingRoom/GLB/Couch_Large1.glb",
+      "obj": "LivingRoom/Source_OBJ/Couch_Large1.obj",
+      "mtl": "LivingRoom/Source_OBJ/Couch_Large1.mtl",
+      "triangles": 1460,
+      "vertices": 804,
+      "sourceBounds": [
+        5.4755,
+        2.1064,
+        1.9923
+      ]
+    },
+    {
+      "name": "Couch_L",
+      "category": "LivingRoom",
+      "description": "L-shaped sectional sofa",
+      "glb": "LivingRoom/GLB/Couch_L.glb",
+      "obj": "LivingRoom/Source_OBJ/Couch_L.obj",
+      "mtl": "LivingRoom/Source_OBJ/Couch_L.mtl",
+      "triangles": 1428,
+      "vertices": 816,
+      "sourceBounds": [
+        5.6144,
+        2.2613,
+        4.327
+      ]
+    },
+    {
+      "name": "Chair_2",
+      "category": "LivingRoom",
+      "description": "Upholstered chair",
+      "glb": "LivingRoom/GLB/Chair_2.glb",
+      "obj": "LivingRoom/Source_OBJ/Chair_2.obj",
+      "mtl": "LivingRoom/Source_OBJ/Chair_2.mtl",
+      "triangles": 352,
+      "vertices": 535,
+      "sourceBounds": [
+        0.7617,
+        1.6894,
+        0.8254
+      ]
+    },
+    {
+      "name": "Table_RoundLarge",
+      "category": "LivingRoom",
+      "description": "Large round table",
+      "glb": "LivingRoom/GLB/Table_RoundLarge.glb",
+      "obj": "LivingRoom/Source_OBJ/Table_RoundLarge.obj",
+      "mtl": "LivingRoom/Source_OBJ/Table_RoundLarge.mtl",
+      "triangles": 592,
+      "vertices": 736,
+      "sourceBounds": [
+        3.7134,
+        1.1212,
+        1.941
+      ]
+    },
+    {
+      "name": "Shelf_Large",
+      "category": "Storage",
+      "description": "Large shelving unit",
+      "glb": "Storage/GLB/Shelf_Large.glb",
+      "obj": "Storage/Source_OBJ/Shelf_Large.obj",
+      "mtl": "Storage/Source_OBJ/Shelf_Large.mtl",
+      "triangles": 220,
+      "vertices": 416,
+      "sourceBounds": [
+        3.3809,
+        4.4381,
+        0.756
+      ]
+    },
+    {
+      "name": "Bookshelf",
+      "category": "Storage",
+      "description": "Bookshelf / display shelf",
+      "glb": "Storage/GLB/Bookshelf.glb",
+      "obj": "Storage/Source_OBJ/Bookshelf.obj",
+      "mtl": "Storage/Source_OBJ/Bookshelf.mtl",
+      "triangles": 120,
+      "vertices": 240,
+      "sourceBounds": [
+        2.3183,
+        4.4381,
+        0.756
+      ]
+    },
+    {
+      "name": "Bed_King",
+      "category": "Bedroom",
+      "description": "King-size showroom bed",
+      "glb": "Bedroom/GLB/Bed_King.glb",
+      "obj": "Bedroom/Source_OBJ/Bed_King.obj",
+      "mtl": "Bedroom/Source_OBJ/Bed_King.mtl",
+      "triangles": 676,
+      "vertices": 643,
+      "sourceBounds": [
+        3.0641,
+        1.2146,
+        3.9528
+      ]
+    },
+    {
+      "name": "Bed_Single",
+      "category": "Bedroom",
+      "description": "Single showroom bed",
+      "glb": "Bedroom/GLB/Bed_Single.glb",
+      "obj": "Bedroom/Source_OBJ/Bed_Single.obj",
+      "mtl": "Bedroom/Source_OBJ/Bed_Single.mtl",
+      "triangles": 536,
+      "vertices": 546,
+      "sourceBounds": [
+        1.9791,
+        1.3546,
+        3.94
+      ]
+    },
+    {
+      "name": "NightStand_2",
+      "category": "Bedroom",
+      "description": "Nightstand",
+      "glb": "Bedroom/GLB/NightStand_2.glb",
+      "obj": "Bedroom/Source_OBJ/NightStand_2.obj",
+      "mtl": "Bedroom/Source_OBJ/NightStand_2.mtl",
+      "triangles": 184,
+      "vertices": 304,
+      "sourceBounds": [
+        0.9522,
+        0.9453,
+        0.9522
+      ]
+    },
+    {
+      "name": "Kitchen_Cabinet1",
+      "category": "Kitchen",
+      "description": "Kitchen cabinet",
+      "glb": "Kitchen/GLB/Kitchen_Cabinet1.glb",
+      "obj": "Kitchen/Source_OBJ/Kitchen_Cabinet1.obj",
+      "mtl": "Kitchen/Source_OBJ/Kitchen_Cabinet1.mtl",
+      "triangles": 68,
+      "vertices": 108,
+      "sourceBounds": [
+        1.0108,
+        1.5671,
+        1.0715
+      ]
+    },
+    {
+      "name": "Kitchen_Fridge",
+      "category": "Kitchen",
+      "description": "Refrigerator",
+      "glb": "Kitchen/GLB/Kitchen_Fridge.glb",
+      "obj": "Kitchen/Source_OBJ/Kitchen_Fridge.obj",
+      "mtl": "Kitchen/Source_OBJ/Kitchen_Fridge.mtl",
+      "triangles": 404,
+      "vertices": 508,
+      "sourceBounds": [
+        1.2976,
+        3.3084,
+        1.3019
+      ]
+    },
+    {
+      "name": "Kitchen_Oven",
+      "category": "Kitchen",
+      "description": "Oven / stove",
+      "glb": "Kitchen/GLB/Kitchen_Oven.glb",
+      "obj": "Kitchen/Source_OBJ/Kitchen_Oven.obj",
+      "mtl": "Kitchen/Source_OBJ/Kitchen_Oven.mtl",
+      "triangles": 524,
+      "vertices": 830,
+      "sourceBounds": [
+        1.0108,
+        1.6172,
+        1.1204
+      ]
+    },
+    {
+      "name": "Kitchen_Sink",
+      "category": "Kitchen",
+      "description": "Sink unit",
+      "glb": "Kitchen/GLB/Kitchen_Sink.glb",
+      "obj": "Kitchen/Source_OBJ/Kitchen_Sink.obj",
+      "mtl": "Kitchen/Source_OBJ/Kitchen_Sink.mtl",
+      "triangles": 444,
+      "vertices": 754,
+      "sourceBounds": [
+        1.0108,
+        1.9244,
+        1.1204
+      ]
+    },
+    {
+      "name": "Bathroom_Bathtub",
+      "category": "Bathroom",
+      "description": "Bathtub",
+      "glb": "Bathroom/GLB/Bathroom_Bathtub.glb",
+      "obj": "Bathroom/Source_OBJ/Bathroom_Bathtub.obj",
+      "mtl": "Bathroom/Source_OBJ/Bathroom_Bathtub.mtl",
+      "triangles": 248,
+      "vertices": 278,
+      "sourceBounds": [
+        1.6075,
+        1.2602,
+        3.8997
+      ]
+    },
+    {
+      "name": "Bathroom_Toilet",
+      "category": "Bathroom",
+      "description": "Toilet",
+      "glb": "Bathroom/GLB/Bathroom_Toilet.glb",
+      "obj": "Bathroom/Source_OBJ/Bathroom_Toilet.obj",
+      "mtl": "Bathroom/Source_OBJ/Bathroom_Toilet.mtl",
+      "triangles": 402,
+      "vertices": 426,
+      "sourceBounds": [
+        1.1967,
+        1.9007,
+        1.6914
+      ]
+    },
+    {
+      "name": "Light_Floor1",
+      "category": "Lighting",
+      "description": "Floor lamp",
+      "glb": "Lighting/GLB/Light_Floor1.glb",
+      "obj": "Lighting/Source_OBJ/Light_Floor1.obj",
+      "mtl": "Lighting/Source_OBJ/Light_Floor1.mtl",
+      "triangles": 226,
+      "vertices": 208,
+      "sourceBounds": [
+        0.2809,
+        1.6033,
+        0.2953
+      ]
+    },
+    {
+      "name": "Door_3",
+      "category": "Architecture",
+      "description": "Interior door",
+      "glb": "Architecture/GLB/Door_3.glb",
+      "obj": "Architecture/Source_OBJ/Door_3.obj",
+      "mtl": "Architecture/Source_OBJ/Door_3.mtl",
+      "triangles": 856,
+      "vertices": 952,
+      "sourceBounds": [
+        1.7358,
+        4.1878,
+        0.4159
+      ]
+    },
+    {
+      "name": "Window_Large1",
+      "category": "Architecture",
+      "description": "Large window",
+      "glb": "Architecture/GLB/Window_Large1.glb",
+      "obj": "Architecture/Source_OBJ/Window_Large1.obj",
+      "mtl": "Architecture/Source_OBJ/Window_Large1.mtl",
+      "triangles": 252,
+      "vertices": 378,
+      "sourceBounds": [
+        1.8324,
+        1.6985,
+        0.1411
+      ]
+    },
+    {
+      "name": "Houseplant_3",
+      "category": "Decor",
+      "description": "Houseplant",
+      "glb": "Decor/GLB/Houseplant_3.glb",
+      "obj": "Decor/Source_OBJ/Houseplant_3.obj",
+      "mtl": "Decor/Source_OBJ/Houseplant_3.mtl",
+      "triangles": 412,
+      "vertices": 656,
+      "sourceBounds": [
+        0.3426,
+        0.8449,
+        0.3383
+      ]
+    }
+  ]
+}
