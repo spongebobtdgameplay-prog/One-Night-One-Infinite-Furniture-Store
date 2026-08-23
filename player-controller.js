@@ -15,7 +15,11 @@ const THIRD_PERSON_DEFAULT = 3.2;
 const THIRD_PERSON_MAX = 4.25;
 const THIRD_PERSON_MIN = 1.35;
 const CAMERA_SHOULDER = 0.22;
-const CAMERA_HEIGHT = 0.34;
+const CAMERA_HEIGHT = 0.18;
+const CAMERA_TARGET_HEIGHT = 1.22;
+const CAMERA_PITCH_LIMIT = 0.62;
+const TURN_RESPONSIVENESS = 15;
+const ZOOM_RESPONSIVENESS = 18;
 const ARM_WEIGHT_THRESHOLD = 0.78;
 
 const State = {
@@ -42,11 +46,14 @@ const State = {
   Exhausted: false,
   LastSprintAt: -Infinity,
   Zoom: 0,
+  ZoomTarget: 0,
   ManualPhase: 0,
   MouseSwayX: 0,
   MouseSwayY: 0,
   SmoothedSwayX: 0,
   SmoothedSwayY: 0,
+  HasPlayerPosition: false,
+  LastPlayerPosition: new THREE.Vector3(),
   LastFrameAt: performance.now(),
   TempDirection: new THREE.Vector3(),
   TempHorizontal: new THREE.Vector3(),
@@ -64,6 +71,10 @@ const Loader = new GLTFLoader();
 
 function IsGameplayActive() {
   return Boolean(document.pointerLockElement) && !document.getElementById("Hud")?.classList.contains("Hidden");
+}
+
+function IsThirdPerson() {
+  return State.ZoomTarget >= THIRD_PERSON_MIN;
 }
 
 function CanSprint() {
@@ -96,6 +107,17 @@ function UpdateStamina(Delta, Time) {
   }
 }
 
+function UpdateZoom(Delta) {
+  if (State.ZoomTarget < THIRD_PERSON_MIN) {
+    State.Zoom = 0;
+    return;
+  }
+  if (State.Zoom < THIRD_PERSON_MIN) State.Zoom = THIRD_PERSON_MIN;
+  const Alpha = 1 - Math.exp(-Delta * ZOOM_RESPONSIVENESS);
+  State.Zoom = THREE.MathUtils.lerp(State.Zoom, State.ZoomTarget, Alpha);
+  if (Math.abs(State.Zoom - State.ZoomTarget) < 0.002) State.Zoom = State.ZoomTarget;
+}
+
 function UpdateHud() {
   const Fill = document.getElementById("StaminaFill");
   const Value = document.getElementById("StaminaValue");
@@ -107,7 +129,7 @@ function UpdateHud() {
     Wrap.classList.toggle("IsSprinting", State.Sprinting);
     Wrap.classList.toggle("IsExhausted", State.Exhausted);
   }
-  if (Mode) Mode.textContent = State.Zoom >= 0.15 ? "THIRD" : "FIRST";
+  if (Mode) Mode.textContent = IsThirdPerson() ? "THIRD" : "FIRST";
 }
 
 function FindBone(Model, Name) {
@@ -344,26 +366,47 @@ function ApplyFirstPersonPose(Delta) {
   ApplyRelativeBoneRotation("lowerarm_r", -0.28 + State.SmoothedSwayY * 0.12, 0, -0.04);
 }
 
-function UpdateCharacterTransform() {
+function NormalizeAngle(Angle) {
+  return Math.atan2(Math.sin(Angle), Math.cos(Angle));
+}
+
+function UpdateCharacterTransform(Delta) {
   if (!State.CharacterReady || !State.Pivot || !State.Camera) return;
-  State.Pivot.position.set(State.Camera.position.x, 0, State.Camera.position.z);
-  State.Camera.getWorldDirection(State.TempDirection);
-  State.TempDirection.y = 0;
-  if (State.TempDirection.lengthSq() < 0.0001) return;
+  const CurrentX = State.Camera.position.x;
+  const CurrentZ = State.Camera.position.z;
+  State.Pivot.position.set(CurrentX, 0, CurrentZ);
+
+  if (!State.HasPlayerPosition) {
+    State.LastPlayerPosition.set(CurrentX, 0, CurrentZ);
+    State.HasPlayerPosition = true;
+    State.Camera.getWorldDirection(State.TempDirection);
+    State.TempDirection.y = 0;
+    if (State.TempDirection.lengthSq() > 0.0001) {
+      State.TempDirection.normalize();
+      State.Pivot.rotation.y = Math.atan2(State.TempDirection.x, State.TempDirection.z);
+    }
+    return;
+  }
+
+  State.TempDirection.set(CurrentX - State.LastPlayerPosition.x, 0, CurrentZ - State.LastPlayerPosition.z);
+  State.LastPlayerPosition.set(CurrentX, 0, CurrentZ);
+  if (!State.Moving || State.TempDirection.lengthSq() < 0.000001) return;
   State.TempDirection.normalize();
-  State.Pivot.rotation.y = Math.atan2(State.TempDirection.x, State.TempDirection.z);
+  const TargetYaw = Math.atan2(State.TempDirection.x, State.TempDirection.z);
+  const Difference = NormalizeAngle(TargetYaw - State.Pivot.rotation.y);
+  State.Pivot.rotation.y += Difference * (1 - Math.exp(-Delta * TURN_RESPONSIVENESS));
 }
 
 function UpdateCharacter(Delta, Time) {
   if (!State.CharacterReady) return;
-  UpdateCharacterTransform();
+  UpdateCharacterTransform(Delta);
   const DesiredState = State.Sprinting ? "sprint" : State.Moving ? "walk" : "idle";
   if (State.Mixer && State.Actions.size) {
     SetAnimationState(DesiredState);
     State.Mixer.update(Delta);
   } else ManualPose(Delta, Time);
-  if (State.Zoom < 0.15) ApplyFirstPersonPose(Delta);
-  SetViewVisibility(State.Zoom < 0.15);
+  if (!IsThirdPerson()) ApplyFirstPersonPose(Delta);
+  SetViewVisibility(!IsThirdPerson());
 }
 
 function SegmentAabbDistance(Start, End, Bounds, Padding = 0.10) {
@@ -411,7 +454,7 @@ function CameraDistance(Target, Desired) {
 
 function Render(Renderer, Scene, Camera) {
   if (!Renderer || !Camera) return;
-  if (State.Zoom < 0.15 || !State.CharacterReady) {
+  if (!IsThirdPerson() || !State.CharacterReady) {
     SetViewVisibility(true);
     Renderer.render(Scene, Camera);
     return;
@@ -420,31 +463,38 @@ function Render(Renderer, Scene, Camera) {
   SetViewVisibility(false);
   State.SavedPosition.copy(Camera.position);
   State.SavedQuaternion.copy(Camera.quaternion);
-  Camera.getWorldDirection(State.TempHorizontal);
+
+  State.TempHorizontal.set(0, 0, -1).applyQuaternion(State.SavedQuaternion);
+  const Vertical = THREE.MathUtils.clamp(State.TempHorizontal.y, -CAMERA_PITCH_LIMIT, CAMERA_PITCH_LIMIT);
   State.TempHorizontal.y = 0;
   if (State.TempHorizontal.lengthSq() < 0.0001) State.TempHorizontal.set(0, 0, -1);
   State.TempHorizontal.normalize();
+  const HorizontalScale = Math.sqrt(Math.max(0.0001, 1 - Vertical * Vertical));
+  State.TempDirection.copy(State.TempHorizontal).multiplyScalar(HorizontalScale);
+  State.TempDirection.y = Vertical;
+  State.TempDirection.normalize();
+
   State.TempRight.set(1, 0, 0).applyQuaternion(State.SavedQuaternion);
   State.TempRight.y = 0;
   if (State.TempRight.lengthSq() < 0.0001) State.TempRight.set(1, 0, 0);
   State.TempRight.normalize();
 
-  State.TempTarget.set(State.SavedPosition.x, 1.40, State.SavedPosition.z);
+  State.TempTarget.set(State.SavedPosition.x, CAMERA_TARGET_HEIGHT, State.SavedPosition.z);
+  const CameraZoom = Math.max(THIRD_PERSON_MIN, State.Zoom);
   State.TempDesired.copy(State.TempTarget)
-    .addScaledVector(State.TempHorizontal, -State.Zoom)
-    .addScaledVector(State.TempRight, CAMERA_SHOULDER)
-    .add(new THREE.Vector3(0, CAMERA_HEIGHT, 0));
-
+    .addScaledVector(State.TempDirection, -CameraZoom)
+    .addScaledVector(State.TempRight, CAMERA_SHOULDER);
+  State.TempDesired.y += CAMERA_HEIGHT;
   State.TempDesired.x = THREE.MathUtils.clamp(State.TempDesired.x, -16.55, 16.55);
-  State.TempDesired.y = THREE.MathUtils.clamp(State.TempDesired.y, 0.55, 3.35);
+  State.TempDesired.y = THREE.MathUtils.clamp(State.TempDesired.y, 0.36, 3.46);
 
   const Allowed = CameraDistance(State.TempTarget, State.TempDesired);
   State.TempOffset.copy(State.TempDesired).sub(State.TempTarget);
   if (State.TempOffset.lengthSq() > 0.0001) State.TempOffset.normalize().multiplyScalar(Allowed);
   Camera.position.copy(State.TempTarget).add(State.TempOffset);
   Camera.position.x = THREE.MathUtils.clamp(Camera.position.x, -16.55, 16.55);
-  Camera.position.y = THREE.MathUtils.clamp(Camera.position.y, 0.55, 3.35);
-  Camera.lookAt(State.TempTarget.x, State.TempTarget.y + 0.08, State.TempTarget.z);
+  Camera.position.y = THREE.MathUtils.clamp(Camera.position.y, 0.36, 3.46);
+  Camera.lookAt(State.TempTarget);
   Camera.updateMatrixWorld(true);
   Renderer.render(Scene, Camera);
   Camera.position.copy(State.SavedPosition);
@@ -502,6 +552,7 @@ async function LoadCharacter() {
       State.AnimationState = "idle";
     }
     State.CharacterReady = true;
+    State.HasPlayerPosition = false;
     SetViewVisibility(true);
     if (Status && Status.textContent === "Loading store worker...") Status.textContent = PreviousStatus || "Player ready.";
   } catch (Error) {
@@ -525,6 +576,7 @@ function Frame() {
   const Delta = Math.min((NowMs - State.LastFrameAt) / 1000, 0.05);
   State.LastFrameAt = NowMs;
   const Time = NowMs / 1000;
+  UpdateZoom(Delta);
   UpdateStamina(Delta, Time);
   UpdateCharacter(Delta, Time);
   UpdateHud();
@@ -535,13 +587,20 @@ addEventListener("wheel", Event => {
   if (!IsGameplayActive()) return;
   Event.preventDefault();
   const Direction = Math.sign(Event.deltaY);
-  if (Direction > 0 && State.Zoom < THIRD_PERSON_MIN) State.Zoom = THIRD_PERSON_MIN;
-  else State.Zoom = THREE.MathUtils.clamp(State.Zoom + Direction * 0.5, 0, THIRD_PERSON_MAX);
+  if (!Direction) return;
+  if (Direction > 0) {
+    if (State.ZoomTarget < THIRD_PERSON_MIN) State.ZoomTarget = THIRD_PERSON_MIN;
+    else State.ZoomTarget = Math.min(THIRD_PERSON_MAX, State.ZoomTarget + 0.45);
+  } else if (State.ZoomTarget <= THIRD_PERSON_MIN + 0.001) {
+    State.ZoomTarget = 0;
+  } else {
+    State.ZoomTarget = Math.max(THIRD_PERSON_MIN, State.ZoomTarget - 0.45);
+  }
 }, { passive: false });
 
 addEventListener("keydown", Event => {
   if (Event.code !== "KeyV" || Event.repeat) return;
-  State.Zoom = State.Zoom < 0.15 ? THIRD_PERSON_DEFAULT : 0;
+  State.ZoomTarget = IsThirdPerson() ? 0 : THIRD_PERSON_DEFAULT;
   Event.preventDefault();
 });
 
@@ -558,8 +617,8 @@ window.__STORE_PLAYER__ = {
   GetPlayerRadius,
   IsSprinting: () => State.Sprinting,
   GetStamina: () => State.Stamina,
-  IsThirdPerson: () => State.Zoom >= 0.15
+  IsThirdPerson
 };
 
-window.__STORE_PLAYER_BUILD__ = "V0.10";
+window.__STORE_PLAYER_BUILD__ = "V0.11";
 requestAnimationFrame(Frame);
