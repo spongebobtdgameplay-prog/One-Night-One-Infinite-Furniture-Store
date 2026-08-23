@@ -13,6 +13,9 @@ const CAMERA_TARGET_HEIGHT = 1.22;
 const CAMERA_HEIGHT = 0.18;
 const CAMERA_SHOULDER = 0.22;
 const CAMERA_PITCH_LIMIT = 0.62;
+const CAMERA_POSITION_SMOOTHING = 22;
+const CAMERA_TARGET_SMOOTHING = 26;
+const EYE_LOCAL_OFFSET = new THREE.Vector3(0, 0.055, 0.075);
 
 const State = {
   Scene: null,
@@ -20,6 +23,7 @@ const State = {
   Renderer: null,
   CollisionBoxes: null,
   Pivot: null,
+  Head: null,
   Moving: false,
   Sprinting: false,
   Zoom: 0,
@@ -29,14 +33,21 @@ const State = {
   BodyMeshes: [],
   ArmMeshes: [],
   MeshCount: -1,
+  EyeAnchorLocal: new THREE.Vector3(),
+  EyeAnchorReady: false,
+  ThirdPersonInitialized: false,
   TempDirection: new THREE.Vector3(),
   TempHorizontal: new THREE.Vector3(),
   TempRight: new THREE.Vector3(),
   TempTarget: new THREE.Vector3(),
   TempDesired: new THREE.Vector3(),
   TempOffset: new THREE.Vector3(),
+  TempEye: new THREE.Vector3(),
+  TempEyeOffset: new THREE.Vector3(),
   SavedCameraPosition: new THREE.Vector3(),
   SavedCameraQuaternion: new THREE.Quaternion(),
+  SmoothedTarget: new THREE.Vector3(),
+  SmoothedDesired: new THREE.Vector3(),
   TempEuler: new THREE.Euler(),
   TempQuaternion: new THREE.Quaternion()
 };
@@ -63,6 +74,7 @@ function SyncBaseMode() {
 function UpdateZoom(Delta) {
   if (!IsThirdPerson()) {
     State.Zoom = 0;
+    State.ThirdPersonInitialized = false;
     return;
   }
   if (State.Zoom < THIRD_PERSON_MIN) State.Zoom = THIRD_PERSON_MIN;
@@ -76,24 +88,61 @@ function RefreshCharacterReferences() {
   const Pivot = State.Scene.getObjectByName("PlayerCharacterPivot");
   if (!Pivot) return;
   State.Pivot = Pivot;
+  State.Head = Pivot.getObjectByName("Head") || null;
+
   let Count = 0;
   Pivot.traverse(Object => {
     if (Object.isMesh) Count += 1;
   });
-  if (Count === State.MeshCount) return;
-  State.MeshCount = Count;
-  State.BodyMeshes.length = 0;
-  State.ArmMeshes.length = 0;
-  Pivot.traverse(Object => {
-    if (!Object.isMesh) return;
-    if ((Object.name || "").endsWith("_FirstPersonArms")) State.ArmMeshes.push(Object);
-    else State.BodyMeshes.push(Object);
-  });
+  if (Count !== State.MeshCount) {
+    State.MeshCount = Count;
+    State.BodyMeshes.length = 0;
+    State.ArmMeshes.length = 0;
+    Pivot.traverse(Object => {
+      if (!Object.isMesh) return;
+      if ((Object.name || "").endsWith("_FirstPersonArms")) State.ArmMeshes.push(Object);
+      else State.BodyMeshes.push(Object);
+    });
+  }
+
+  if (!State.EyeAnchorReady && State.Head?.isBone) {
+    Pivot.updateMatrixWorld(true);
+    State.TempEye.copy(EYE_LOCAL_OFFSET);
+    State.Head.localToWorld(State.TempEye);
+    State.EyeAnchorLocal.copy(State.TempEye);
+    Pivot.worldToLocal(State.EyeAnchorLocal);
+    State.EyeAnchorReady = true;
+  }
 }
 
 function SetThirdPersonVisibility() {
   for (const Mesh of State.BodyMeshes) Mesh.visible = true;
   for (const Mesh of State.ArmMeshes) Mesh.visible = false;
+}
+
+function GetCameraYawDirection() {
+  State.Camera.getWorldDirection(State.TempDirection);
+  State.TempDirection.y = 0;
+  if (State.TempDirection.lengthSq() < 0.000001) State.TempDirection.set(0, 0, 1);
+  return State.TempDirection.normalize();
+}
+
+function AlignFirstPersonRigToEyes() {
+  if (!State.Pivot || !State.Camera || !State.EyeAnchorReady) return;
+  GetCameraYawDirection();
+  State.Pivot.rotation.y = Math.atan2(State.TempDirection.x, State.TempDirection.z);
+  State.TempEyeOffset.copy(State.EyeAnchorLocal).applyQuaternion(State.Pivot.quaternion);
+  State.Pivot.position.copy(State.Camera.position).sub(State.TempEyeOffset);
+  State.Pivot.updateMatrixWorld(true);
+}
+
+function AlignThirdPersonRigToPlayer() {
+  if (!State.Pivot || !State.Camera || !State.EyeAnchorReady) return;
+  State.TempEyeOffset.copy(State.EyeAnchorLocal).applyQuaternion(State.Pivot.quaternion);
+  State.Pivot.position.x = State.Camera.position.x - State.TempEyeOffset.x;
+  State.Pivot.position.y = 0;
+  State.Pivot.position.z = State.Camera.position.z - State.TempEyeOffset.z;
+  State.Pivot.updateMatrixWorld(true);
 }
 
 function FindBone(Name) {
@@ -134,6 +183,20 @@ function ApplyFirstPersonArmMotion(Delta, Time) {
 
 function RestoreBones(SavedBones) {
   for (const [Bone, Quaternion] of SavedBones) Bone.quaternion.copy(Quaternion);
+}
+
+function SaveArmTransforms() {
+  const Saved = [];
+  for (const Mesh of State.ArmMeshes) {
+    Saved.push({ Mesh, Position: Mesh.position.clone() });
+    Mesh.position.y += 0.035;
+    Mesh.position.z += 0.10;
+  }
+  return Saved;
+}
+
+function RestoreArmTransforms(Saved) {
+  for (const Entry of Saved) Entry.Mesh.position.copy(Entry.Position);
 }
 
 function SegmentAabbDistance(Start, End, Bounds, Padding = 0.1) {
@@ -179,8 +242,18 @@ function CameraDistance(Target, Desired) {
   return Allowed;
 }
 
-function RenderThirdPerson(Renderer, Scene, Camera) {
+function RenderFirstPerson(Renderer, Scene, Camera, Delta, Time) {
+  AlignFirstPersonRigToEyes();
+  const SavedBones = ApplyFirstPersonArmMotion(Delta, Time);
+  const SavedArmTransforms = SaveArmTransforms();
+  BasePlayer.Render(Renderer, Scene, Camera);
+  RestoreArmTransforms(SavedArmTransforms);
+  RestoreBones(SavedBones);
+}
+
+function RenderThirdPerson(Renderer, Scene, Camera, Delta) {
   SetThirdPersonVisibility();
+  AlignThirdPersonRigToPlayer();
   State.SavedCameraPosition.copy(Camera.position);
   State.SavedCameraQuaternion.copy(Camera.quaternion);
 
@@ -189,10 +262,6 @@ function RenderThirdPerson(Renderer, Scene, Camera) {
   State.TempHorizontal.y = 0;
   if (State.TempHorizontal.lengthSq() < 0.0001) State.TempHorizontal.set(0, 0, -1);
   State.TempHorizontal.normalize();
-  const HorizontalScale = Math.sqrt(Math.max(0.0001, 1 - Vertical * Vertical));
-  State.TempDirection.copy(State.TempHorizontal).multiplyScalar(HorizontalScale);
-  State.TempDirection.y = Vertical;
-  State.TempDirection.normalize();
 
   State.TempRight.set(1, 0, 0).applyQuaternion(State.SavedCameraQuaternion);
   State.TempRight.y = 0;
@@ -200,20 +269,32 @@ function RenderThirdPerson(Renderer, Scene, Camera) {
   State.TempRight.normalize();
 
   State.TempTarget.set(State.SavedCameraPosition.x, CAMERA_TARGET_HEIGHT, State.SavedCameraPosition.z);
+  const Distance = Math.max(THIRD_PERSON_MIN, State.Zoom);
   State.TempDesired.copy(State.TempTarget)
-    .addScaledVector(State.TempDirection, -Math.max(THIRD_PERSON_MIN, State.Zoom))
+    .addScaledVector(State.TempHorizontal, -Distance)
     .addScaledVector(State.TempRight, CAMERA_SHOULDER);
-  State.TempDesired.y += CAMERA_HEIGHT;
+  State.TempDesired.y += CAMERA_HEIGHT + Vertical * Distance;
   State.TempDesired.x = THREE.MathUtils.clamp(State.TempDesired.x, -16.55, 16.55);
   State.TempDesired.y = THREE.MathUtils.clamp(State.TempDesired.y, 0.36, 3.46);
 
-  const Allowed = CameraDistance(State.TempTarget, State.TempDesired);
-  State.TempOffset.copy(State.TempDesired).sub(State.TempTarget);
+  if (!State.ThirdPersonInitialized) {
+    State.SmoothedTarget.copy(State.TempTarget);
+    State.SmoothedDesired.copy(State.TempDesired);
+    State.ThirdPersonInitialized = true;
+  } else {
+    const TargetAlpha = 1 - Math.exp(-Delta * CAMERA_TARGET_SMOOTHING);
+    const PositionAlpha = 1 - Math.exp(-Delta * CAMERA_POSITION_SMOOTHING);
+    State.SmoothedTarget.lerp(State.TempTarget, TargetAlpha);
+    State.SmoothedDesired.lerp(State.TempDesired, PositionAlpha);
+  }
+
+  const Allowed = CameraDistance(State.SmoothedTarget, State.SmoothedDesired);
+  State.TempOffset.copy(State.SmoothedDesired).sub(State.SmoothedTarget);
   if (State.TempOffset.lengthSq() > 0.0001) State.TempOffset.normalize().multiplyScalar(Allowed);
-  Camera.position.copy(State.TempTarget).add(State.TempOffset);
+  Camera.position.copy(State.SmoothedTarget).add(State.TempOffset);
   Camera.position.x = THREE.MathUtils.clamp(Camera.position.x, -16.55, 16.55);
   Camera.position.y = THREE.MathUtils.clamp(Camera.position.y, 0.36, 3.46);
-  Camera.lookAt(State.TempTarget);
+  Camera.lookAt(State.SmoothedTarget);
   Camera.updateMatrixWorld(true);
   Renderer.render(Scene, Camera);
   Camera.position.copy(State.SavedCameraPosition);
@@ -236,19 +317,13 @@ function Render(Renderer, Scene, Camera) {
   UpdateZoom(Delta);
   RefreshCharacterReferences();
 
-  if (!IsThirdPerson()) {
-    const SavedBones = ApplyFirstPersonArmMotion(Delta, Now / 1000);
-    BasePlayer.Render(Renderer, Scene, Camera);
-    RestoreBones(SavedBones);
-    return;
-  }
-
   if (!State.Pivot) {
     BasePlayer.Render(Renderer, Scene, Camera);
     return;
   }
 
-  RenderThirdPerson(Renderer, Scene, Camera);
+  if (IsThirdPerson()) RenderThirdPerson(Renderer, Scene, Camera, Delta);
+  else RenderFirstPerson(Renderer, Scene, Camera, Delta, Now / 1000);
 }
 
 function GetMovementSpeed(WantsSprint, Moving) {
@@ -297,4 +372,4 @@ window.__STORE_PLAYER__ = {
   IsThirdPerson
 };
 
-window.__STORE_PLAYER_POLISH_BUILD__ = "V0.13";
+window.__STORE_PLAYER_POLISH_BUILD__ = "V0.14";
