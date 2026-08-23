@@ -48,6 +48,7 @@ function EnterThirdPerson() {
     Current.pointerSpeed = 0;
   }
   Canvas.style.cursor = "default";
+  document.body.style.cursor = "default";
 }
 
 function EnterFirstPerson() {
@@ -57,7 +58,8 @@ function EnterFirstPerson() {
     Current.isLocked = Boolean(document.pointerLockElement);
     Current.pointerSpeed = 1;
   }
-  Canvas.style.cursor = document.pointerLockElement ? "none" : "crosshair";
+  Canvas.style.cursor = "none";
+  document.body.style.cursor = "none";
 }
 
 function SyncMode() {
@@ -68,13 +70,23 @@ function SyncMode() {
 }
 
 addEventListener("mousedown", Event => {
-  if (!ThirdPerson() || Event.button !== 2) return;
   const Current = CaptureKnownControls();
   if (!Current) return;
-  OrbitHeld = true;
-  Current.isLocked = true;
-  Current.pointerSpeed = 1;
-  Event.preventDefault();
+
+  if (ThirdPerson()) {
+    if (Event.button !== 2) return;
+    OrbitHeld = true;
+    Current.isLocked = true;
+    Current.pointerSpeed = 1;
+    Event.preventDefault();
+    return;
+  }
+
+  if (Event.button === 0 && !document.pointerLockElement) {
+    try {
+      OriginalLock.call(Current);
+    } catch {}
+  }
 });
 
 addEventListener("mouseup", Event => {
@@ -100,10 +112,12 @@ addEventListener("pointerlockchange", () => {
     Current.isLocked = true;
     Current.pointerSpeed = OrbitHeld ? 1 : 0;
     Canvas.style.cursor = "default";
+    document.body.style.cursor = "default";
   } else {
     Current.isLocked = Boolean(document.pointerLockElement);
     Current.pointerSpeed = 1;
-    Canvas.style.cursor = document.pointerLockElement ? "none" : "crosshair";
+    Canvas.style.cursor = "none";
+    document.body.style.cursor = "none";
   }
 });
 
@@ -123,4 +137,4 @@ function Tick() {
 }
 
 requestAnimationFrame(Tick);
-window.__STORE_ROBLOX_INPUT_BUILD__ = "V0.11-R12";
+window.__STORE_ROBLOX_INPUT_BUILD__ = "V0.11-R14";
