@@ -202,7 +202,7 @@ function Render(Renderer, Scene, Camera) {
       const SavedThirdPersonCameraY = RenderCamera.position.y;
 
       if (Pivot) {
-        if (ThirdPerson && State.Offset > 0) {
+        if (State.Offset > 0) {
           State.SavedPivotY = Pivot.position.y;
           Pivot.position.y = State.SavedPivotY + State.Offset;
           PivotRaised = true;
@@ -259,4 +259,4 @@ window.__STORE_PLAYER__ = {
 };
 
 window.__STORE_JUMP_STATE__ = State;
-window.__STORE_JUMP_CONTROLLER_BUILD__ = "V0.12.8";
+window.__STORE_JUMP_CONTROLLER_BUILD__ = "V0.12.9";
