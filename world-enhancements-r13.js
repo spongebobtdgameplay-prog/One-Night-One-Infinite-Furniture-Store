@@ -4,8 +4,13 @@ const State = {
   Scene: null,
   Initialized: false,
   ProcessedPlants: new WeakSet(),
-  ScanTimer: null
+  ScanTimer: null,
+  Horizon: null,
+  HorizonKey: ""
 };
+
+const HORIZON_SEGMENTS = 6;
+const HORIZON_CHUNK_LENGTH = 30;
 
 function SeededRandom(Seed) {
   const Value = Math.sin(Seed * 91.717 + 18.113) * 43758.5453;
@@ -144,16 +149,9 @@ function CreateCactus() {
 function ReplacePlantWithCactus(Root) {
   if (State.ProcessedPlants.has(Root)) return;
   State.ProcessedPlants.add(Root);
-  const Position = new THREE.Vector3();
-  const Quaternion = new THREE.Quaternion();
-  Root.updateMatrixWorld(true);
-  Root.getWorldPosition(Position);
-  Root.getWorldQuaternion(Quaternion);
-  Root.visible = false;
   const Cactus = CreateCactus();
-  Cactus.position.set(Position.x, 0, Position.z);
-  Cactus.quaternion.copy(Quaternion);
-  State.Scene.add(Cactus);
+  Cactus.userData.ChunkId = Root.userData?.ChunkId;
+  Root.add(Cactus);
 }
 
 function AddAtmosphereOverlay() {
@@ -180,11 +178,100 @@ function AddBackStoreMood() {
   State.Scene.add(Red);
 }
 
+function CreateHorizonSide(Materials, Direction) {
+  const Group = new THREE.Group();
+  Group.name = Direction > 0 ? "StoreHorizonBack" : "StoreHorizonFront";
+  Group.userData.StoreHorizon = true;
+  const Floor = new THREE.InstancedMesh(new THREE.BoxGeometry(34, .16, HORIZON_CHUNK_LENGTH), Materials.Floor, HORIZON_SEGMENTS);
+  const Ceiling = new THREE.InstancedMesh(new THREE.BoxGeometry(34, .14, HORIZON_CHUNK_LENGTH), Materials.Ceiling, HORIZON_SEGMENTS);
+  const Walls = new THREE.InstancedMesh(new THREE.BoxGeometry(.20, 3.8, HORIZON_CHUNK_LENGTH), Materials.Wall, HORIZON_SEGMENTS * 2);
+  const GlowCount = HORIZON_SEGMENTS * 3;
+  const Glows = new THREE.InstancedMesh(new THREE.BoxGeometry(3.05, .018, .22), Materials.Glow, GlowCount);
+  const Matrix = new THREE.Matrix4();
+  let WallIndex = 0;
+  let GlowIndex = 0;
+  for (let Segment = 0; Segment < HORIZON_SEGMENTS; Segment += 1) {
+    const CenterZ = Direction * (Segment + .5) * HORIZON_CHUNK_LENGTH;
+    Matrix.makeTranslation(0, -.08, CenterZ);
+    Floor.setMatrixAt(Segment, Matrix);
+    Matrix.makeTranslation(0, 3.72, CenterZ);
+    Ceiling.setMatrixAt(Segment, Matrix);
+    for (const X of [-17, 17]) {
+      Matrix.makeTranslation(X, 1.86, CenterZ);
+      Walls.setMatrixAt(WallIndex, Matrix);
+      WallIndex += 1;
+    }
+    for (const LocalZ of [-9, 0, 9]) {
+      Matrix.makeTranslation(0, 3.51, CenterZ + Direction * LocalZ);
+      Glows.setMatrixAt(GlowIndex, Matrix);
+      GlowIndex += 1;
+    }
+  }
+  Floor.instanceMatrix.needsUpdate = true;
+  Ceiling.instanceMatrix.needsUpdate = true;
+  Walls.instanceMatrix.needsUpdate = true;
+  Glows.instanceMatrix.needsUpdate = true;
+  Floor.frustumCulled = false;
+  Ceiling.frustumCulled = false;
+  Walls.frustumCulled = false;
+  Glows.frustumCulled = false;
+  Group.add(Floor, Ceiling, Walls, Glows);
+  return Group;
+}
+
+function FindHorizonMaterials(Game) {
+  for (const Chunk of Game.ActiveChunks.values()) {
+    const Floor = Chunk.Group?.getObjectByName("Floor");
+    const Ceiling = Chunk.Group?.getObjectByName("Ceiling");
+    const Wall = Chunk.Group?.getObjectByName("WallLeft");
+    const Glow = Chunk.Group?.getObjectByName("LightGlow");
+    if (Floor?.material && Ceiling?.material && Wall?.material && Glow?.material) {
+      return { Floor: Floor.material, Ceiling: Ceiling.material, Wall: Wall.material, Glow: Glow.material };
+    }
+  }
+  return null;
+}
+
+function EnsureHorizon() {
+  if (State.Horizon) return State.Horizon;
+  const Game = window.__STORE_GAME__;
+  if (!Game?.ActiveChunks?.size || !State.Scene) return null;
+  const Materials = FindHorizonMaterials(Game);
+  if (!Materials) return null;
+  const Back = CreateHorizonSide(Materials, 1);
+  const Front = CreateHorizonSide(Materials, -1);
+  State.Scene.add(Back, Front);
+  State.Horizon = { Back, Front };
+  return State.Horizon;
+}
+
+function UpdateHorizon() {
+  const Game = window.__STORE_GAME__;
+  const Horizon = EnsureHorizon();
+  if (!Game?.ActiveChunks?.size || !Horizon) return;
+  const Chunks = [...Game.ActiveChunks.values()].filter(Chunk => Number.isFinite(Chunk.Index));
+  if (!Chunks.length) return;
+  let Minimum = Chunks[0];
+  let Maximum = Chunks[0];
+  for (const Chunk of Chunks) {
+    if (Chunk.Index < Minimum.Index) Minimum = Chunk;
+    if (Chunk.Index > Maximum.Index) Maximum = Chunk;
+  }
+  const Key = `${Minimum.Index}:${Maximum.Index}`;
+  if (Key === State.HorizonKey) return;
+  State.HorizonKey = Key;
+  Horizon.Back.position.set(0, 0, Minimum.TopZ);
+  Horizon.Front.position.set(0, 0, Maximum.BottomZ);
+  Horizon.Back.updateMatrixWorld(true);
+  Horizon.Front.updateMatrixWorld(true);
+}
+
 function ProcessSceneAssets() {
   if (!State.Scene) return;
   for (const Root of State.Scene.children) {
     if (Root.name === "Houseplant_3") ReplacePlantWithCactus(Root);
   }
+  UpdateHorizon();
 }
 
 function Initialize() {
@@ -197,10 +284,7 @@ function Initialize() {
   AddAtmosphereOverlay();
   AddBackStoreMood();
   ProcessSceneAssets();
-  State.ScanTimer = setInterval(ProcessSceneAssets, 500);
-  setTimeout(() => {
-    if (State.ScanTimer) clearInterval(State.ScanTimer);
-  }, 30000);
+  State.ScanTimer = setInterval(ProcessSceneAssets, 350);
 }
 
 const OriginalSceneAdd = THREE.Scene.prototype.add;
@@ -212,4 +296,4 @@ THREE.Scene.prototype.add = function(...Objects) {
   return OriginalSceneAdd.apply(this, Objects);
 };
 
-window.__STORE_ENHANCEMENTS_BUILD__ = "V0.11-R43";
+window.__STORE_ENHANCEMENTS_BUILD__ = "V0.12.0";
