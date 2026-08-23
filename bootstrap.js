@@ -1,5 +1,5 @@
-const Cache = "20260823-39";
-const Version = "0.12.0";
+const Cache = "20260823-40";
+const Version = "0.12.1";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -26,13 +26,17 @@ try {
   await import("./loading-prewarm-r38.js?v=20260823-33");
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
+  await OptionalImport("./menu-visuals.js", "Main menu illustration");
 
   await import("./player-controller.js?v=20260823-33");
   await import("./player-system-r24.js?v=20260823-33");
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
   await OptionalImport("./first-person-walk-bob-r33.js", "First-person walk motion");
+  await OptionalImport("./locomotion-shapecast.js", "Collision-aware locomotion");
   await import(`./game.js?v=${Cache}`);
+  window.__STORE_VERSION__ = Version;
+  window.__STORE_GAME_BUILD__ = `V${Version}`;
   CoreReady = true;
 
   await OptionalImport("./task-visual-fix.js", "Task visual fix");
