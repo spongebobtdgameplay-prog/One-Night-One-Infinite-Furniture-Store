@@ -7,19 +7,19 @@ if (!BasePlayer) throw new Error("Player controller must load before first-perso
 
 const PLAYER_MODEL_URL = "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb";
 const PLAYER_HEIGHT = 1.76;
-const ARM_WEIGHT_THRESHOLD = 0.58;
-const TRANSITION_DURATION = 0.38;
-const VIEWMODEL_FOV = 76;
-const VIEWMODEL_OFFSET = new THREE.Vector3(0, 0.11, -0.08);
+const ARM_WEIGHT_THRESHOLD = 0.30;
+const TRANSITION_DURATION = 0.34;
+const VIEWMODEL_FOV = 72;
+const VIEWMODEL_OFFSET = new THREE.Vector3(0, -0.16, -0.52);
 const EYE_OFFSET = new THREE.Vector3(0, 0.045, 0.055);
 
 const ViewScene = new THREE.Scene();
 const ViewCamera = new THREE.PerspectiveCamera(VIEWMODEL_FOV, 1, 0.01, 8);
 ViewCamera.position.set(0, 0, 0);
 ViewCamera.lookAt(0, 0, -1);
-ViewScene.add(new THREE.HemisphereLight(0xfff0d8, 0x2a241f, 1.65));
-const ViewLight = new THREE.DirectionalLight(0xffe3bc, 1.15);
-ViewLight.position.set(-2.4, 3.4, 2.2);
+ViewScene.add(new THREE.HemisphereLight(0xfff0d8, 0x2a241f, 1.55));
+const ViewLight = new THREE.DirectionalLight(0xffe3bc, 1.05);
+ViewLight.position.set(-2.2, 3.1, 1.7);
 ViewScene.add(ViewLight);
 
 const State = {
@@ -47,21 +47,17 @@ const State = {
   LastLogicalPosition: new THREE.Vector3(),
   HasLogicalPosition: false,
   Moving: false,
+  SmoothedSpeed: 0,
   MotionPhase: 0,
   MouseX: 0,
   MouseY: 0,
   SmoothedMouseX: 0,
   SmoothedMouseY: 0,
   ViewRoot: null,
-  ViewModel: null,
   ViewHead: null,
   ViewArmMeshes: [],
   ViewBones: new Map(),
   ViewBaseBoneQuaternions: new Map(),
-  ViewMixer: null,
-  ViewActions: new Map(),
-  ViewActiveAction: null,
-  ViewAnimationState: "",
   ViewReady: false,
   ViewLoading: false,
   BaseViewPosition: new THREE.Vector3(),
@@ -127,7 +123,9 @@ function BuildArmMesh(Object) {
     const WA = BoneWeight(SkinIndex, SkinWeight, A, ArmBones);
     const WB = BoneWeight(SkinIndex, SkinWeight, B, ArmBones);
     const WC = BoneWeight(SkinIndex, SkinWeight, C, ArmBones);
-    if (Math.min(WA, WB, WC) < ARM_WEIGHT_THRESHOLD) continue;
+    if (Math.max(WA, WB, WC) < ARM_WEIGHT_THRESHOLD) continue;
+    const AverageWeight = (WA + WB + WC) / 3;
+    if (AverageWeight < ARM_WEIGHT_THRESHOLD * 0.74) continue;
     const MaterialIndex = MaterialIndexAt(Geometry, Offset);
     if (!Buckets.has(MaterialIndex)) Buckets.set(MaterialIndex, []);
     Buckets.get(MaterialIndex).push(A, B, C);
@@ -151,9 +149,9 @@ function BuildArmMesh(Object) {
     const Clone = Material.clone();
     Clone.transparent = true;
     Clone.opacity = 1;
-    Clone.depthTest = true;
-    Clone.depthWrite = true;
-    Clone.side = THREE.FrontSide;
+    Clone.depthTest = false;
+    Clone.depthWrite = false;
+    Clone.side = THREE.DoubleSide;
     Clone.needsUpdate = true;
     return Clone;
   });
@@ -167,7 +165,7 @@ function BuildArmMesh(Object) {
   Arms.quaternion.copy(Object.quaternion);
   Arms.scale.copy(Object.scale);
   Arms.frustumCulled = false;
-  Arms.renderOrder = 20;
+  Arms.renderOrder = 100;
   return Arms;
 }
 
@@ -192,39 +190,11 @@ function SetupViewBones(Model) {
   State.ViewHead = State.ViewBones.get("Head") || null;
 }
 
-function PickClip(Clips, Patterns) {
-  for (const Pattern of Patterns) {
-    const Match = Clips.find(Clip => Pattern.test(Clip.name));
-    if (Match) return Match;
+function ResetViewBones() {
+  for (const [Name, Bone] of State.ViewBones) {
+    const Base = State.ViewBaseBoneQuaternions.get(Name);
+    if (Base) Bone.quaternion.copy(Base);
   }
-  return null;
-}
-
-function BuildViewActions(Clips) {
-  if (!State.ViewMixer || !Clips?.length) return;
-  const Definitions = {
-    idle: [/idle/i],
-    walk: [/walk/i, /jog/i],
-    sprint: [/run/i, /sprint/i]
-  };
-  for (const [Name, Patterns] of Object.entries(Definitions)) {
-    const Clip = PickClip(Clips, Patterns);
-    if (!Clip) continue;
-    const Action = State.ViewMixer.clipAction(Clip);
-    Action.enabled = true;
-    Action.setLoop(THREE.LoopRepeat, Infinity);
-    State.ViewActions.set(Name, Action);
-  }
-}
-
-function SetViewAnimation(Name) {
-  if (State.ViewAnimationState === Name) return;
-  State.ViewAnimationState = Name;
-  const Next = State.ViewActions.get(Name);
-  if (!Next) return;
-  Next.reset().fadeIn(0.12).play();
-  if (State.ViewActiveAction && State.ViewActiveAction !== Next) State.ViewActiveAction.fadeOut(0.12);
-  State.ViewActiveAction = Next;
 }
 
 function ApplyRelativeViewBone(Name, X = 0, Y = 0, Z = 0) {
@@ -235,13 +205,6 @@ function ApplyRelativeViewBone(Name, X = 0, Y = 0, Z = 0) {
   Bone.quaternion.multiply(State.TempBoneQuaternion);
 }
 
-function ResetViewBones() {
-  for (const [Name, Bone] of State.ViewBones) {
-    const Base = State.ViewBaseBoneQuaternions.get(Name);
-    if (Base) Bone.quaternion.copy(Base);
-  }
-}
-
 function SetViewOpacity(Opacity) {
   const Value = THREE.MathUtils.clamp(Opacity, 0, 1);
   for (const Mesh of State.ViewArmMeshes) {
@@ -250,9 +213,9 @@ function SetViewOpacity(Opacity) {
     for (const Material of Materials) {
       if (!Material) continue;
       Material.opacity = Value;
-      Material.transparent = Value < 0.995;
-      Material.depthWrite = Value > 0.92;
-      Material.needsUpdate = true;
+      Material.transparent = true;
+      Material.depthTest = false;
+      Material.depthWrite = false;
     }
   }
 }
@@ -264,45 +227,47 @@ function UpdateViewModel(Delta, Camera) {
     State.LastLogicalPosition.copy(Camera.position);
     State.HasLogicalPosition = true;
   }
+
   const DX = Camera.position.x - State.LastLogicalPosition.x;
   const DZ = Camera.position.z - State.LastLogicalPosition.z;
   State.LastLogicalPosition.copy(Camera.position);
-  State.Moving = DX * DX + DZ * DZ > 0.0000008;
+  const InstantSpeed = Math.hypot(DX, DZ) / Math.max(Delta, 0.001);
+  State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, InstantSpeed, 1 - Math.exp(-Delta * 10));
+  State.Moving = State.SmoothedSpeed > 0.12;
 
   const Sprinting = Boolean(BasePlayer.IsSprinting?.());
-  State.MotionPhase += Delta * (State.Moving ? (Sprinting ? 10.5 : 6.8) : 1.2);
-  const DesiredAnimation = Sprinting && State.Moving ? "sprint" : State.Moving ? "walk" : "idle";
+  const SpeedRatio = THREE.MathUtils.clamp(State.SmoothedSpeed / (Sprinting ? 5.2 : 3.4), 0, 1.25);
+  State.MotionPhase += Delta * (State.Moving ? THREE.MathUtils.lerp(5.4, 9.6, Math.min(1, SpeedRatio)) : 1.1);
 
-  if (State.ViewMixer && State.ViewActions.size) {
-    SetViewAnimation(DesiredAnimation);
-    State.ViewMixer.update(Delta);
-  } else {
-    ResetViewBones();
-  }
+  State.SmoothedMouseX = THREE.MathUtils.lerp(State.SmoothedMouseX, State.MouseX, 1 - Math.exp(-Delta * 17));
+  State.SmoothedMouseY = THREE.MathUtils.lerp(State.SmoothedMouseY, State.MouseY, 1 - Math.exp(-Delta * 17));
+  State.MouseX *= Math.exp(-Delta * 10);
+  State.MouseY *= Math.exp(-Delta * 10);
 
-  State.SmoothedMouseX = THREE.MathUtils.lerp(State.SmoothedMouseX, State.MouseX, 1 - Math.exp(-Delta * 18));
-  State.SmoothedMouseY = THREE.MathUtils.lerp(State.SmoothedMouseY, State.MouseY, 1 - Math.exp(-Delta * 18));
-  State.MouseX *= Math.exp(-Delta * 11);
-  State.MouseY *= Math.exp(-Delta * 11);
-
+  ResetViewBones();
   const Swing = State.Moving ? Math.sin(State.MotionPhase) : 0;
-  const Step = State.Moving ? Math.sin(State.MotionPhase * 2) : 0;
-  const SprintLift = Sprinting ? 0.10 : 0;
-  const SwingAmount = Sprinting ? 0.13 : 0.085;
+  const Secondary = State.Moving ? Math.sin(State.MotionPhase * 2 + 0.7) : Math.sin(performance.now() * 0.0017) * 0.18;
+  const IdleBreath = Math.sin(performance.now() * 0.0019) * 0.012;
+  const SwingAmount = Sprinting ? 0.23 : 0.15;
+  const ForwardDrop = Sprinting ? 0.12 : 0;
 
-  ApplyRelativeViewBone("clavicle_l", 0.025 + Step * 0.01, State.SmoothedMouseX * 0.07, 0.12);
-  ApplyRelativeViewBone("clavicle_r", 0.025 - Step * 0.01, State.SmoothedMouseX * 0.07, -0.12);
-  ApplyRelativeViewBone("upperarm_l", -0.60 - SprintLift + Swing * SwingAmount, 0.07, 0.27);
-  ApplyRelativeViewBone("upperarm_r", -0.60 - SprintLift - Swing * SwingAmount, -0.07, -0.27);
-  ApplyRelativeViewBone("lowerarm_l", -0.26 + Math.max(0, -Swing) * 0.055 + State.SmoothedMouseY * 0.09, 0, 0.035);
-  ApplyRelativeViewBone("lowerarm_r", -0.26 + Math.max(0, Swing) * 0.055 + State.SmoothedMouseY * 0.09, 0, -0.035);
-  ApplyRelativeViewBone("hand_l", Step * 0.018, 0, 0);
-  ApplyRelativeViewBone("hand_r", -Step * 0.018, 0, 0);
+  ApplyRelativeViewBone("clavicle_l", 0.055 + IdleBreath + Secondary * 0.012, State.SmoothedMouseX * 0.09, 0.17);
+  ApplyRelativeViewBone("clavicle_r", 0.055 + IdleBreath - Secondary * 0.012, State.SmoothedMouseX * 0.09, -0.17);
+  ApplyRelativeViewBone("upperarm_l", -0.82 - ForwardDrop + Swing * SwingAmount, 0.10, 0.36);
+  ApplyRelativeViewBone("upperarm_r", -0.82 - ForwardDrop - Swing * SwingAmount, -0.10, -0.36);
+  ApplyRelativeViewBone("lowerarm_l", -0.43 + Math.max(0, -Swing) * 0.12 + State.SmoothedMouseY * 0.11, 0.02, 0.06);
+  ApplyRelativeViewBone("lowerarm_r", -0.43 + Math.max(0, Swing) * 0.12 + State.SmoothedMouseY * 0.11, -0.02, -0.06);
+  ApplyRelativeViewBone("hand_l", Secondary * 0.035, State.SmoothedMouseX * 0.025, 0.018);
+  ApplyRelativeViewBone("hand_r", -Secondary * 0.035, State.SmoothedMouseX * 0.025, -0.018);
 
   State.TempPosition.copy(State.BaseViewPosition);
-  State.TempPosition.x -= State.SmoothedMouseX * 0.11;
-  State.TempPosition.y += State.SmoothedMouseY * 0.07 + (State.Moving ? Math.abs(Step) * 0.012 : 0);
+  State.TempPosition.x -= State.SmoothedMouseX * 0.14 + Swing * 0.012 * SpeedRatio;
+  State.TempPosition.y += State.SmoothedMouseY * 0.09 + Math.abs(Secondary) * 0.012 * SpeedRatio;
+  State.TempPosition.z += Sprinting ? -0.055 : 0;
   State.ViewRoot.position.copy(State.TempPosition);
+  State.ViewRoot.rotation.z = -State.SmoothedMouseX * 0.055 + Swing * 0.006 * SpeedRatio;
+  State.ViewRoot.rotation.x = State.SmoothedMouseY * 0.035;
+  State.ViewRoot.rotation.y = Math.PI;
   State.ViewRoot.updateMatrixWorld(true);
 }
 
@@ -326,7 +291,6 @@ async function LoadViewModel() {
     Model.updateMatrixWorld(true);
     Bounds = new THREE.Box3().setFromObject(Model);
     Model.position.y -= Bounds.min.y;
-
     SetupViewBones(Model);
 
     const Additions = [];
@@ -347,25 +311,19 @@ async function LoadViewModel() {
     Root.add(Model);
     ViewScene.add(Root);
     State.ViewRoot = Root;
-    State.ViewModel = Model;
-    State.ViewMixer = new THREE.AnimationMixer(Model);
-    BuildViewActions(Gltf.animations || []);
-    if (State.ViewActions.has("idle")) {
-      State.ViewActiveAction = State.ViewActions.get("idle");
-      State.ViewActiveAction.play();
-      State.ViewAnimationState = "idle";
-    }
-
     Root.updateMatrixWorld(true);
+
     if (State.ViewHead?.isBone) {
       State.TempEye.copy(EYE_OFFSET);
       State.ViewHead.localToWorld(State.TempEye);
       Root.position.sub(State.TempEye);
     }
+
     Root.position.add(VIEWMODEL_OFFSET);
     State.BaseViewPosition.copy(Root.position);
     Root.updateMatrixWorld(true);
     State.ViewReady = State.ViewArmMeshes.length > 0;
+    if (!State.ViewReady) console.warn("First-person viewmodel created no arm geometry.");
   } catch (Error) {
     console.error("First-person viewmodel failed to load", Error);
   } finally {
@@ -399,7 +357,6 @@ function SetWorldMeshOpacity(Mesh, Opacity) {
     Material.opacity = Value;
     Material.transparent = Value < 0.995;
     Material.depthWrite = Value > 0.92;
-    Material.needsUpdate = true;
   }
 }
 
@@ -549,8 +506,8 @@ function Render(Renderer, Scene, Camera) {
 
 addEventListener("mousemove", Event => {
   if (!document.pointerLockElement) return;
-  State.MouseX = THREE.MathUtils.clamp(State.MouseX + Event.movementX * 0.00125, -0.18, 0.18);
-  State.MouseY = THREE.MathUtils.clamp(State.MouseY + Event.movementY * 0.00105, -0.14, 0.14);
+  State.MouseX = THREE.MathUtils.clamp(State.MouseX + Event.movementX * 0.0013, -0.20, 0.20);
+  State.MouseY = THREE.MathUtils.clamp(State.MouseY + Event.movementY * 0.0011, -0.16, 0.16);
 });
 
 window.__STORE_PLAYER__ = {
@@ -559,6 +516,5 @@ window.__STORE_PLAYER__ = {
   Render
 };
 
-window.__STORE_VIEWMODEL_BUILD__ = "V0.11-R5";
-
+window.__STORE_VIEWMODEL_BUILD__ = "V0.11-R8";
 LoadViewModel();
