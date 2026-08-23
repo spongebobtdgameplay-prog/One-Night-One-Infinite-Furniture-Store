@@ -1,26 +1,12 @@
 import * as THREE from "three";
-import { mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 
 const State = {
   Scene: null,
-  Camera: null,
-  Renderer: null,
   Initialized: false,
-  ProcessedRoots: new WeakSet(),
   ProcessedPlants: new WeakSet(),
+  ProcessedRoots: new WeakSet(),
   EnhancedGeometry: new Map(),
   ScanTimer: null
-};
-
-const OriginalRender = THREE.WebGLRenderer.prototype.render;
-THREE.WebGLRenderer.prototype.render = function(Scene, Camera) {
-  if (!State.Scene) {
-    State.Scene = Scene;
-    State.Camera = Camera;
-    State.Renderer = this;
-    setTimeout(InitializeWorldEnhancements, 0);
-  }
-  return OriginalRender.call(this, Scene, Camera);
 };
 
 function SeededRandom(Seed) {
@@ -38,93 +24,98 @@ function MakeCanvasTexture(Size, Draw) {
   Texture.wrapS = THREE.RepeatWrapping;
   Texture.wrapT = THREE.RepeatWrapping;
   Texture.colorSpace = THREE.SRGBColorSpace;
-  Texture.anisotropy = Math.min(4, State.Renderer?.capabilities.getMaxAnisotropy?.() || 1);
+  Texture.anisotropy = 2;
   return Texture;
 }
 
 const CactusTexture = MakeCanvasTexture(256, (Context, Size) => {
-  Context.fillStyle = "#376c43";
+  Context.fillStyle = "#2f6d3b";
   Context.fillRect(0, 0, Size, Size);
 
-  for (let Stripe = 0; Stripe < 14; Stripe += 1) {
-    const X = Stripe * (Size / 14);
-    const Gradient = Context.createLinearGradient(X, 0, X + Size / 14, 0);
-    Gradient.addColorStop(0, "rgba(18,63,32,.52)");
-    Gradient.addColorStop(.45, "rgba(107,151,86,.24)");
-    Gradient.addColorStop(1, "rgba(21,72,36,.48)");
+  for (let Stripe = 0; Stripe < 16; Stripe += 1) {
+    const X = Stripe * Size / 16;
+    const Gradient = Context.createLinearGradient(X, 0, X + Size / 16, 0);
+    Gradient.addColorStop(0, "rgba(16,61,30,.72)");
+    Gradient.addColorStop(.5, "rgba(113,164,91,.32)");
+    Gradient.addColorStop(1, "rgba(22,76,38,.62)");
     Context.fillStyle = Gradient;
-    Context.fillRect(X, 0, Size / 14 + 1, Size);
+    Context.fillRect(X, 0, Size / 16 + 1, Size);
   }
 
-  for (let Dot = 0; Dot < 520; Dot += 1) {
+  for (let Dot = 0; Dot < 620; Dot += 1) {
     const X = SeededRandom(Dot * 4 + 1) * Size;
     const Y = SeededRandom(Dot * 4 + 2) * Size;
-    const Radius = .4 + SeededRandom(Dot * 4 + 3) * 1.8;
-    Context.fillStyle = SeededRandom(Dot * 4 + 4) > .5 ? "rgba(186,205,151,.16)" : "rgba(8,42,22,.18)";
+    const Radius = .5 + SeededRandom(Dot * 4 + 3) * 1.7;
+    Context.fillStyle = SeededRandom(Dot * 4 + 4) > .52
+      ? "rgba(185,211,157,.19)"
+      : "rgba(6,40,19,.20)";
     Context.beginPath();
     Context.arc(X, Y, Radius, 0, Math.PI * 2);
     Context.fill();
   }
 });
-CactusTexture.repeat.set(2.2, 3.5);
+CactusTexture.repeat.set(2.4, 3.6);
 
-const TerracottaTexture = MakeCanvasTexture(192, (Context, Size) => {
-  Context.fillStyle = "#8a4b30";
+const PotTexture = MakeCanvasTexture(192, (Context, Size) => {
+  Context.fillStyle = "#88472d";
   Context.fillRect(0, 0, Size, Size);
-  for (let Dot = 0; Dot < 700; Dot += 1) {
-    const X = SeededRandom(Dot * 3 + 4) * Size;
-    const Y = SeededRandom(Dot * 3 + 5) * Size;
-    const Shade = 75 + Math.floor(SeededRandom(Dot * 3 + 6) * 80);
-    Context.fillStyle = `rgba(${Shade + 45},${Shade},${Math.max(25, Shade - 30)},.12)`;
-    Context.fillRect(X, Y, 1.4, 1.4);
+  for (let Dot = 0; Dot < 800; Dot += 1) {
+    const X = SeededRandom(Dot * 3 + 7) * Size;
+    const Y = SeededRandom(Dot * 3 + 8) * Size;
+    const Shade = 75 + Math.floor(SeededRandom(Dot * 3 + 9) * 70);
+    Context.fillStyle = `rgba(${Shade + 42},${Shade},${Math.max(24, Shade - 28)},.16)`;
+    Context.fillRect(X, Y, 1.3, 1.3);
   }
-  Context.fillStyle = "rgba(255,198,139,.08)";
-  Context.fillRect(0, 18, Size, 5);
 });
-TerracottaTexture.repeat.set(2, 2);
+PotTexture.repeat.set(2, 2);
 
 const CactusMaterial = new THREE.MeshStandardMaterial({
   map: CactusTexture,
-  color: 0x78a968,
-  roughness: .86,
-  metalness: 0
+  color: 0x6fa35f,
+  roughness: .84,
+  metalness: 0,
+  emissive: 0x0b1c0e,
+  emissiveIntensity: .09
 });
 
 const PotMaterial = new THREE.MeshStandardMaterial({
-  map: TerracottaTexture,
-  color: 0xc17c55,
+  map: PotTexture,
+  color: 0xc1764d,
   roughness: .94,
   metalness: 0
 });
 
 const SoilMaterial = new THREE.MeshStandardMaterial({
-  color: 0x21160f,
+  color: 0x21150d,
   roughness: 1,
   metalness: 0
 });
 
 const SpineMaterial = new THREE.MeshStandardMaterial({
-  color: 0xd8cfb2,
+  color: 0xe0d7b8,
   roughness: .78,
   metalness: 0
 });
 
-function MakeRoundedCactusSegment(Radius, Height) {
+function MakeCactusSegment(Radius, Height) {
   const Group = new THREE.Group();
-  const Body = new THREE.Mesh(new THREE.CylinderGeometry(Radius, Radius * .97, Height, 28, 8, false), CactusMaterial);
+  const Body = new THREE.Mesh(
+    new THREE.CylinderGeometry(Radius, Radius * .97, Height, 32, 10, false),
+    CactusMaterial
+  );
   Group.add(Body);
 
-  const Cap = new THREE.Mesh(new THREE.SphereGeometry(Radius, 28, 16), CactusMaterial);
+  const Cap = new THREE.Mesh(new THREE.SphereGeometry(Radius, 32, 18), CactusMaterial);
   Cap.scale.y = .72;
   Cap.position.y = Height * .5;
   Group.add(Cap);
   return Group;
 }
 
-function AddMainBodySpines(Group, Radius, BottomY, TopY) {
-  const Rings = 7;
-  const Around = 10;
-  const Geometry = new THREE.ConeGeometry(.007, .055, 5);
+function AddSpines(Group, Radius, BottomY, TopY) {
+  const Rings = 8;
+  const Around = 12;
+  const Geometry = new THREE.ConeGeometry(.0075, .065, 5);
   const Spines = new THREE.InstancedMesh(Geometry, SpineMaterial, Rings * Around);
   const Matrix = new THREE.Matrix4();
   const Position = new THREE.Vector3();
@@ -135,11 +126,15 @@ function AddMainBodySpines(Group, Radius, BottomY, TopY) {
   let Index = 0;
 
   for (let Ring = 0; Ring < Rings; Ring += 1) {
-    const Y = THREE.MathUtils.lerp(BottomY, TopY, Ring / Math.max(1, Rings - 1));
+    const Y = THREE.MathUtils.lerp(BottomY, TopY, Ring / (Rings - 1));
     for (let Point = 0; Point < Around; Point += 1) {
-      const Angle = Point / Around * Math.PI * 2 + (Ring % 2) * .15;
-      Direction.set(Math.cos(Angle), .08, Math.sin(Angle)).normalize();
-      Position.set(Math.cos(Angle) * (Radius + .018), Y, Math.sin(Angle) * (Radius + .018));
+      const Angle = Point / Around * Math.PI * 2 + (Ring % 2) * .13;
+      Direction.set(Math.cos(Angle), .07, Math.sin(Angle)).normalize();
+      Position.set(
+        Math.cos(Angle) * (Radius + .018),
+        Y,
+        Math.sin(Angle) * (Radius + .018)
+      );
       Quaternion.setFromUnitVectors(Up, Direction);
       Matrix.compose(Position, Quaternion, Scale);
       Spines.setMatrixAt(Index, Matrix);
@@ -155,162 +150,66 @@ function CreateCactus() {
   const Group = new THREE.Group();
   Group.name = "DetailedCactus";
 
-  const Pot = new THREE.Mesh(new THREE.CylinderGeometry(.235, .17, .31, 32, 4, false), PotMaterial);
-  Pot.position.y = .155;
+  const Pot = new THREE.Mesh(
+    new THREE.CylinderGeometry(.245, .175, .32, 32, 5, false),
+    PotMaterial
+  );
+  Pot.position.y = .16;
   Group.add(Pot);
 
-  const Rim = new THREE.Mesh(new THREE.TorusGeometry(.232, .025, 10, 32), PotMaterial);
+  const Rim = new THREE.Mesh(new THREE.TorusGeometry(.238, .028, 12, 36), PotMaterial);
   Rim.rotation.x = Math.PI / 2;
-  Rim.position.y = .30;
+  Rim.position.y = .305;
   Group.add(Rim);
 
-  const Soil = new THREE.Mesh(new THREE.CylinderGeometry(.205, .205, .018, 32), SoilMaterial);
-  Soil.position.y = .315;
+  const Soil = new THREE.Mesh(new THREE.CylinderGeometry(.207, .207, .02, 32), SoilMaterial);
+  Soil.position.y = .318;
   Group.add(Soil);
 
-  const Main = MakeRoundedCactusSegment(.132, .61);
-  Main.position.y = .62;
+  const Main = MakeCactusSegment(.14, .64);
+  Main.position.y = .64;
   Group.add(Main);
 
-  const LeftArm = MakeRoundedCactusSegment(.075, .30);
+  const LeftArm = MakeCactusSegment(.072, .28);
   LeftArm.rotation.z = Math.PI / 2;
-  LeftArm.position.set(-.20, .67, 0);
+  LeftArm.position.set(-.205, .68, 0);
   Group.add(LeftArm);
 
-  const LeftUp = MakeRoundedCactusSegment(.071, .25);
-  LeftUp.position.set(-.34, .78, 0);
+  const LeftUp = MakeCactusSegment(.069, .27);
+  LeftUp.position.set(-.34, .80, 0);
   Group.add(LeftUp);
 
-  const RightArm = MakeRoundedCactusSegment(.066, .23);
+  const RightArm = MakeCactusSegment(.066, .24);
   RightArm.rotation.z = -Math.PI / 2;
-  RightArm.position.set(.18, .77, 0);
+  RightArm.position.set(.19, .76, 0);
   Group.add(RightArm);
 
-  const RightUp = MakeRoundedCactusSegment(.062, .19);
-  RightUp.position.set(.28, .86, 0);
+  const RightUp = MakeCactusSegment(.062, .21);
+  RightUp.position.set(.30, .86, 0);
   Group.add(RightUp);
 
-  AddMainBodySpines(Group, .132, .37, .90);
+  AddSpines(Group, .14, .36, .96);
   return Group;
 }
 
-function AddAtmosphereOverlay() {
-  if (document.getElementById("StoreAtmosphereOverlay")) return;
+function ReplacePlantWithCactus(Root) {
+  if (State.ProcessedPlants.has(Root)) return;
+  State.ProcessedPlants.add(Root);
 
-  const NoiseCanvas = document.createElement("canvas");
-  NoiseCanvas.width = 96;
-  NoiseCanvas.height = 96;
-  const Context = NoiseCanvas.getContext("2d");
-  const Image = Context.createImageData(96, 96);
-  for (let Index = 0; Index < Image.data.length; Index += 4) {
-    const Value = Math.floor(Math.random() * 255);
-    Image.data[Index] = Value;
-    Image.data[Index + 1] = Value;
-    Image.data[Index + 2] = Value;
-    Image.data[Index + 3] = 18;
-  }
-  Context.putImageData(Image, 0, 0);
+  const Position = new THREE.Vector3();
+  const Quaternion = new THREE.Quaternion();
+  Root.updateMatrixWorld(true);
+  Root.getWorldPosition(Position);
+  Root.getWorldQuaternion(Quaternion);
+  Root.visible = false;
 
-  const Overlay = document.createElement("div");
-  Overlay.id = "StoreAtmosphereOverlay";
-  Overlay.style.position = "fixed";
-  Overlay.style.inset = "0";
-  Overlay.style.zIndex = "8";
-  Overlay.style.pointerEvents = "none";
-  Overlay.style.backgroundImage = `radial-gradient(circle at 50% 46%, transparent 42%, rgba(0,0,0,.18) 72%, rgba(0,0,0,.46) 100%), url(${NoiseCanvas.toDataURL()})`;
-  Overlay.style.backgroundRepeat = "no-repeat, repeat";
-  Overlay.style.backgroundSize = "100% 100%, 96px 96px";
-  Overlay.style.opacity = ".72";
-  Overlay.style.mixBlendMode = "multiply";
-  document.body.appendChild(Overlay);
+  const Cactus = CreateCactus();
+  Cactus.position.set(Position.x, 0, Position.z);
+  Cactus.quaternion.copy(Quaternion);
+  State.Scene.add(Cactus);
 }
 
-function CreateGrimeTexture() {
-  return MakeCanvasTexture(256, (Context, Size) => {
-    Context.clearRect(0, 0, Size, Size);
-    for (let Blob = 0; Blob < 18; Blob += 1) {
-      const X = SeededRandom(Blob * 7 + 1) * Size;
-      const Y = SeededRandom(Blob * 7 + 2) * Size;
-      const Radius = 18 + SeededRandom(Blob * 7 + 3) * 60;
-      const Gradient = Context.createRadialGradient(X, Y, 0, X, Y, Radius);
-      Gradient.addColorStop(0, "rgba(24,20,15,.20)");
-      Gradient.addColorStop(.5, "rgba(35,29,20,.08)");
-      Gradient.addColorStop(1, "rgba(0,0,0,0)");
-      Context.fillStyle = Gradient;
-      Context.fillRect(X - Radius, Y - Radius, Radius * 2, Radius * 2);
-    }
-
-    for (let Drip = 0; Drip < 8; Drip += 1) {
-      const X = SeededRandom(Drip * 5 + 90) * Size;
-      const Width = 3 + SeededRandom(Drip * 5 + 91) * 10;
-      const Height = 45 + SeededRandom(Drip * 5 + 92) * 120;
-      const Gradient = Context.createLinearGradient(0, 0, 0, Height);
-      Gradient.addColorStop(0, "rgba(18,17,13,.02)");
-      Gradient.addColorStop(1, "rgba(18,17,13,.19)");
-      Context.fillStyle = Gradient;
-      Context.fillRect(X, 0, Width, Height);
-    }
-  });
-}
-
-function AddWallGrime(Scene) {
-  const Texture = CreateGrimeTexture();
-  const Material = new THREE.MeshBasicMaterial({
-    map: Texture,
-    transparent: true,
-    opacity: .82,
-    depthWrite: false,
-    side: THREE.DoubleSide
-  });
-
-  const Placements = [
-    [-16.88, 1.25, 1.5, Math.PI / 2],
-    [16.88, 1.35, -6.0, -Math.PI / 2],
-    [-16.88, 1.30, -14.5, Math.PI / 2],
-    [16.88, 1.15, -23.0, -Math.PI / 2],
-    [-16.88, 1.25, -31.5, Math.PI / 2],
-    [16.88, 1.25, -40.5, -Math.PI / 2],
-    [-16.88, 1.30, -48.0, Math.PI / 2]
-  ];
-
-  for (let Index = 0; Index < Placements.length; Index += 1) {
-    const [X, Y, Z, Rotation] = Placements[Index];
-    const Plane = new THREE.Mesh(new THREE.PlaneGeometry(1.6 + (Index % 3) * .35, 2.15), Material.clone());
-    Plane.position.set(X, Y, Z);
-    Plane.rotation.y = Rotation;
-    Scene.add(Plane);
-  }
-}
-
-function CreateExitSign(Scene) {
-  const Canvas = document.createElement("canvas");
-  Canvas.width = 512;
-  Canvas.height = 192;
-  const Context = Canvas.getContext("2d");
-  Context.fillStyle = "#260704";
-  Context.fillRect(0, 0, Canvas.width, Canvas.height);
-  Context.strokeStyle = "#a72b20";
-  Context.lineWidth = 16;
-  Context.strokeRect(8, 8, Canvas.width - 16, Canvas.height - 16);
-  Context.fillStyle = "#ff5a45";
-  Context.font = "900 104px Arial";
-  Context.textAlign = "center";
-  Context.textBaseline = "middle";
-  Context.fillText("EXIT", Canvas.width / 2, Canvas.height / 2 + 6);
-
-  const Texture = new THREE.CanvasTexture(Canvas);
-  Texture.colorSpace = THREE.SRGBColorSpace;
-  const Material = new THREE.MeshBasicMaterial({ map: Texture });
-  const Sign = new THREE.Mesh(new THREE.PlaneGeometry(2.1, .78), Material);
-  Sign.position.set(0, 2.62, -52.82);
-  Scene.add(Sign);
-
-  const RedLight = new THREE.PointLight(0xb62619, .72, 9, 2);
-  RedLight.position.set(0, 2.45, -49.5);
-  Scene.add(RedLight);
-}
-
-function SubdivideOnce(Geometry) {
+function SubdivideGeometry(Geometry) {
   const Source = Geometry.index ? Geometry.toNonIndexed() : Geometry.clone();
   const Position = Source.getAttribute("position");
   if (!Position || Position.count < 9) return Geometry;
@@ -324,14 +223,14 @@ function SubdivideOnce(Geometry) {
   const AB = new THREE.Vector3();
   const BC = new THREE.Vector3();
   const CA = new THREE.Vector3();
-  const Uva = new THREE.Vector2();
-  const Uvb = new THREE.Vector2();
-  const Uvc = new THREE.Vector2();
-  const Uvab = new THREE.Vector2();
-  const Uvbc = new THREE.Vector2();
-  const Uvca = new THREE.Vector2();
+  const TA = new THREE.Vector2();
+  const TB = new THREE.Vector2();
+  const TC = new THREE.Vector2();
+  const TAB = new THREE.Vector2();
+  const TBC = new THREE.Vector2();
+  const TCA = new THREE.Vector2();
 
-  function PushTriangle(P1, P2, P3, T1, T2, T3) {
+  function Push(P1, P2, P3, T1, T2, T3) {
     Positions.push(P1.x, P1.y, P1.z, P2.x, P2.y, P2.z, P3.x, P3.y, P3.z);
     if (Uv) Uvs.push(T1.x, T1.y, T2.x, T2.y, T3.x, T3.y);
   }
@@ -345,28 +244,27 @@ function SubdivideOnce(Geometry) {
     CA.copy(C).add(A).multiplyScalar(.5);
 
     if (Uv) {
-      Uva.fromBufferAttribute(Uv, Index);
-      Uvb.fromBufferAttribute(Uv, Index + 1);
-      Uvc.fromBufferAttribute(Uv, Index + 2);
-      Uvab.copy(Uva).add(Uvb).multiplyScalar(.5);
-      Uvbc.copy(Uvb).add(Uvc).multiplyScalar(.5);
-      Uvca.copy(Uvc).add(Uva).multiplyScalar(.5);
+      TA.fromBufferAttribute(Uv, Index);
+      TB.fromBufferAttribute(Uv, Index + 1);
+      TC.fromBufferAttribute(Uv, Index + 2);
+      TAB.copy(TA).add(TB).multiplyScalar(.5);
+      TBC.copy(TB).add(TC).multiplyScalar(.5);
+      TCA.copy(TC).add(TA).multiplyScalar(.5);
     }
 
-    PushTriangle(A, AB, CA, Uva, Uvab, Uvca);
-    PushTriangle(AB, B, BC, Uvab, Uvb, Uvbc);
-    PushTriangle(CA, BC, C, Uvca, Uvbc, Uvc);
-    PushTriangle(AB, BC, CA, Uvab, Uvbc, Uvca);
+    Push(A, AB, CA, TA, TAB, TCA);
+    Push(AB, B, BC, TAB, TB, TBC);
+    Push(CA, BC, C, TCA, TBC, TC);
+    Push(AB, BC, CA, TAB, TBC, TCA);
   }
 
   const Result = new THREE.BufferGeometry();
   Result.setAttribute("position", new THREE.Float32BufferAttribute(Positions, 3));
   if (Uv) Result.setAttribute("uv", new THREE.Float32BufferAttribute(Uvs, 2));
-  const Merged = mergeVertices(Result, .0001);
-  Merged.computeVertexNormals();
-  Merged.computeBoundingBox();
-  Merged.computeBoundingSphere();
-  return Merged;
+  Result.computeVertexNormals();
+  Result.computeBoundingBox();
+  Result.computeBoundingSphere();
+  return Result;
 }
 
 const SmoothRoots = new Set([
@@ -384,93 +282,87 @@ function EnhanceLowPolyRoot(Root) {
 
   Root.traverse(Object => {
     if (!Object.isMesh || Object.isSkinnedMesh) return;
-    if (Array.isArray(Object.material) && Object.material.length > 1) return;
     const Geometry = Object.geometry;
     const Position = Geometry?.getAttribute("position");
     if (!Position) return;
     const TriangleCount = Geometry.index ? Geometry.index.count / 3 : Position.count / 3;
-    if (TriangleCount < 12 || TriangleCount > 2200) return;
+    if (TriangleCount < 12 || TriangleCount > 1800) return;
 
     let Enhanced = State.EnhancedGeometry.get(Geometry.uuid);
     if (!Enhanced) {
-      Enhanced = SubdivideOnce(Geometry);
+      Enhanced = SubdivideGeometry(Geometry);
       State.EnhancedGeometry.set(Geometry.uuid, Enhanced);
     }
+
     Object.geometry = Enhanced;
-    if (Object.material) {
-      Object.material = Object.material.clone();
-      Object.material.flatShading = false;
-      Object.material.needsUpdate = true;
+    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
+    for (const Material of Materials) {
+      if (!Material) continue;
+      Material.flatShading = false;
+      Material.needsUpdate = true;
     }
   });
 }
 
-function ReplacePlantWithCactus(Root) {
-  if (State.ProcessedPlants.has(Root)) return;
-  State.ProcessedPlants.add(Root);
+function AddAtmosphereOverlay() {
+  if (document.getElementById("StoreAtmosphereOverlay")) return;
+  const Overlay = document.createElement("div");
+  Overlay.id = "StoreAtmosphereOverlay";
+  Overlay.style.position = "fixed";
+  Overlay.style.inset = "0";
+  Overlay.style.pointerEvents = "none";
+  Overlay.style.zIndex = "8";
+  Overlay.style.background = "radial-gradient(circle at 50% 46%, transparent 44%, rgba(0,0,0,.13) 73%, rgba(0,0,0,.38) 100%)";
+  document.body.appendChild(Overlay);
+}
 
-  const Position = new THREE.Vector3();
-  const Quaternion = new THREE.Quaternion();
-  Root.getWorldPosition(Position);
-  Root.getWorldQuaternion(Quaternion);
-  Root.visible = false;
+function AddBackStoreMood() {
+  if (State.Scene.getObjectByName("BackStoreMoodLight")) return;
 
-  const Cactus = CreateCactus();
-  Cactus.position.set(Position.x, 0, Position.z);
-  Cactus.quaternion.copy(Quaternion);
-  State.Scene.add(Cactus);
+  const ColdLight = new THREE.PointLight(0x789482, .38, 11, 2);
+  ColdLight.name = "BackStoreMoodLight";
+  ColdLight.position.set(-5.5, 2.0, -40.5);
+  State.Scene.add(ColdLight);
+
+  const RedLight = new THREE.PointLight(0xb62619, .48, 8, 2);
+  RedLight.position.set(0, 2.4, -49.5);
+  State.Scene.add(RedLight);
 }
 
 function ProcessSceneAssets() {
   if (!State.Scene) return;
-
-  for (const Root of State.Scene.children) {
+  for (const Root of [...State.Scene.children]) {
     if (Root.name === "Houseplant_3") ReplacePlantWithCactus(Root);
     if (SmoothRoots.has(Root.name)) EnhanceLowPolyRoot(Root);
   }
 }
 
-function TuneExistingLights(Scene) {
-  let PanelIndex = 0;
-  Scene.traverse(Object => {
-    if (Object.name === "LightGlow" && Object.isMesh) {
-      Object.material = Object.material.clone();
-      if (PanelIndex % 8 === 5) Object.material.color.setHex(0x312d26);
-      else if (PanelIndex % 5 === 3) Object.material.color.multiplyScalar(.68);
-      PanelIndex += 1;
-    }
-
-    if (Object.isPointLight && Number.isFinite(Object.userData?.BaseIntensity)) {
-      if (Object.position.z < -31) {
-        Object.userData.BaseIntensity *= .70;
-        Object.color.setHex(0xbecbbd);
-      } else if (Object.position.z < -16) {
-        Object.userData.BaseIntensity *= .86;
-      }
-    }
-  });
-}
-
 function InitializeWorldEnhancements() {
-  if (State.Initialized || !State.Scene || !State.Renderer) return;
+  if (State.Initialized || !State.Scene) return;
   State.Initialized = true;
 
   if (State.Scene.fog?.isFogExp2) {
     State.Scene.fog.color.setHex(0x111411);
-    State.Scene.fog.density = .0084;
+    State.Scene.fog.density = .0081;
   }
 
-  State.Renderer.toneMappingExposure = 1.02;
   AddAtmosphereOverlay();
-  AddWallGrime(State.Scene);
-  CreateExitSign(State.Scene);
-  TuneExistingLights(State.Scene);
+  AddBackStoreMood();
   ProcessSceneAssets();
 
-  const ColdBacklight = new THREE.PointLight(0x789482, .42, 11, 2);
-  ColdBacklight.position.set(-5.5, 2.0, -40.5);
-  State.Scene.add(ColdBacklight);
-
-  State.ScanTimer = setInterval(ProcessSceneAssets, 350);
-  setTimeout(() => clearInterval(State.ScanTimer), 24000);
+  State.ScanTimer = setInterval(ProcessSceneAssets, 250);
+  setTimeout(() => {
+    if (State.ScanTimer) clearInterval(State.ScanTimer);
+  }, 30000);
 }
+
+const OriginalSceneAdd = THREE.Scene.prototype.add;
+THREE.Scene.prototype.add = function(...Objects) {
+  if (!State.Scene && this.isScene) {
+    State.Scene = this;
+    queueMicrotask(InitializeWorldEnhancements);
+  }
+  return OriginalSceneAdd.apply(this, Objects);
+};
+
+window.__STORE_ENHANCEMENTS_BUILD__ = "V0.06";
