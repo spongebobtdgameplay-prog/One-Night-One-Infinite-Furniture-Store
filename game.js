@@ -48,7 +48,6 @@ const PlayerApi = window.__STORE_PLAYER__ || null;
 window.__STORE_COLLISION_BOXES__ = CollisionBoxes;
 
 const STORE_HALF_WIDTH = 17;
-const WALKABLE_HALF_WIDTH = 16.66;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
@@ -794,7 +793,6 @@ function TryInteract() {
 
 function IsBlocked(Position) {
   const Radius = PlayerApi?.GetPlayerRadius?.() || 0.43;
-  if (Position.x < -WALKABLE_HALF_WIDTH || Position.x > WALKABLE_HALF_WIDTH) return true;
   for (const Entry of CollisionBoxes) {
     if (typeof Entry?.TestPlayerCollision === "function") {
       if (Entry.TestPlayerCollision(Position, Radius)) return true;
@@ -916,6 +914,6 @@ addEventListener("resize", () => {
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
 
-window.__STORE_GAME_BUILD__ = "V0.09-R24";
+window.__STORE_GAME_BUILD__ = "V0.10-R27";
 window.__STORE_GAME__ = { Scene, Camera, Renderer, CollisionBoxes, ActiveChunks, Tasks };
 Animate();
