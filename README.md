@@ -1,21 +1,44 @@
-# One Night, One Infinite Furniture Store — Asset Production Kit
+# One Night, One Infinite Furniture Store
 
-This kit is the master checklist for the game's art pipeline.
+A browser horror game set inside an enormous furniture store that changes after closing.
 
-It currently tracks **238 asset types** and approximately **1156 target variants**.
+## Playable prototype
 
-Files:
-- `Asset_Manifest.csv` — easy checklist/editing version.
-- `Asset_Manifest.json` — machine-readable version for tooling.
-- `PBR_Material_Library.csv` — materials we need.
-- `ProcGen_Modules.json` — starter procedural room rules.
-- `Asset_Rules.md` — scale, LOD, textures, rust, collisions.
-- `Build_Order.md` — what to make first.
-- `Blender_PBR_Setup.py` — Blender PBR wiring helper.
-- `ThreeJS_AssetLoader.js` — Three.js GLB/KTX2 loader starter.
-- `ThreeJS_AssetManifest.example.json` — runtime manifest example.
-- `Free_Asset_Sources.md` — legal free-source plan.
-- `Folder_Structure.txt` — recommended game asset layout.
+The repo now has a GitHub Pages entry point at `index.html` and a first-person Three.js showroom prototype.
 
-The rule for this project:
-**source good raw assets/materials, modify them into one coherent style, and only custom-model the pieces that define the store.**
+Current prototype features:
+- `index.html` at the repository root so GitHub Pages has a real entry page
+- WASD movement
+- mouse look / pointer lock
+- Shift to run
+- store-time HUD
+- large showroom shell with walls, dividers, ceiling lights and signs
+- 19 curated CC0 furniture/store models loaded directly from `Models/.../GLB/`
+- living room, bedroom, kitchen, bathroom, storage, lighting, architecture and decor sections
+
+## Asset production kit
+
+The repository also contains the master art-production kit. It tracks **238 asset types** and approximately **1156 target variants**.
+
+Important production files:
+- `Asset_Manifest.csv`
+- `Asset_Manifest.json`
+- `PBR_Material_Library.csv`
+- `ProcGen_Modules.json`
+- `Asset_Rules.md`
+- `Build_Order.md`
+- `Blender_PBR_Setup.py`
+- `ThreeJS_AssetLoader.js`
+- `ThreeJS_AssetManifest.example.json`
+- `Free_Asset_Sources.md`
+- `Folder_Structure.txt`
+
+## Models
+
+`Models/` contains the first curated model set in both ready-to-load GLB format and source OBJ/MTL format.
+
+The initial model geometry comes from Quaternius under CC0 1.0 / Public Domain. The original license is included in `Models/QUATERNIUS_LICENSE.txt`.
+
+## Art rule
+
+Source good raw assets and materials, modify them into one coherent horror-store style, and custom-model the pieces that define the store. Rust, grime and wear should use proper PBR materials/decals instead of orange geometry pretending to be corrosion.
