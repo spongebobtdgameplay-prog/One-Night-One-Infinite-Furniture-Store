@@ -98,10 +98,15 @@ function Render(Renderer, Scene, Camera) {
   }
 }
 
+function GetPlayerRadius() {
+  return Math.min(BasePlayer.GetPlayerRadius?.() ?? 0.43, 0.30);
+}
+
 window.__STORE_PLAYER__ = {
   ...BasePlayer,
   Attach,
-  Render
+  Render,
+  GetPlayerRadius
 };
 
 window.__STORE_CAMERA_FIX_BUILD__ = "V0.11-R2";
