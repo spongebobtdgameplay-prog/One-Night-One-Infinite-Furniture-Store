@@ -37,6 +37,7 @@ try {
 
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
+  if (window.__STORE_GAME__) window.__STORE_GAME__.Version = Version;
   CoreReady = true;
 
   await OptionalImport("./task-visual-fix.js", "Task visual fix");
