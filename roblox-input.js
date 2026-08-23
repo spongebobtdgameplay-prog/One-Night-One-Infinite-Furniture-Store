@@ -68,23 +68,13 @@ function SyncMode() {
 }
 
 addEventListener("mousedown", Event => {
+  if (!ThirdPerson() || Event.button !== 2) return;
   const Current = CaptureKnownControls();
   if (!Current) return;
-
-  if (ThirdPerson()) {
-    if (Event.button !== 2) return;
-    OrbitHeld = true;
-    Current.isLocked = true;
-    Current.pointerSpeed = 1;
-    Event.preventDefault();
-    return;
-  }
-
-  if (Event.button === 0 && !document.pointerLockElement) {
-    try {
-      OriginalLock.call(Current);
-    } catch {}
-  }
+  OrbitHeld = true;
+  Current.isLocked = true;
+  Current.pointerSpeed = 1;
+  Event.preventDefault();
 });
 
 addEventListener("mouseup", Event => {
