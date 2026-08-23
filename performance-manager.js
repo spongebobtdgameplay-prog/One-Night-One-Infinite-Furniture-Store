@@ -22,6 +22,8 @@ function ApplyRendererBudget() {
   State.LastRatio = Ratio;
   Game.Renderer.setPixelRatio(Ratio);
   Game.Renderer.setSize(innerWidth, innerHeight, false);
+  Game.Renderer.setScissorTest(false);
+  Game.Renderer.setViewport(0, 0, innerWidth, innerHeight);
 }
 
 function CullPointLights() {
@@ -47,4 +49,4 @@ function Tick() {
 addEventListener("resize", Tick);
 setInterval(Tick, 250);
 setTimeout(Tick, 0);
-window.__STORE_PERFORMANCE_BUILD__ = "V0.10";
+window.__STORE_PERFORMANCE_BUILD__ = "V0.11-R7";
