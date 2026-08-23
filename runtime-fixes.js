@@ -9,6 +9,7 @@ const StartButton = document.getElementById("StartButton");
 const BootStatus = document.getElementById("BootStatus");
 const CollisionBoxes = Game.CollisionBoxes;
 const ProcessedInstances = new WeakSet();
+const STRUCTURE_BODY_MARGIN = 0.15;
 const CollidableModels = new Set([
   "Couch_Large1",
   "Couch_L",
@@ -58,9 +59,7 @@ if (StartButton) {
   }, true);
 }
 
-if (Canvas) {
-  Canvas.addEventListener("pointerdown", PrimeDocumentFocus, true);
-}
+if (Canvas) Canvas.addEventListener("pointerdown", PrimeDocumentFocus, true);
 
 const PointerLockPrototype = typeof Element !== "undefined" ? Element.prototype : null;
 const OriginalRequestPointerLock = PointerLockPrototype?.requestPointerLock;
@@ -97,6 +96,20 @@ function SyncRendererViewport() {
 addEventListener("resize", () => requestAnimationFrame(SyncRendererViewport));
 requestAnimationFrame(SyncRendererViewport);
 
+function HardenStructuralCollision() {
+  for (const Entry of CollisionBoxes) {
+    if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type) || Entry.BodyClearanceApplied) continue;
+    const Bounds = Entry.Box || Entry;
+    if (!Bounds?.min || !Bounds?.max) continue;
+    if (![Bounds.min.x, Bounds.min.z, Bounds.max.x, Bounds.max.z].every(Number.isFinite)) continue;
+    Bounds.min.x -= STRUCTURE_BODY_MARGIN;
+    Bounds.max.x += STRUCTURE_BODY_MARGIN;
+    Bounds.min.z -= STRUCTURE_BODY_MARGIN;
+    Bounds.max.z += STRUCTURE_BODY_MARGIN;
+    Entry.BodyClearanceApplied = true;
+  }
+}
+
 function HasCollisionFor(Object) {
   const ChunkId = Object.userData?.ChunkId;
   const Name = Object.name;
@@ -112,12 +125,7 @@ function EnsureModelCollision(Object) {
   Object.updateMatrixWorld(true);
   const Bounds = new THREE.Box3().setFromObject(Object);
   if (Bounds.isEmpty()) return;
-  CollisionBoxes.push({
-    Box: Bounds,
-    ChunkId,
-    Type: Object.name,
-    AutoGeometryCandidate: true
-  });
+  CollisionBoxes.push({ Box: Bounds, ChunkId, Type: Object.name, AutoGeometryCandidate: true });
 }
 
 function EnsureWarehouseBoxCollisions(Object) {
@@ -146,10 +154,11 @@ function EnsureWarehouseBoxCollisions(Object) {
 }
 
 function EnsureObjectCollisions() {
+  HardenStructuralCollision();
   for (const Object of Game.Scene.children) EnsureModelCollision(Object);
   Game.Scene.traverse(EnsureWarehouseBoxCollisions);
   requestAnimationFrame(EnsureObjectCollisions);
 }
 
 EnsureObjectCollisions();
-window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R7";
+window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R8";
