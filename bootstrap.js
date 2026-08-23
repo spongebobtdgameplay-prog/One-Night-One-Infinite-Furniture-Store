@@ -1,5 +1,5 @@
-const Cache = "20260823-44";
-const Version = "0.12.5";
+const Cache = "20260823-45";
+const Version = "0.12.6";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -28,12 +28,15 @@ try {
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
   await OptionalImport("./menu-visuals.js", "Main menu illustration");
 
+  await import(`./input-listener-capture.js?v=${Cache}`);
   await import("./player-controller.js?v=20260823-33");
   await import("./player-system-r24.js?v=20260823-33");
+  await import(`./input-controls-v0126.js?v=${Cache}`);
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
   await OptionalImport("./first-person-walk-bob-r33.js", "First-person walk motion");
   await OptionalImport("./locomotion-shapecast.js", "Collision-aware locomotion");
+  await import(`./jump-controller-v0126.js?v=${Cache}`);
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
