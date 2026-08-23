@@ -8,8 +8,8 @@ const StartButton = document.getElementById("StartButton");
 const BootStatus = document.getElementById("BootStatus");
 const CollisionBoxes = Game.CollisionBoxes;
 const ProcessedInstances = new WeakSet();
-const BODY_HALF_WIDTH = 0.24;
-const BODY_HALF_DEPTH = 0.15;
+const BODY_HALF_WIDTH = 0.18;
+const BODY_HALF_DEPTH = 0.12;
 
 const CollidableModels = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
@@ -135,4 +135,4 @@ function Tick() {
 }
 
 Tick();
-window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R24";
+window.__STORE_RUNTIME_FIX_BUILD__ = "V0.11-R27";
