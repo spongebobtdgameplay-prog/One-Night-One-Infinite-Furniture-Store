@@ -1,4 +1,8 @@
-const Cache = "20260823-38";
+const Cache = "20260823-39";
+const Version = "0.12.0";
+const BuildVersion = document.getElementById("BuildVersion");
+if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
+window.__STORE_VERSION__ = Version;
 
 async function OptionalImport(Path, Label) {
   try {
@@ -28,7 +32,7 @@ try {
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
   await OptionalImport("./first-person-walk-bob-r33.js", "First-person walk motion");
-  await import("./game.js?v=20260823-34");
+  await import(`./game.js?v=${Cache}`);
   CoreReady = true;
 
   await OptionalImport("./task-visual-fix.js", "Task visual fix");
@@ -49,4 +53,4 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.cursor = "";
 }
 
-window.__STORE_BOOTSTRAP_BUILD__ = "V0.11-R43";
+window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}`;
