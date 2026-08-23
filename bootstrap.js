@@ -1,5 +1,5 @@
-const Cache = "20260823-43";
-const Version = "0.12.4";
+const Cache = "20260823-44";
+const Version = "0.12.5";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
