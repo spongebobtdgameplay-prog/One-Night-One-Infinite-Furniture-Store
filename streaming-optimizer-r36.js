@@ -3,7 +3,7 @@ import * as THREE from "three";
 const Game = window.__STORE_GAME__;
 if (!Game?.Scene || !Game?.Camera || !Game?.ActiveChunks) throw new Error("Game must load before R36 streaming optimizer.");
 
-const SHELL_RADIUS = 11;
+const SHELL_RADIUS = 18;
 const FULL_DETAIL_RADIUS = 1;
 const ACTIVE_GAME_RADIUS = 3;
 const FIRST_CHUNK_TOP_Z = 10;
