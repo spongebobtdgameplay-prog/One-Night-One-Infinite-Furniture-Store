@@ -36,6 +36,8 @@ const Controls = new PointerLockControls(Camera, document.body);
 const Loader = new GLTFLoader();
 const GameTimer = new THREE.Clock();
 const KeyState = new Set();
+const CollisionBoxes = [];
+const StoreLights = [];
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -62,7 +64,14 @@ function Material(Color, Roughness = 0.8, Metalness = 0) {
   });
 }
 
-function Box(Name, Size, Position, Mat, CastShadow = false) {
+function AddCollisionBox(Object, Padding = 0) {
+  Object.updateMatrixWorld(true);
+  const Bounds = new THREE.Box3().setFromObject(Object);
+  if (Padding !== 0) Bounds.expandByScalar(Padding);
+  CollisionBoxes.push(Bounds);
+}
+
+function Box(Name, Size, Position, Mat, CastShadow = false, Collidable = false) {
   const Mesh = new THREE.Mesh(
     new THREE.BoxGeometry(Size.x, Size.y, Size.z),
     Mat
@@ -72,6 +81,7 @@ function Box(Name, Size, Position, Mat, CastShadow = false) {
   Mesh.castShadow = CastShadow;
   Mesh.receiveShadow = true;
   Scene.add(Mesh);
+  if (Collidable) AddCollisionBox(Mesh);
   return Mesh;
 }
 
@@ -99,6 +109,9 @@ for (let Z = 7; Z >= -49; Z -= 7) {
     const Light = new THREE.RectAreaLight(0xffedd0, 2.3, 4.15, 0.26);
     Light.position.set(X, 3.48, Z);
     Light.rotation.x = -Math.PI / 2;
+    Light.userData.BaseIntensity = 2.3;
+    Light.userData.FlickerSeed = Math.random() * 100;
+    StoreLights.push(Light);
     Scene.add(Light);
   }
 }
@@ -108,13 +121,17 @@ for (let Z = 1; Z >= -45; Z -= 8) {
     "DividerLeft",
     new THREE.Vector3(0.15, 2.68, 5.15),
     new THREE.Vector3(-5.75, 1.34, Z),
-    WallMaterial
+    WallMaterial,
+    false,
+    true
   );
   Box(
     "DividerRight",
     new THREE.Vector3(0.15, 2.68, 5.15),
     new THREE.Vector3(5.75, 1.34, Z - 3.5),
-    WallMaterial
+    WallMaterial,
+    false,
+    true
   );
 }
 
@@ -166,9 +183,7 @@ function PrepareModel(Model) {
     if (!Object.isMesh) return;
     Object.castShadow = true;
     Object.receiveShadow = true;
-    if (Object.material) {
-      Object.material.side = THREE.FrontSide;
-    }
+    if (Object.material) Object.material.side = THREE.FrontSide;
   });
 }
 
@@ -184,6 +199,8 @@ async function LoadModels() {
       Model.rotation.y = Rotation;
       Model.name = Name;
       Scene.add(Model);
+      Model.updateMatrixWorld(true);
+      AddCollisionBox(Model, -0.08);
       LoadedModels += 1;
     } catch (Error) {
       console.warn(`Could not load ${Name}`, Error);
@@ -214,10 +231,37 @@ function UpdateClock(Delta) {
   if (Hours === 0) Hours = 12;
 
   GameClock.textContent = `${Hours}:${String(Minutes).padStart(2, "0")} ${Suffix}`;
+}
 
-  if (StoreSeconds < 60 * 4) {
-    ObjectiveText.textContent = "The store is closed. Keep moving.";
+function UpdateObjective() {
+  const Z = Camera.position.z;
+  let Objective = "Find a way through the showroom.";
+
+  if (Z < -7) Objective = "The aisles are longer than they were before.";
+  if (Z < -17) Objective = "Keep moving past the bedroom displays.";
+  if (Z < -27) Objective = "Find a route through the kitchen section.";
+  if (Z < -35) Objective = "Something is wrong with the back of the store.";
+  if (Z < -42) Objective = "Reach the door at the end of the aisle.";
+
+  if (ObjectiveText.textContent !== Objective) ObjectiveText.textContent = Objective;
+}
+
+function IsBlocked(Position) {
+  const Radius = 0.34;
+
+  if (Position.x < -16.2 || Position.x > 16.2) return true;
+  if (Position.z < -52.1 || Position.z > 8.8) return true;
+
+  for (const Bounds of CollisionBoxes) {
+    if (
+      Position.x + Radius > Bounds.min.x &&
+      Position.x - Radius < Bounds.max.x &&
+      Position.z + Radius > Bounds.min.z &&
+      Position.z - Radius < Bounds.max.z
+    ) return true;
   }
+
+  return false;
 }
 
 function UpdateMovement(Delta) {
@@ -238,20 +282,43 @@ function UpdateMovement(Delta) {
   Forward /= Length;
   Right /= Length;
 
+  const BeforeForward = Camera.position.clone();
   Controls.moveForward(Forward * Speed * Delta);
-  Controls.moveRight(Right * Speed * Delta);
+  if (IsBlocked(Camera.position)) Camera.position.copy(BeforeForward);
 
-  Camera.position.x = THREE.MathUtils.clamp(Camera.position.x, -16.2, 16.2);
-  Camera.position.z = THREE.MathUtils.clamp(Camera.position.z, -52.1, 8.8);
+  const BeforeSide = Camera.position.clone();
+  Controls.moveRight(Right * Speed * Delta);
+  if (IsBlocked(Camera.position)) Camera.position.copy(BeforeSide);
+
   Camera.position.y = 1.72;
+}
+
+function UpdateLights(Time) {
+  for (let Index = 0; Index < StoreLights.length; Index += 1) {
+    const Light = StoreLights[Index];
+    const BaseIntensity = Light.userData.BaseIntensity;
+    const Seed = Light.userData.FlickerSeed;
+    const SlowPulse = Math.sin(Time * 0.45 + Seed * 2.7);
+    const FastBuzz = Math.sin(Time * 7.5 + Seed) * 0.035;
+    let Intensity = BaseIntensity * (0.97 + FastBuzz);
+
+    if (Index % 5 === 0 && SlowPulse > 0.96) Intensity *= 0.18;
+    if (Index % 11 === 0 && SlowPulse < -0.985) Intensity = 0;
+
+    Light.intensity = Intensity;
+  }
 }
 
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
+  const Time = performance.now() / 1000;
+
+  UpdateLights(Time);
 
   if (Started) {
     UpdateMovement(Delta);
     UpdateClock(Delta);
+    UpdateObjective();
   }
 
   Renderer.render(Scene, Camera);
@@ -271,6 +338,7 @@ Canvas.addEventListener("click", () => {
 
 addEventListener("keydown", Event => KeyState.add(Event.code));
 addEventListener("keyup", Event => KeyState.delete(Event.code));
+addEventListener("blur", () => KeyState.clear());
 addEventListener("resize", () => {
   Camera.aspect = innerWidth / innerHeight;
   Camera.updateProjectionMatrix();
