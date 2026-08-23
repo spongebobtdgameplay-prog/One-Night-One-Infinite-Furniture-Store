@@ -55,7 +55,12 @@ function RequestFirstPersonPointerLock() {
   if (!HudActive() || !IsFirstPerson() || NativePointerLocked()) return;
   const CurrentControls = Controls();
   if (!CurrentControls) return;
-  try { CurrentControls.lock(); } catch {}
+  try {
+    const Result = CurrentControls.lock();
+    if (Result && typeof Result.catch === "function") Result.catch(() => queueMicrotask(UpdateCaptureState));
+  } catch {
+    queueMicrotask(UpdateCaptureState);
+  }
 }
 
 function UpdateCaptureState() {
