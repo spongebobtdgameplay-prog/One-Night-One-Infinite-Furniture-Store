@@ -7,19 +7,18 @@ if (!BasePlayer) throw new Error("Player controller must load before first-perso
 
 const PLAYER_MODEL_URL = "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb";
 const PLAYER_HEIGHT = 1.76;
-const ARM_WEIGHT_THRESHOLD = 0.30;
-const TRANSITION_DURATION = 0.34;
-const VIEWMODEL_FOV = 72;
-const VIEWMODEL_OFFSET = new THREE.Vector3(0, -0.16, -0.52);
-const EYE_OFFSET = new THREE.Vector3(0, 0.045, 0.055);
+const ARM_WEIGHT_THRESHOLD = 0.16;
+const TRANSITION_DURATION = 0.30;
+const VIEWMODEL_FOV = 70;
+const VIEWMODEL_CENTER = new THREE.Vector3(0, -0.54, -0.82);
 
 const ViewScene = new THREE.Scene();
-const ViewCamera = new THREE.PerspectiveCamera(VIEWMODEL_FOV, 1, 0.01, 8);
+const ViewCamera = new THREE.PerspectiveCamera(VIEWMODEL_FOV, 1, 0.01, 6);
 ViewCamera.position.set(0, 0, 0);
 ViewCamera.lookAt(0, 0, -1);
-ViewScene.add(new THREE.HemisphereLight(0xfff0d8, 0x2a241f, 1.55));
-const ViewLight = new THREE.DirectionalLight(0xffe3bc, 1.05);
-ViewLight.position.set(-2.2, 3.1, 1.7);
+ViewScene.add(new THREE.HemisphereLight(0xfff0d8, 0x2b251f, 1.62));
+const ViewLight = new THREE.DirectionalLight(0xffe4bd, 1.18);
+ViewLight.position.set(-2.2, 3.0, 1.8);
 ViewScene.add(ViewLight);
 
 const State = {
@@ -37,34 +36,29 @@ const State = {
   ViewOpacity: 1,
   FromBodyOpacity: 0,
   FromViewOpacity: 1,
-  FromCameraPosition: new THREE.Vector3(),
-  FromCameraQuaternion: new THREE.Quaternion(),
-  LastRenderedPosition: new THREE.Vector3(),
-  LastRenderedQuaternion: new THREE.Quaternion(),
-  HasRenderedCamera: false,
-  TempQuaternion: new THREE.Quaternion(),
-  LastRenderAt: performance.now(),
-  LastLogicalPosition: new THREE.Vector3(),
-  HasLogicalPosition: false,
-  Moving: false,
-  SmoothedSpeed: 0,
-  MotionPhase: 0,
-  MouseX: 0,
-  MouseY: 0,
-  SmoothedMouseX: 0,
-  SmoothedMouseY: 0,
   ViewRoot: null,
-  ViewHead: null,
   ViewArmMeshes: [],
   ViewBones: new Map(),
   ViewBaseBoneQuaternions: new Map(),
   ViewReady: false,
   ViewLoading: false,
+  LastRenderAt: performance.now(),
+  LastLogicalPosition: new THREE.Vector3(),
+  HasLogicalPosition: false,
+  SmoothedSpeed: 0,
+  Moving: false,
+  MotionPhase: 0,
+  MouseX: 0,
+  MouseY: 0,
+  SmoothedMouseX: 0,
+  SmoothedMouseY: 0,
   BaseViewPosition: new THREE.Vector3(),
   TempEuler: new THREE.Euler(),
-  TempBoneQuaternion: new THREE.Quaternion(),
-  TempEye: new THREE.Vector3(),
-  TempPosition: new THREE.Vector3()
+  TempQuaternion: new THREE.Quaternion(),
+  TempVector: new THREE.Vector3(),
+  TempCenter: new THREE.Vector3(),
+  TempSize: new THREE.Vector3(),
+  TempBounds: new THREE.Box3()
 };
 
 const Loader = new GLTFLoader();
@@ -124,15 +118,15 @@ function BuildArmMesh(Object) {
     const WB = BoneWeight(SkinIndex, SkinWeight, B, ArmBones);
     const WC = BoneWeight(SkinIndex, SkinWeight, C, ArmBones);
     if (Math.max(WA, WB, WC) < ARM_WEIGHT_THRESHOLD) continue;
-    const AverageWeight = (WA + WB + WC) / 3;
-    if (AverageWeight < ARM_WEIGHT_THRESHOLD * 0.74) continue;
+    if ((WA + WB + WC) / 3 < 0.08) continue;
     const MaterialIndex = MaterialIndexAt(Geometry, Offset);
     if (!Buckets.has(MaterialIndex)) Buckets.set(MaterialIndex, []);
     Buckets.get(MaterialIndex).push(A, B, C);
     KeptTriangles += 1;
   }
 
-  if (KeptTriangles < 6) return null;
+  if (KeptTriangles < 4) return null;
+
   const ArmGeometry = Geometry.clone();
   ArmGeometry.clearGroups();
   const Indices = [];
@@ -142,7 +136,6 @@ function BuildArmMesh(Object) {
     ArmGeometry.addGroup(Start, Bucket.length, MaterialIndex);
   }
   ArmGeometry.setIndex(Indices);
-  ArmGeometry.computeBoundingSphere();
 
   const SourceMaterials = Array.isArray(Object.material) ? Object.material : [Object.material];
   const Materials = SourceMaterials.map(Material => {
@@ -166,12 +159,12 @@ function BuildArmMesh(Object) {
   Arms.scale.copy(Object.scale);
   Arms.frustumCulled = false;
   Arms.renderOrder = 100;
+  Arms.userData.ViewIndices = Indices;
   return Arms;
 }
 
 function SetupViewBones(Model) {
   const BoneMap = {
-    Head: "Head",
     clavicle_l: "Shoulder.L",
     upperarm_l: "UpperArm.L",
     lowerarm_l: "LowerArm.L",
@@ -181,13 +174,13 @@ function SetupViewBones(Model) {
     lowerarm_r: "LowerArm.R",
     hand_r: "Wrist.R"
   };
+
   for (const [CanonicalName, ActualName] of Object.entries(BoneMap)) {
     const Bone = Model.getObjectByName(ActualName);
     if (!Bone?.isBone) continue;
     State.ViewBones.set(CanonicalName, Bone);
     State.ViewBaseBoneQuaternions.set(CanonicalName, Bone.quaternion.clone());
   }
-  State.ViewHead = State.ViewBones.get("Head") || null;
 }
 
 function ResetViewBones() {
@@ -197,12 +190,63 @@ function ResetViewBones() {
   }
 }
 
-function ApplyRelativeViewBone(Name, X = 0, Y = 0, Z = 0) {
+function ApplyBone(Name, X = 0, Y = 0, Z = 0) {
   const Bone = State.ViewBones.get(Name);
   if (!Bone) return;
   State.TempEuler.set(X, Y, Z, "XYZ");
-  State.TempBoneQuaternion.setFromEuler(State.TempEuler);
-  Bone.quaternion.multiply(State.TempBoneQuaternion);
+  State.TempQuaternion.setFromEuler(State.TempEuler);
+  Bone.quaternion.multiply(State.TempQuaternion);
+}
+
+function ComputeArmBounds() {
+  State.TempBounds.makeEmpty();
+
+  for (const Arms of State.ViewArmMeshes) {
+    Arms.updateMatrixWorld(true);
+    const Position = Arms.geometry.getAttribute("position");
+    const Index = Arms.geometry.index;
+    if (!Position || !Index) continue;
+
+    const Seen = new Set();
+    for (let Offset = 0; Offset < Index.count; Offset += 1) {
+      const VertexIndex = Index.getX(Offset);
+      if (Seen.has(VertexIndex)) continue;
+      Seen.add(VertexIndex);
+      State.TempVector.fromBufferAttribute(Position, VertexIndex).applyMatrix4(Arms.matrixWorld);
+      State.TempBounds.expandByPoint(State.TempVector);
+    }
+  }
+
+  return State.TempBounds;
+}
+
+function FitViewModelToCamera() {
+  if (!State.ViewRoot || !State.ViewArmMeshes.length) return;
+  State.ViewRoot.position.set(0, 0, 0);
+  State.ViewRoot.rotation.set(0, Math.PI, 0);
+  State.ViewRoot.scale.setScalar(1);
+  State.ViewRoot.updateMatrixWorld(true);
+
+  const Bounds = ComputeArmBounds();
+  if (Bounds.isEmpty()) return;
+
+  Bounds.getCenter(State.TempCenter);
+  Bounds.getSize(State.TempSize);
+
+  const WidthScale = State.TempSize.x > 1.55 ? 1.55 / State.TempSize.x : State.TempSize.x < 0.72 ? 0.72 / Math.max(State.TempSize.x, 0.01) : 1;
+  const Scale = THREE.MathUtils.clamp(WidthScale, 0.82, 1.18);
+  State.ViewRoot.scale.setScalar(Scale);
+  State.ViewRoot.updateMatrixWorld(true);
+
+  const ScaledBounds = ComputeArmBounds();
+  ScaledBounds.getCenter(State.TempCenter);
+  State.ViewRoot.position.set(
+    VIEWMODEL_CENTER.x - State.TempCenter.x,
+    VIEWMODEL_CENTER.y - State.TempCenter.y,
+    VIEWMODEL_CENTER.z - State.TempCenter.z
+  );
+  State.BaseViewPosition.copy(State.ViewRoot.position);
+  State.ViewRoot.updateMatrixWorld(true);
 }
 
 function SetViewOpacity(Opacity) {
@@ -232,56 +276,59 @@ function UpdateViewModel(Delta, Camera) {
   const DZ = Camera.position.z - State.LastLogicalPosition.z;
   State.LastLogicalPosition.copy(Camera.position);
   const InstantSpeed = Math.hypot(DX, DZ) / Math.max(Delta, 0.001);
-  State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, InstantSpeed, 1 - Math.exp(-Delta * 10));
-  State.Moving = State.SmoothedSpeed > 0.12;
+  State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, InstantSpeed, 1 - Math.exp(-Delta * 11));
+  State.Moving = State.SmoothedSpeed > 0.10;
 
   const Sprinting = Boolean(BasePlayer.IsSprinting?.());
-  const SpeedRatio = THREE.MathUtils.clamp(State.SmoothedSpeed / (Sprinting ? 5.2 : 3.4), 0, 1.25);
-  State.MotionPhase += Delta * (State.Moving ? THREE.MathUtils.lerp(5.4, 9.6, Math.min(1, SpeedRatio)) : 1.1);
+  const SpeedRatio = THREE.MathUtils.clamp(State.SmoothedSpeed / (Sprinting ? 5.3 : 3.45), 0, 1.15);
+  State.MotionPhase += Delta * (State.Moving ? THREE.MathUtils.lerp(5.2, Sprinting ? 9.6 : 7.0, SpeedRatio) : 1.15);
 
-  State.SmoothedMouseX = THREE.MathUtils.lerp(State.SmoothedMouseX, State.MouseX, 1 - Math.exp(-Delta * 17));
-  State.SmoothedMouseY = THREE.MathUtils.lerp(State.SmoothedMouseY, State.MouseY, 1 - Math.exp(-Delta * 17));
-  State.MouseX *= Math.exp(-Delta * 10);
-  State.MouseY *= Math.exp(-Delta * 10);
+  State.SmoothedMouseX = THREE.MathUtils.lerp(State.SmoothedMouseX, State.MouseX, 1 - Math.exp(-Delta * 18));
+  State.SmoothedMouseY = THREE.MathUtils.lerp(State.SmoothedMouseY, State.MouseY, 1 - Math.exp(-Delta * 18));
+  State.MouseX *= Math.exp(-Delta * 11);
+  State.MouseY *= Math.exp(-Delta * 11);
 
   ResetViewBones();
+
   const Swing = State.Moving ? Math.sin(State.MotionPhase) : 0;
-  const Secondary = State.Moving ? Math.sin(State.MotionPhase * 2 + 0.7) : Math.sin(performance.now() * 0.0017) * 0.18;
-  const IdleBreath = Math.sin(performance.now() * 0.0019) * 0.012;
-  const SwingAmount = Sprinting ? 0.23 : 0.15;
-  const ForwardDrop = Sprinting ? 0.12 : 0;
+  const Step = State.Moving ? Math.sin(State.MotionPhase * 2 + 0.55) : Math.sin(performance.now() * 0.0018) * 0.14;
+  const Breath = Math.sin(performance.now() * 0.00165) * 0.014;
+  const SwingAmount = (Sprinting ? 0.26 : 0.17) * SpeedRatio;
+  const SprintDrop = Sprinting ? 0.11 * SpeedRatio : 0;
 
-  ApplyRelativeViewBone("clavicle_l", 0.055 + IdleBreath + Secondary * 0.012, State.SmoothedMouseX * 0.09, 0.17);
-  ApplyRelativeViewBone("clavicle_r", 0.055 + IdleBreath - Secondary * 0.012, State.SmoothedMouseX * 0.09, -0.17);
-  ApplyRelativeViewBone("upperarm_l", -0.82 - ForwardDrop + Swing * SwingAmount, 0.10, 0.36);
-  ApplyRelativeViewBone("upperarm_r", -0.82 - ForwardDrop - Swing * SwingAmount, -0.10, -0.36);
-  ApplyRelativeViewBone("lowerarm_l", -0.43 + Math.max(0, -Swing) * 0.12 + State.SmoothedMouseY * 0.11, 0.02, 0.06);
-  ApplyRelativeViewBone("lowerarm_r", -0.43 + Math.max(0, Swing) * 0.12 + State.SmoothedMouseY * 0.11, -0.02, -0.06);
-  ApplyRelativeViewBone("hand_l", Secondary * 0.035, State.SmoothedMouseX * 0.025, 0.018);
-  ApplyRelativeViewBone("hand_r", -Secondary * 0.035, State.SmoothedMouseX * 0.025, -0.018);
+  ApplyBone("clavicle_l", 0.055 + Breath + Step * 0.012, State.SmoothedMouseX * 0.10, 0.18);
+  ApplyBone("clavicle_r", 0.055 + Breath - Step * 0.012, State.SmoothedMouseX * 0.10, -0.18);
+  ApplyBone("upperarm_l", -0.88 - SprintDrop + Swing * SwingAmount, 0.10, 0.38);
+  ApplyBone("upperarm_r", -0.88 - SprintDrop - Swing * SwingAmount, -0.10, -0.38);
+  ApplyBone("lowerarm_l", -0.46 + Math.max(0, -Swing) * 0.14 + State.SmoothedMouseY * 0.12, 0.02, 0.06);
+  ApplyBone("lowerarm_r", -0.46 + Math.max(0, Swing) * 0.14 + State.SmoothedMouseY * 0.12, -0.02, -0.06);
+  ApplyBone("hand_l", Step * 0.045, State.SmoothedMouseX * 0.03, 0.018);
+  ApplyBone("hand_r", -Step * 0.045, State.SmoothedMouseX * 0.03, -0.018);
 
-  State.TempPosition.copy(State.BaseViewPosition);
-  State.TempPosition.x -= State.SmoothedMouseX * 0.14 + Swing * 0.012 * SpeedRatio;
-  State.TempPosition.y += State.SmoothedMouseY * 0.09 + Math.abs(Secondary) * 0.012 * SpeedRatio;
-  State.TempPosition.z += Sprinting ? -0.055 : 0;
-  State.ViewRoot.position.copy(State.TempPosition);
-  State.ViewRoot.rotation.z = -State.SmoothedMouseX * 0.055 + Swing * 0.006 * SpeedRatio;
-  State.ViewRoot.rotation.x = State.SmoothedMouseY * 0.035;
-  State.ViewRoot.rotation.y = Math.PI;
+  State.ViewRoot.position.copy(State.BaseViewPosition);
+  State.ViewRoot.position.x -= State.SmoothedMouseX * 0.16 + Swing * 0.018 * SpeedRatio;
+  State.ViewRoot.position.y += State.SmoothedMouseY * 0.10 + Math.abs(Step) * 0.014 * SpeedRatio;
+  State.ViewRoot.position.z += Sprinting ? -0.05 : 0;
+  State.ViewRoot.rotation.set(
+    State.SmoothedMouseY * 0.04,
+    Math.PI,
+    -State.SmoothedMouseX * 0.06 + Swing * 0.008 * SpeedRatio
+  );
   State.ViewRoot.updateMatrixWorld(true);
 }
 
 async function LoadViewModel() {
   if (State.ViewLoading || State.ViewReady) return;
   State.ViewLoading = true;
+
   try {
     const Gltf = await Loader.loadAsync(PLAYER_MODEL_URL);
     const Model = Gltf.scene;
     Model.updateMatrixWorld(true);
+
     const RawBounds = new THREE.Box3().setFromObject(Model);
     const RawSize = RawBounds.getSize(new THREE.Vector3());
-    const Scale = PLAYER_HEIGHT / Math.max(RawSize.y, 0.001);
-    Model.scale.setScalar(Scale);
+    Model.scale.setScalar(PLAYER_HEIGHT / Math.max(RawSize.y, 0.001));
     Model.updateMatrixWorld(true);
 
     let Bounds = new THREE.Box3().setFromObject(Model);
@@ -291,6 +338,7 @@ async function LoadViewModel() {
     Model.updateMatrixWorld(true);
     Bounds = new THREE.Box3().setFromObject(Model);
     Model.position.y -= Bounds.min.y;
+
     SetupViewBones(Model);
 
     const Additions = [];
@@ -300,6 +348,7 @@ async function LoadViewModel() {
       const Arms = BuildArmMesh(Object);
       if (Arms) Additions.push([Object.parent, Arms]);
     });
+
     for (const [Parent, Arms] of Additions) {
       Parent.add(Arms);
       State.ViewArmMeshes.push(Arms);
@@ -313,17 +362,10 @@ async function LoadViewModel() {
     State.ViewRoot = Root;
     Root.updateMatrixWorld(true);
 
-    if (State.ViewHead?.isBone) {
-      State.TempEye.copy(EYE_OFFSET);
-      State.ViewHead.localToWorld(State.TempEye);
-      Root.position.sub(State.TempEye);
-    }
+    FitViewModelToCamera();
+    State.ViewReady = State.ViewArmMeshes.length > 0 && !ComputeArmBounds().isEmpty();
 
-    Root.position.add(VIEWMODEL_OFFSET);
-    State.BaseViewPosition.copy(Root.position);
-    Root.updateMatrixWorld(true);
-    State.ViewReady = State.ViewArmMeshes.length > 0;
-    if (!State.ViewReady) console.warn("First-person viewmodel created no arm geometry.");
+    if (!State.ViewReady) console.error("First-person arm extraction failed.");
   } catch (Error) {
     console.error("First-person viewmodel failed to load", Error);
   } finally {
@@ -363,6 +405,7 @@ function SetWorldMeshOpacity(Mesh, Opacity) {
 function RefreshWorldRig() {
   if (!State.Scene) return;
   const Pivot = State.Scene.getObjectByName("PlayerCharacterPivot") || null;
+
   if (!Pivot) {
     State.Pivot = null;
     State.WorldBodyMeshes.length = 0;
@@ -375,12 +418,14 @@ function RefreshWorldRig() {
   Pivot.traverse(Object => {
     if (Object.isMesh) Count += 1;
   });
+
   if (Pivot === State.Pivot && Count === State.WorldMeshCount) return;
 
   State.Pivot = Pivot;
   State.WorldMeshCount = Count;
   State.WorldBodyMeshes.length = 0;
   State.WorldArmMeshes.length = 0;
+
   Pivot.traverse(Object => {
     if (!Object.isMesh) return;
     if ((Object.name || "").endsWith("_FirstPersonArms")) State.WorldArmMeshes.push(Object);
@@ -394,47 +439,38 @@ function ApplyWorldVisibility() {
   for (const Mesh of State.WorldBodyMeshes) SetWorldMeshOpacity(Mesh, State.BodyOpacity);
 }
 
-function BeginTransition(ThirdPerson, Now) {
-  State.TransitionActive = true;
-  State.TransitionStartedAt = Now;
-  State.FromBodyOpacity = State.BodyOpacity;
-  State.FromViewOpacity = State.ViewOpacity;
-  if (State.HasRenderedCamera) {
-    State.FromCameraPosition.copy(State.LastRenderedPosition);
-    State.FromCameraQuaternion.copy(State.LastRenderedQuaternion);
-  } else if (State.Camera) {
-    State.FromCameraPosition.copy(State.Camera.position);
-    State.FromCameraQuaternion.copy(State.Camera.quaternion);
-  }
-  State.LastModeThirdPerson = ThirdPerson;
-}
-
 function UpdateTransition(ThirdPerson, Now) {
   if (State.LastModeThirdPerson === null) {
     State.LastModeThirdPerson = ThirdPerson;
     State.BodyOpacity = ThirdPerson ? 1 : 0;
     State.ViewOpacity = ThirdPerson ? 0 : 1;
-    return 1;
+    return;
   }
 
-  if (ThirdPerson !== State.LastModeThirdPerson) BeginTransition(ThirdPerson, Now);
+  if (ThirdPerson !== State.LastModeThirdPerson) {
+    State.LastModeThirdPerson = ThirdPerson;
+    State.TransitionActive = true;
+    State.TransitionStartedAt = Now;
+    State.FromBodyOpacity = State.BodyOpacity;
+    State.FromViewOpacity = State.ViewOpacity;
+  }
+
   if (!State.TransitionActive) {
     State.BodyOpacity = ThirdPerson ? 1 : 0;
     State.ViewOpacity = ThirdPerson ? 0 : 1;
-    return 1;
+    return;
   }
 
   const Raw = (Now - State.TransitionStartedAt) / (TRANSITION_DURATION * 1000);
   const Blend = Ease(Raw);
   State.BodyOpacity = THREE.MathUtils.lerp(State.FromBodyOpacity, ThirdPerson ? 1 : 0, Blend);
   State.ViewOpacity = THREE.MathUtils.lerp(State.FromViewOpacity, ThirdPerson ? 0 : 1, Blend);
+
   if (Raw >= 1) {
     State.TransitionActive = false;
     State.BodyOpacity = ThirdPerson ? 1 : 0;
     State.ViewOpacity = ThirdPerson ? 0 : 1;
-    return 1;
   }
-  return Blend;
 }
 
 function RenderViewModel(Renderer, Camera, Delta) {
@@ -444,6 +480,7 @@ function RenderViewModel(Renderer, Camera, Delta) {
   ViewCamera.aspect = Camera.aspect;
   ViewCamera.fov = VIEWMODEL_FOV;
   ViewCamera.updateProjectionMatrix();
+
   const PreviousAutoClear = Renderer.autoClear;
   Renderer.autoClear = false;
   Renderer.clearDepth();
@@ -468,31 +505,12 @@ function Render(Renderer, Scene, Camera) {
   const Delta = Math.min((Now - State.LastRenderAt) / 1000, 0.05);
   State.LastRenderAt = Now;
   const ThirdPerson = Boolean(BasePlayer.IsThirdPerson?.());
-  const Blend = UpdateTransition(ThirdPerson, Now);
+  UpdateTransition(ThirdPerson, Now);
+
   const OriginalRender = Renderer.render;
-
   Renderer.render = function(RenderScene, RenderCamera) {
-    if (RenderCamera !== Camera) return OriginalRender.call(Renderer, RenderScene, RenderCamera);
-
-    const DesiredPosition = RenderCamera.position.clone();
-    const DesiredQuaternion = RenderCamera.quaternion.clone();
-    if (State.TransitionActive) {
-      RenderCamera.position.lerpVectors(State.FromCameraPosition, DesiredPosition, Blend);
-      State.TempQuaternion.copy(State.FromCameraQuaternion).slerp(DesiredQuaternion, Blend);
-      RenderCamera.quaternion.copy(State.TempQuaternion);
-      RenderCamera.updateMatrixWorld(true);
-    }
-
-    ApplyWorldVisibility();
-    State.LastRenderedPosition.copy(RenderCamera.position);
-    State.LastRenderedQuaternion.copy(RenderCamera.quaternion);
-    State.HasRenderedCamera = true;
-
-    const Result = OriginalRender.call(Renderer, RenderScene, RenderCamera);
-    RenderCamera.position.copy(DesiredPosition);
-    RenderCamera.quaternion.copy(DesiredQuaternion);
-    RenderCamera.updateMatrixWorld(true);
-    return Result;
+    if (RenderCamera === Camera) ApplyWorldVisibility();
+    return OriginalRender.call(Renderer, RenderScene, RenderCamera);
   };
 
   try {
@@ -506,8 +524,8 @@ function Render(Renderer, Scene, Camera) {
 
 addEventListener("mousemove", Event => {
   if (!document.pointerLockElement) return;
-  State.MouseX = THREE.MathUtils.clamp(State.MouseX + Event.movementX * 0.0013, -0.20, 0.20);
-  State.MouseY = THREE.MathUtils.clamp(State.MouseY + Event.movementY * 0.0011, -0.16, 0.16);
+  State.MouseX = THREE.MathUtils.clamp(State.MouseX + Event.movementX * 0.00135, -0.22, 0.22);
+  State.MouseY = THREE.MathUtils.clamp(State.MouseY + Event.movementY * 0.00115, -0.18, 0.18);
 });
 
 window.__STORE_PLAYER__ = {
@@ -516,5 +534,5 @@ window.__STORE_PLAYER__ = {
   Render
 };
 
-window.__STORE_VIEWMODEL_BUILD__ = "V0.11-R8";
+window.__STORE_VIEWMODEL_BUILD__ = "V0.11-R9";
 LoadViewModel();
