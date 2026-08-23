@@ -2,25 +2,45 @@ const Game = window.__STORE_GAME__;
 
 if (!Game?.CollisionBoxes) throw new Error("Game must load before collision cleanup.");
 
-function EmptyBounds() {
-  return {
-    min: { x: Infinity, y: 0, z: Infinity },
-    max: { x: -Infinity, y: 2.5, z: -Infinity }
-  };
+function ValidBounds(Bounds) {
+  return Boolean(
+    Bounds?.min && Bounds?.max &&
+    [Bounds.min.x, Bounds.min.z, Bounds.max.x, Bounds.max.z].every(Number.isFinite) &&
+    Bounds.min.x < Bounds.max.x &&
+    Bounds.min.z < Bounds.max.z
+  );
 }
 
-function CleanupLegacyFurnitureCollision() {
+function RestoreFallback(Entry) {
+  const Fallback = ValidBounds(Entry.OriginalLegacyBox)
+    ? Entry.OriginalLegacyBox
+    : ValidBounds(Entry.OriginalBox)
+      ? Entry.OriginalBox
+      : ValidBounds(Entry.Box)
+        ? Entry.Box
+        : null;
+
+  if (Fallback) Entry.Box = Fallback;
+  Entry.LegacyCollisionDisabled = false;
+  return Fallback;
+}
+
+function KeepFurnitureCollision() {
   for (const Entry of Game.CollisionBoxes) {
     if (!Entry?.Type) continue;
-    if (/Wall|Partition/i.test(Entry.Type)) continue;
-    if (Entry.PreciseGeometry) continue;
-    if (Entry.LegacyCollisionDisabled) continue;
-    Entry.OriginalLegacyBox = Entry.Box;
-    Entry.Box = EmptyBounds();
-    Entry.LegacyCollisionDisabled = true;
+
+    if (Entry.LegacyCollisionDisabled) RestoreFallback(Entry);
+
+    if (Entry.Type === "Bathroom_Toilet") {
+      RestoreFallback(Entry);
+      if (Entry.TestPlayerCollision) delete Entry.TestPlayerCollision;
+      Entry.PreciseGeometry = false;
+      Entry.ForceFallbackCollision = true;
+    }
   }
-  requestAnimationFrame(CleanupLegacyFurnitureCollision);
+
+  requestAnimationFrame(KeepFurnitureCollision);
 }
 
-requestAnimationFrame(CleanupLegacyFurnitureCollision);
-window.__STORE_COLLISION_CLEANUP_BUILD__ = "V0.11-R2";
+requestAnimationFrame(KeepFurnitureCollision);
+window.__STORE_COLLISION_CLEANUP_BUILD__ = "V0.12.1";
