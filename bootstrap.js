@@ -1,33 +1,52 @@
-await import("./loading-prewarm-r38.js?v=20260823-33");
+const Cache = "20260823-38";
 
-try {
-  await import("./world-enhancements-r13.js?v=20260823-33");
-} catch (PrimaryWorldError) {
-  console.warn("Fresh world enhancements module failed, trying legacy path.", PrimaryWorldError);
+async function OptionalImport(Path, Label) {
   try {
-    await import("./world-enhancements.js?v=20260823-33");
-  } catch (LegacyWorldError) {
-    console.warn("World enhancements unavailable; continuing game boot without them.", LegacyWorldError);
+    return await import(`${Path}?v=${Cache}`);
+  } catch (Error) {
+    console.warn(`${Label} unavailable; continuing without it.`, Error);
+    return null;
   }
 }
 
-await import("./player-controller.js?v=20260823-33");
-await import("./player-system-r24.js?v=20260823-33");
-await import("./sprint-animation-rate-r40.js?v=20260823-35");
-await import("./first-person-fullbody-r32.js?v=20260823-33");
-await import("./first-person-walk-bob-r33.js?v=20260823-33");
-await import("./game.js?v=20260823-34");
-await import("./task-visual-fix.js?v=20260823-33");
-await import("./runtime-fixes.js?v=20260823-33");
-await import("./precision-collision-v2.js?v=20260823-33");
-await import("./collision-cleanup.js?v=20260823-33");
-await import("./sign-fix.js?v=20260823-33");
-await import("./price-signs.js?v=20260823-33");
-await import("./performance-manager.js?v=20260823-33");
+function ShowBootError(Error) {
+  const Panel = document.getElementById("ErrorPanel");
+  const Text = document.getElementById("ErrorText");
+  if (Text) Text.textContent = String(Error?.message || Error || "Unknown boot error.");
+  if (Panel) Panel.classList.remove("Hidden");
+}
+
+let CoreReady = false;
+
+try {
+  await import("./loading-prewarm-r38.js?v=20260823-33");
+  await OptionalImport("./world-enhancements-r13.js", "World enhancements");
+  await OptionalImport("./performance-manager.js", "Settings and performance manager");
+
+  await import("./player-controller.js?v=20260823-33");
+  await import("./player-system-r24.js?v=20260823-33");
+  await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
+  await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
+  await OptionalImport("./first-person-walk-bob-r33.js", "First-person walk motion");
+  await import("./game.js?v=20260823-34");
+  CoreReady = true;
+
+  await OptionalImport("./task-visual-fix.js", "Task visual fix");
+  await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
+  await OptionalImport("./precision-collision-v2.js", "Precise collision");
+  await OptionalImport("./collision-cleanup.js", "Collision cleanup");
+  await OptionalImport("./sign-fix.js", "Section sign upgrade");
+  await OptionalImport("./price-signs.js", "Price signs");
+} catch (Error) {
+  console.error("Core store boot failed.", Error);
+  ShowBootError(Error);
+}
 
 const ReadyButton = document.getElementById("StartButton");
-if (ReadyButton) {
+if (ReadyButton && CoreReady) {
   ReadyButton.disabled = false;
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
 }
+
+window.__STORE_BOOTSTRAP_BUILD__ = "V0.11-R43";
