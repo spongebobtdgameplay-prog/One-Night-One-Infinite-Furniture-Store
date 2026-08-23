@@ -92,7 +92,6 @@ if (Capture?.WheelListeners?.length) {
   const PlayerWheel = Capture.WheelListeners[Capture.WheelListeners.length - 1];
   window.addEventListener("wheel", Event => {
     PlayerWheel.Listener.call(window, Event);
-    if (IsFirstPerson() && !NativePointerLocked()) RequestFirstPersonPointerLock();
     queueMicrotask(UpdateCaptureState);
   }, PlayerWheel.Options);
 }
@@ -116,4 +115,4 @@ function InputTick() {
 requestAnimationFrame(InputTick);
 UpdateCaptureState();
 
-window.__STORE_INPUT_CONTROLS_BUILD__ = "V0.12.6";
+window.__STORE_INPUT_CONTROLS_BUILD__ = "V0.13.1";
