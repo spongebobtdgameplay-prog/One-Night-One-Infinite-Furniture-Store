@@ -102,7 +102,7 @@ function ChunkBottomZ(Index) {
 }
 
 function ChunkIndexForZ(Z) {
-  return Math.max(0, Math.floor((FIRST_CHUNK_TOP_Z - Z) / CHUNK_LENGTH));
+  return Math.floor((FIRST_CHUNK_TOP_Z - Z) / CHUNK_LENGTH);
 }
 
 function CreateTexture(Size, RepeatX, RepeatY, Draw) {
@@ -577,7 +577,7 @@ function PopulateLivingRoom(Chunk, CenterZ, Seed) {
   SpawnModel(Chunk, "Table_RoundLarge", 9.1, CenterZ - 3.3, 0);
   SpawnModel(Chunk, "Light_Floor1", -7.2, CenterZ + 5.8, 0);
   SpawnModel(Chunk, "Light_Floor1", 7.0, CenterZ - 5.0, 0);
-  if (Chunk.Index < 2) SpawnCactusMarker(Chunk, -12.0, CenterZ + 1.0, 0);
+  if (Math.abs(Chunk.Index) < 2) SpawnCactusMarker(Chunk, -12.0, CenterZ + 1.0, 0);
 }
 
 function PopulateBedroom(Chunk, CenterZ, Seed) {
@@ -624,19 +624,30 @@ function PopulateWarehouse(Chunk, CenterZ, Seed) {
   for (const X of [-10.5, 10.5]) {
     SpawnModel(Chunk, "Bookshelf", X, CenterZ + RandomRange(Seed + X * 3, -7, 7), X < 0 ? 0 : Math.PI);
   }
+
   const BoxGeometry = new THREE.BoxGeometry(0.72, 0.56, 0.9);
-  const Count = 20;
-  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, Count);
+  const StackCount = 10;
+  const LevelsPerStack = 2;
+  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, StackCount * LevelsPerStack);
   Boxes.name = "WarehouseBoxes";
   Boxes.userData.ChunkId = Chunk.Id;
   const Matrix = new THREE.Matrix4();
-  for (let Index = 0; Index < Count; Index += 1) {
-    const Side = Index % 2 === 0 ? -1 : 1;
-    const Row = Math.floor(Index / 2) % 5;
-    const Level = Math.floor(Index / 10);
-    Matrix.makeTranslation(Side * (8.0 + (Index % 3) * 1.0), 0.28 + Level * 0.58, CenterZ - 6 + Row * 2.6);
-    Boxes.setMatrixAt(Index, Matrix);
+  let BoxIndex = 0;
+
+  for (let Stack = 0; Stack < StackCount; Stack += 1) {
+    const Side = Stack % 2 === 0 ? -1 : 1;
+    const Row = Math.floor(Stack / 2);
+    const LaneOffset = Row % 2 === 0 ? 0 : 0.9;
+    const X = Side * (8.1 + LaneOffset);
+    const Z = CenterZ - 5.8 + Row * 2.7;
+
+    for (let Level = 0; Level < LevelsPerStack; Level += 1) {
+      Matrix.makeTranslation(X, 0.28 + Level * 0.56, Z);
+      Boxes.setMatrixAt(BoxIndex, Matrix);
+      BoxIndex += 1;
+    }
   }
+
   Boxes.instanceMatrix.needsUpdate = true;
   Chunk.Group.add(Boxes);
 }
@@ -723,13 +734,13 @@ function RemoveChunk(Index) {
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
   LastChunkIndex = CurrentIndex;
-  const MinIndex = Math.max(0, CurrentIndex - CHUNKS_BEHIND);
+  const MinIndex = CurrentIndex - CHUNKS_BEHIND;
   const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
   for (let Index = MinIndex; Index <= MaxIndex; Index += 1) BuildChunk(Index);
   for (const Index of [...ActiveChunks.keys()]) {
     if (Index < MinIndex || Index > MaxIndex + 1 || ActiveChunks.size > MAX_ACTIVE_CHUNKS) RemoveChunk(Index);
   }
-  if (AisleCounter) AisleCounter.textContent = `${CurrentIndex + 1}`;
+  if (AisleCounter) AisleCounter.textContent = CurrentIndex >= 0 ? `${CurrentIndex + 1}` : `B${Math.abs(CurrentIndex)}`;
 }
 
 function UpdateClock(Delta) {
@@ -884,7 +895,7 @@ const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.34);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
-for (let Index = 0; Index <= CHUNKS_AHEAD; Index += 1) BuildChunk(Index);
+for (let Index = -CHUNKS_BEHIND; Index <= CHUNKS_AHEAD; Index += 1) BuildChunk(Index);
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
 BootStatus.textContent = `Store ready — endless aisles online • seed ${WorldSeed}.`;
 
@@ -930,7 +941,7 @@ addEventListener("resize", () => {
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
 
-window.__STORE_GAME_BUILD__ = "V0.11-R38";
+window.__STORE_GAME_BUILD__ = "V0.11-R39";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
