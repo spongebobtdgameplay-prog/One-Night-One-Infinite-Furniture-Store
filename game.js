@@ -48,7 +48,7 @@ const PlayerApi = window.__STORE_PLAYER__ || null;
 window.__STORE_COLLISION_BOXES__ = CollisionBoxes;
 
 const STORE_HALF_WIDTH = 17;
-const WALKABLE_HALF_WIDTH = 16.15;
+const WALKABLE_HALF_WIDTH = 16.66;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
@@ -654,8 +654,8 @@ function BuildChunk(Index) {
 
   Box("Floor", new THREE.Vector3(34, 0.16, CHUNK_LENGTH + 0.25), new THREE.Vector3(0, -0.08, CenterZ), FloorMaterial, Chunk);
   Box("Ceiling", new THREE.Vector3(34, 0.14, CHUNK_LENGTH + 0.25), new THREE.Vector3(0, CEILING_HEIGHT, CenterZ), CeilingMaterial, Chunk);
-  Box("WallLeft", new THREE.Vector3(0.20, 3.8, CHUNK_LENGTH + 0.25), new THREE.Vector3(-STORE_HALF_WIDTH, 1.86, CenterZ), WallMaterial, Chunk);
-  Box("WallRight", new THREE.Vector3(0.20, 3.8, CHUNK_LENGTH + 0.25), new THREE.Vector3(STORE_HALF_WIDTH, 1.86, CenterZ), WallMaterial, Chunk);
+  Box("WallLeft", new THREE.Vector3(0.20, 3.8, CHUNK_LENGTH + 0.25), new THREE.Vector3(-STORE_HALF_WIDTH, 1.86, CenterZ), WallMaterial, Chunk, true);
+  Box("WallRight", new THREE.Vector3(0.20, 3.8, CHUNK_LENGTH + 0.25), new THREE.Vector3(STORE_HALF_WIDTH, 1.86, CenterZ), WallMaterial, Chunk, true);
   Box("BaseboardLeft", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(-16.87, 0.09, CenterZ), TrimMaterial, Chunk);
   Box("BaseboardRight", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(16.87, 0.09, CenterZ), TrimMaterial, Chunk);
 
@@ -796,6 +796,10 @@ function IsBlocked(Position) {
   const Radius = PlayerApi?.GetPlayerRadius?.() || 0.43;
   if (Position.x < -WALKABLE_HALF_WIDTH || Position.x > WALKABLE_HALF_WIDTH) return true;
   for (const Entry of CollisionBoxes) {
+    if (typeof Entry?.TestPlayerCollision === "function") {
+      if (Entry.TestPlayerCollision(Position, Radius)) return true;
+      continue;
+    }
     const Bounds = Entry.Box || Entry;
     if (
       Position.x + Radius > Bounds.min.x && Position.x - Radius < Bounds.max.x &&
@@ -912,6 +916,6 @@ addEventListener("resize", () => {
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
 
-window.__STORE_GAME_BUILD__ = "V0.08";
+window.__STORE_GAME_BUILD__ = "V0.09-R24";
 window.__STORE_GAME__ = { Scene, Camera, Renderer, CollisionBoxes, ActiveChunks, Tasks };
 Animate();
