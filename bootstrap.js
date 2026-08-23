@@ -1,5 +1,5 @@
-const Cache = "20260823-45";
-const Version = "0.12.6";
+const Cache = "20260823-46";
+const Version = "0.12.7";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -35,8 +35,8 @@ try {
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
   await OptionalImport("./first-person-walk-bob-r33.js", "First-person walk motion");
-  await OptionalImport("./locomotion-shapecast.js", "Collision-aware locomotion");
   await import(`./jump-controller-v0126.js?v=${Cache}`);
+  await OptionalImport("./locomotion-shapecast.js", "Final wall limb constraints");
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
