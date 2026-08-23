@@ -26,6 +26,10 @@ function ExpAlpha(Delta, Responsiveness) {
   return 1 - Math.exp(-Delta * Responsiveness);
 }
 
+function Jumping() {
+  return Boolean(window.__STORE_JUMP_STATE__ && !window.__STORE_JUMP_STATE__.Grounded);
+}
+
 function UpdateMotion(Camera) {
   const Now = performance.now();
   const Delta = Math.min(Math.max((Now - State.LastTime) / 1000, 0.001), 0.05);
@@ -42,10 +46,10 @@ function UpdateMotion(Camera) {
   State.LastCameraPosition.copy(Camera.position);
 
   const Speed = Math.hypot(DX, DZ) / Delta;
-  const Target = THREE.MathUtils.clamp(Speed / WALK_SPEED_REFERENCE, 0, 1);
-  State.MoveBlend = THREE.MathUtils.lerp(State.MoveBlend, Target, ExpAlpha(Delta, 12));
+  const Target = Jumping() ? 0 : THREE.MathUtils.clamp(Speed / WALK_SPEED_REFERENCE, 0, 1);
+  State.MoveBlend = THREE.MathUtils.lerp(State.MoveBlend, Target, ExpAlpha(Delta, Jumping() ? 20 : 12));
 
-  if (State.MoveBlend > 0.005) {
+  if (State.MoveBlend > 0.005 && !Jumping()) {
     State.Phase += Delta * THREE.MathUtils.lerp(MIN_CADENCE, MAX_CADENCE, State.MoveBlend);
   }
 }
@@ -55,7 +59,7 @@ function Render(Renderer, Scene, Camera) {
 
   const ProxyRenderer = {
     render(RenderScene, RenderCamera) {
-      if (BasePlayer.IsThirdPerson?.() || State.MoveBlend < 0.003) {
+      if (BasePlayer.IsThirdPerson?.() || Jumping() || State.MoveBlend < 0.003) {
         Renderer.render(RenderScene, RenderCamera);
         return;
       }
@@ -99,4 +103,4 @@ window.__STORE_PLAYER__ = {
   Render
 };
 
-window.__STORE_FIRST_PERSON_WALK_BOB_BUILD__ = "V0.11-R33";
+window.__STORE_FIRST_PERSON_WALK_BOB_BUILD__ = "V0.12.7";
