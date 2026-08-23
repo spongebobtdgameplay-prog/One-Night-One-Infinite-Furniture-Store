@@ -29,9 +29,6 @@ const CAMERA_SHOULDER = 0.26;
 const CAMERA_FLOOR = 0.34;
 const CAMERA_CEILING = 3.48;
 const CAMERA_PADDING = 0.10;
-const EYE_OFFSET = new THREE.Vector3(0, 0.035, 0.065);
-const FIRST_PERSON_BODY_FORWARD = 0.16;
-const FIRST_PERSON_BODY_DROP = 0.035;
 const FIRST_PERSON_NEAR = 0.018;
 const PLAYER_RADIUS = 0.34;
 
@@ -44,6 +41,7 @@ const State = {
   ThirdPerson: true,
   Distance: THIRD_PERSON_DEFAULT,
   OrbitHeld: false,
+  PendingThirdPersonYaw: null,
   Pivot: null,
   Head: null,
   Bones: new Map(),
@@ -62,13 +60,21 @@ const State = {
   LastSprintAt: -Infinity,
   TempForward: new THREE.Vector3(),
   TempRight: new THREE.Vector3(),
+  TempUp: new THREE.Vector3(),
   TempTarget: new THREE.Vector3(),
   TempDesired: new THREE.Vector3(),
   TempOffset: new THREE.Vector3(),
-  TempEye: new THREE.Vector3(),
-  TempCorrection: new THREE.Vector3(),
+  TempStart: new THREE.Vector3(),
+  TempEnd: new THREE.Vector3(),
+  TempCurrentDirection: new THREE.Vector3(),
+  TempDesiredDirection: new THREE.Vector3(),
+  TempElbowTarget: new THREE.Vector3(),
+  TempWristTarget: new THREE.Vector3(),
   TempEuler: new THREE.Euler(),
   TempQuaternion: new THREE.Quaternion(),
+  TempQuaternionB: new THREE.Quaternion(),
+  TempQuaternionC: new THREE.Quaternion(),
+  TempQuaternionD: new THREE.Quaternion(),
   SavedCameraPosition: new THREE.Vector3(),
   SavedCameraQuaternion: new THREE.Quaternion(),
   SavedHeadScale: new THREE.Vector3(),
@@ -76,9 +82,6 @@ const State = {
 };
 
 const BoneNames = {
-  Chest: "Chest",
-  Torso: "Torso",
-  Neck: "Neck",
   Head: "Head",
   ShoulderL: "Shoulder.L",
   ShoulderR: "Shoulder.R",
@@ -104,6 +107,19 @@ function CaptureControls(Controls) {
   window.__STORE_POINTER_CONTROLS__ = Controls;
 }
 
+function CameraHorizontalForward(Target = State.TempForward) {
+  if (!State.Camera) return Target.set(0, 0, -1);
+  Target.set(0, 0, -1).applyQuaternion(State.Camera.quaternion);
+  Target.y = 0;
+  if (Target.lengthSq() < 0.000001) Target.set(0, 0, -1);
+  return Target.normalize();
+}
+
+function CameraFacingYaw() {
+  CameraHorizontalForward(State.TempForward);
+  return Math.atan2(State.TempForward.x, State.TempForward.z);
+}
+
 function ApplyInputMode() {
   const Controls = State.Controls || window.__STORE_POINTER_CONTROLS__ || null;
   if (Controls) {
@@ -112,14 +128,9 @@ function ApplyInputMode() {
     Controls.pointerSpeed = State.ThirdPerson ? (State.OrbitHeld ? 1 : 0) : 1;
   }
 
-  if (State.ThirdPerson) {
-    Canvas.style.cursor = "default";
-    document.body.style.cursor = "default";
-  } else {
-    Canvas.style.cursor = "none";
-    document.body.style.cursor = "none";
-  }
-
+  const Cursor = State.ThirdPerson ? "default" : "none";
+  Canvas.style.cursor = Cursor;
+  document.body.style.cursor = Cursor;
   if (Crosshair) Crosshair.style.display = State.ThirdPerson ? "none" : "block";
   if (CameraMode) CameraMode.textContent = State.ThirdPerson ? "THIRD" : "FIRST";
 }
@@ -136,7 +147,6 @@ PointerLockControls.prototype.lock = function(...Args) {
   this.isLocked = true;
   this.pointerSpeed = 1;
   ApplyInputMode();
-
   if (!document.hasFocus()) return;
   try {
     return OriginalLock.apply(this, Args);
@@ -150,13 +160,25 @@ PointerLockControls.prototype.unlock = function(...Args) {
   return Result;
 };
 
-function SetMode(ThirdPerson) {
+function SetMode(ThirdPerson, RequestPointerLock = false) {
+  const WasThirdPerson = State.ThirdPerson;
   State.ThirdPerson = Boolean(ThirdPerson);
-  if (State.ThirdPerson && State.Distance < THIRD_PERSON_MIN) State.Distance = THIRD_PERSON_DEFAULT;
-  if (!State.ThirdPerson) State.Distance = 0;
 
-  if (State.ThirdPerson && document.pointerLockElement) {
-    try { document.exitPointerLock(); } catch {}
+  if (State.ThirdPerson) {
+    if (State.Distance < THIRD_PERSON_MIN) State.Distance = THIRD_PERSON_DEFAULT;
+    if (!WasThirdPerson) {
+      State.PendingThirdPersonYaw = State.Pivot ? State.Pivot.rotation.y : CameraFacingYaw();
+    }
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch {}
+    }
+  } else {
+    State.Distance = 0;
+    if (State.Pivot) State.Pivot.rotation.y = CameraFacingYaw();
+    const Controls = State.Controls || window.__STORE_POINTER_CONTROLS__ || null;
+    if (RequestPointerLock && Controls && !document.pointerLockElement && document.hasFocus()) {
+      try { OriginalLock.call(Controls); } catch {}
+    }
   }
 
   ApplyInputMode();
@@ -185,6 +207,7 @@ function RefreshRig() {
 
   State.Pivot = Pivot;
   State.RigStamp = Stamp;
+  State.Head = null;
   State.Bones.clear();
   State.BodyMeshes.length = 0;
 
@@ -194,6 +217,7 @@ function RefreshRig() {
     if (
       Name.endsWith("_FirstPersonArms") ||
       Name.endsWith("_CameraArms") ||
+      Name.endsWith("_CleanFirstPersonArms") ||
       Name === "GuaranteedFirstPersonArms" ||
       Name === "RealFirstPersonWorkerArms" ||
       Name === "FirstPersonViewModelRoot"
@@ -201,7 +225,6 @@ function RefreshRig() {
       Remove.push(Object);
       return;
     }
-
     if (Object.isMesh) State.BodyMeshes.push(Object);
   });
 
@@ -237,19 +260,85 @@ function RestorePose() {
     const Bone = State.Bones.get(Name);
     if (Bone) Bone.quaternion.copy(Quaternion);
   }
+  if (State.Pivot) State.Pivot.updateMatrixWorld(true);
 }
 
-function ApplyBone(Name, X = 0, Y = 0, Z = 0) {
-  const Bone = State.Bones.get(Name);
-  if (!Bone) return;
-  State.TempEuler.set(X, Y, Z, "XYZ");
-  State.TempQuaternion.setFromEuler(State.TempEuler);
-  Bone.quaternion.multiply(State.TempQuaternion);
+function PlaceFirstPersonBody() {
+  if (!RefreshRig() || !State.Pivot || !State.Camera) return;
+  State.Pivot.position.set(State.Camera.position.x, 0, State.Camera.position.z);
+  State.Pivot.rotation.y = CameraFacingYaw();
+  State.Pivot.updateMatrixWorld(true);
+}
+
+function RotateBoneToward(BoneName, ChildName, Target) {
+  const Bone = State.Bones.get(BoneName);
+  const Child = State.Bones.get(ChildName);
+  if (!Bone || !Child || !Bone.parent) return;
+
+  State.Pivot?.updateMatrixWorld(true);
+  Bone.getWorldPosition(State.TempStart);
+  Child.getWorldPosition(State.TempEnd);
+  State.TempCurrentDirection.copy(State.TempEnd).sub(State.TempStart);
+  State.TempDesiredDirection.copy(Target).sub(State.TempStart);
+  if (State.TempCurrentDirection.lengthSq() < 0.000001 || State.TempDesiredDirection.lengthSq() < 0.000001) return;
+  State.TempCurrentDirection.normalize();
+  State.TempDesiredDirection.normalize();
+
+  Bone.getWorldQuaternion(State.TempQuaternion);
+  Bone.parent.getWorldQuaternion(State.TempQuaternionB);
+  State.TempQuaternionC.setFromUnitVectors(State.TempCurrentDirection, State.TempDesiredDirection);
+  State.TempQuaternionD.copy(State.TempQuaternionC).multiply(State.TempQuaternion);
+  State.TempQuaternionB.invert();
+  Bone.quaternion.copy(State.TempQuaternionB.multiply(State.TempQuaternionD)).normalize();
+  State.Pivot?.updateMatrixWorld(true);
+}
+
+function PoseRealArm(Side, Swing) {
+  if (!State.Camera) return;
+  const IsLeft = Side < 0;
+  const Upper = IsLeft ? "UpperArmL" : "UpperArmR";
+  const Lower = IsLeft ? "LowerArmL" : "LowerArmR";
+  const Wrist = IsLeft ? "WristL" : "WristR";
+
+  CameraHorizontalForward(State.TempForward);
+  State.TempRight.set(1, 0, 0).applyQuaternion(State.Camera.quaternion);
+  State.TempRight.y = 0;
+  if (State.TempRight.lengthSq() < 0.000001) State.TempRight.set(1, 0, 0);
+  State.TempRight.normalize();
+  State.TempUp.set(0, 1, 0);
+
+  const ArmSwing = IsLeft ? Swing : -Swing;
+  const SprintReach = State.Sprinting ? 0.07 : 0;
+  const ElbowForward = 0.27 + ArmSwing * 0.035 + SprintReach * 0.4;
+  const WristForward = 0.52 + ArmSwing * 0.12 + SprintReach;
+  const ElbowSide = Side * 0.27;
+  const WristSide = Side * 0.23;
+  const ElbowDown = State.Sprinting ? 0.20 : 0.22;
+  const WristDown = State.Sprinting ? 0.25 : 0.29;
+
+  State.TempElbowTarget.copy(State.Camera.position)
+    .addScaledVector(State.TempForward, ElbowForward)
+    .addScaledVector(State.TempRight, ElbowSide)
+    .addScaledVector(State.TempUp, -ElbowDown);
+
+  State.TempWristTarget.copy(State.Camera.position)
+    .addScaledVector(State.TempForward, WristForward)
+    .addScaledVector(State.TempRight, WristSide)
+    .addScaledVector(State.TempUp, -WristDown);
+
+  RotateBoneToward(Upper, Lower, State.TempElbowTarget);
+  RotateBoneToward(Lower, Wrist, State.TempWristTarget);
+}
+
+function ApplyFirstPersonPose() {
+  if (!State.Camera) return;
+  const Swing = State.Moving ? Math.sin(State.Phase) : 0;
+  PoseRealArm(-1, Swing);
+  PoseRealArm(1, Swing);
 }
 
 function UpdateMotion(Delta) {
   if (!State.Camera) return;
-
   if (!State.HasPosition) {
     State.LastPosition.copy(State.Camera.position);
     State.HasPosition = true;
@@ -258,7 +347,6 @@ function UpdateMotion(Delta) {
   const DX = State.Camera.position.x - State.LastPosition.x;
   const DZ = State.Camera.position.z - State.LastPosition.z;
   State.LastPosition.copy(State.Camera.position);
-
   const Speed = Math.hypot(DX, DZ) / Math.max(Delta, 0.001);
   State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, Speed, 1 - Math.exp(-Delta * 12));
   const Moving = State.SmoothedSpeed > 0.08;
@@ -289,54 +377,6 @@ function UpdateStamina(Delta) {
     StaminaWrap.classList.toggle("IsSprinting", State.Sprinting);
     StaminaWrap.classList.toggle("IsExhausted", State.Exhausted);
   }
-}
-
-function AlignFirstPersonBody() {
-  if (!RefreshRig() || !State.Pivot || !State.Camera) return;
-
-  State.TempEuler.setFromQuaternion(State.Camera.quaternion, "YXZ");
-  State.Pivot.rotation.y = State.TempEuler.y;
-  State.Pivot.position.set(State.Camera.position.x, 0, State.Camera.position.z);
-  State.Pivot.updateMatrixWorld(true);
-
-  if (!State.Head) return;
-  State.TempEye.copy(EYE_OFFSET);
-  State.Head.localToWorld(State.TempEye);
-  State.TempCorrection.copy(State.Camera.position).sub(State.TempEye);
-  State.Pivot.position.add(State.TempCorrection);
-
-  State.TempForward.set(0, 0, -1).applyQuaternion(State.Camera.quaternion);
-  State.TempForward.y = 0;
-  if (State.TempForward.lengthSq() > 0.000001) {
-    State.TempForward.normalize();
-    State.Pivot.position.addScaledVector(State.TempForward, FIRST_PERSON_BODY_FORWARD);
-  }
-  State.Pivot.position.y -= FIRST_PERSON_BODY_DROP;
-  State.Pivot.updateMatrixWorld(true);
-}
-
-function ApplyFirstPersonPose() {
-  if (!State.Camera) return;
-  State.TempEuler.setFromQuaternion(State.Camera.quaternion, "YXZ");
-  const Pitch = THREE.MathUtils.clamp(State.TempEuler.x, -1.15, 1.15);
-  const Swing = State.Moving ? Math.sin(State.Phase) : 0;
-  const Step = State.Moving ? Math.sin(State.Phase * 2 + 0.4) : 0;
-  const SpeedRatio = THREE.MathUtils.clamp(State.SmoothedSpeed / (State.Sprinting ? SPRINT_SPEED : WALK_SPEED), 0, 1.1);
-  const WalkSwing = Swing * 0.34 * SpeedRatio;
-  const ArmReach = (State.Sprinting ? -1.30 : -1.16) - Pitch * 0.10;
-  const ElbowBend = State.Sprinting ? -0.98 : -0.76;
-
-  ApplyBone("Torso", Pitch * 0.06, 0, 0);
-  ApplyBone("Chest", Pitch * 0.16, 0, Step * 0.010 * SpeedRatio);
-  ApplyBone("Neck", -Pitch * 0.12, 0, 0);
-  ApplyBone("ShoulderL", 0.06, 0.035, 0.065);
-  ApplyBone("ShoulderR", 0.06, -0.035, -0.065);
-  ApplyBone("UpperArmL", ArmReach + WalkSwing, 0.10, 0.18);
-  ApplyBone("UpperArmR", ArmReach - WalkSwing, -0.10, -0.18);
-  ApplyBone("LowerArmL", ElbowBend - Math.max(0, -Swing) * 0.12 * SpeedRatio, 0.015, 0.025);
-  ApplyBone("LowerArmR", ElbowBend - Math.max(0, Swing) * 0.12 * SpeedRatio, -0.015, -0.025);
-  ApplyBone("WristL", Step * 0.04 * SpeedRatio, 0, 0.015);
-  ApplyBone("WristR", -Step * 0.04 * SpeedRatio, 0, -0.015);
 }
 
 function SegmentAabbDistance(Start, End, Bounds) {
@@ -388,6 +428,10 @@ function RenderThirdPerson(Renderer, Scene, Camera) {
   ForceBodyVisible();
   if (State.Pivot) {
     State.Pivot.position.set(Camera.position.x, 0, Camera.position.z);
+    if (Number.isFinite(State.PendingThirdPersonYaw)) {
+      State.Pivot.rotation.y = State.PendingThirdPersonYaw;
+      State.PendingThirdPersonYaw = null;
+    }
     State.Pivot.updateMatrixWorld(true);
   }
 
@@ -427,10 +471,9 @@ function RenderThirdPerson(Renderer, Scene, Camera) {
 
 function RenderFirstPerson(Renderer, Scene, Camera) {
   ForceBodyVisible();
+  PlaceFirstPersonBody();
   SavePose();
-  AlignFirstPersonBody();
   ApplyFirstPersonPose();
-  AlignFirstPersonBody();
 
   const SavedNear = Camera.near;
   if (Camera.near > FIRST_PERSON_NEAR) {
@@ -508,7 +551,7 @@ addEventListener("wheel", Event => {
 
   const NextDistance = State.Distance + Delta * ZOOM_PIXELS_TO_DISTANCE;
   if (Delta < 0 && NextDistance <= FIRST_PERSON_SWITCH) {
-    SetMode(false);
+    SetMode(false, false);
     return;
   }
 
@@ -519,7 +562,7 @@ addEventListener("keydown", Event => {
   if (Event.code !== "KeyV" || Event.repeat || !HudActive()) return;
   Event.preventDefault();
   Event.stopImmediatePropagation();
-  if (State.ThirdPerson) SetMode(false);
+  if (State.ThirdPerson) SetMode(false, true);
   else {
     State.Distance = THIRD_PERSON_DEFAULT;
     SetMode(true);
@@ -555,7 +598,15 @@ Canvas.addEventListener("contextmenu", Event => {
   if (State.ThirdPerson) Event.preventDefault();
 });
 
-addEventListener("pointerlockchange", () => queueMicrotask(ApplyInputMode));
+addEventListener("pointerlockchange", () => {
+  if (!document.pointerLockElement && !State.ThirdPerson && HudActive()) {
+    State.Distance = THIRD_PERSON_DEFAULT;
+    SetMode(true);
+    return;
+  }
+  queueMicrotask(ApplyInputMode);
+});
+
 addEventListener("pointerlockerror", () => queueMicrotask(ApplyInputMode));
 
 function InputTick() {
@@ -577,4 +628,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R17";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R21";
