@@ -8,11 +8,11 @@ const THIRD_PERSON_DEFAULT = 3.2;
 const THIRD_PERSON_MIN = 0.9;
 const THIRD_PERSON_MAX = 4.25;
 const ZOOM_STEP = 0.4;
-const ZOOM_RESPONSIVENESS = 17;
-const CAMERA_TARGET_HEIGHT = 1.28;
-const CAMERA_HEIGHT = 0.16;
+const ZOOM_RESPONSIVENESS = 18;
+const CAMERA_TARGET_HEIGHT = 1.22;
+const CAMERA_HEIGHT = 0.18;
 const CAMERA_SHOULDER = 0.22;
-const CAMERA_PITCH_LIMIT = 0.68;
+const CAMERA_PITCH_LIMIT = 0.62;
 
 const State = {
   Scene: null,
@@ -26,11 +26,9 @@ const State = {
   ZoomTarget: 0,
   Phase: 0,
   LastFrameAt: performance.now(),
-  PendingThirdPersonAnchor: false,
   BodyMeshes: [],
   ArmMeshes: [],
   MeshCount: -1,
-  SavedBones: new Map(),
   TempDirection: new THREE.Vector3(),
   TempHorizontal: new THREE.Vector3(),
   TempRight: new THREE.Vector3(),
@@ -39,8 +37,6 @@ const State = {
   TempOffset: new THREE.Vector3(),
   SavedCameraPosition: new THREE.Vector3(),
   SavedCameraQuaternion: new THREE.Quaternion(),
-  SavedPivotPosition: new THREE.Vector3(),
-  SavedPivotQuaternion: new THREE.Quaternion(),
   TempEuler: new THREE.Euler(),
   TempQuaternion: new THREE.Quaternion()
 };
@@ -53,14 +49,15 @@ function IsThirdPerson() {
   return State.ZoomTarget >= THIRD_PERSON_MIN;
 }
 
-function StartThirdPerson() {
-  State.PendingThirdPersonAnchor = true;
-  if (State.Zoom < THIRD_PERSON_MIN) State.Zoom = THIRD_PERSON_MIN;
-}
-
-function RestoreBaseThirdPersonIfNeeded() {
-  if (!IsThirdPerson() || BasePlayer.IsThirdPerson?.()) return;
-  window.dispatchEvent(new WheelEvent("wheel", { deltaY: 1, bubbles: false, cancelable: true }));
+function SyncBaseMode() {
+  const WantsThirdPerson = IsThirdPerson();
+  for (let Attempt = 0; Attempt < 16 && Boolean(BasePlayer.IsThirdPerson?.()) !== WantsThirdPerson; Attempt += 1) {
+    window.dispatchEvent(new WheelEvent("wheel", {
+      deltaY: WantsThirdPerson ? 1 : -1,
+      bubbles: false,
+      cancelable: true
+    }));
+  }
 }
 
 function UpdateZoom(Delta) {
@@ -94,66 +91,49 @@ function RefreshCharacterReferences() {
   });
 }
 
-function SetViewVisibility(ThirdPerson) {
-  for (const Mesh of State.BodyMeshes) Mesh.visible = ThirdPerson;
-  for (const Mesh of State.ArmMeshes) Mesh.visible = !ThirdPerson;
+function SetThirdPersonVisibility() {
+  for (const Mesh of State.BodyMeshes) Mesh.visible = true;
+  for (const Mesh of State.ArmMeshes) Mesh.visible = false;
 }
 
-function SaveBone(Name) {
-  if (!State.Pivot) return null;
-  const Bone = State.Pivot.getObjectByName(Name);
-  if (!Bone?.isBone) return null;
-  if (!State.SavedBones.has(Bone)) State.SavedBones.set(Bone, Bone.quaternion.clone());
-  return Bone;
+function FindBone(Name) {
+  const Bone = State.Pivot?.getObjectByName(Name);
+  return Bone?.isBone ? Bone : null;
 }
 
-function RotateBone(Name, X = 0, Y = 0, Z = 0) {
-  const Bone = SaveBone(Name);
+function RotateSavedBone(SavedBones, Name, X = 0, Y = 0, Z = 0) {
+  const Bone = FindBone(Name);
   if (!Bone) return;
+  if (!SavedBones.has(Bone)) SavedBones.set(Bone, Bone.quaternion.clone());
   State.TempEuler.set(X, Y, Z, "XYZ");
   State.TempQuaternion.setFromEuler(State.TempEuler);
   Bone.quaternion.multiply(State.TempQuaternion);
 }
 
-function RestoreBones() {
-  for (const [Bone, Quaternion] of State.SavedBones) Bone.quaternion.copy(Quaternion);
-  State.SavedBones.clear();
+function ApplyFirstPersonArmMotion(Delta, Time) {
+  if (!State.Pivot) return new Map();
+  State.Phase += Delta * (State.Moving ? (State.Sprinting ? 10.8 : 7.0) : 1.2);
+  const Swing = State.Moving ? Math.sin(State.Phase) : 0;
+  const Opposite = -Swing;
+  const Step = State.Moving ? Math.sin(State.Phase * 2) : 0;
+  const Breath = Math.sin(Time * 1.7);
+  const SavedBones = new Map();
+  const SwingAmount = State.Sprinting ? 0.09 : 0.055;
+  const SprintLift = State.Sprinting ? 0.04 : 0;
+
+  RotateSavedBone(SavedBones, "Shoulder.L", Breath * 0.004, 0, Step * 0.008);
+  RotateSavedBone(SavedBones, "Shoulder.R", Breath * 0.004, 0, -Step * 0.008);
+  RotateSavedBone(SavedBones, "UpperArm.L", -SprintLift + Swing * SwingAmount, 0, 0);
+  RotateSavedBone(SavedBones, "UpperArm.R", -SprintLift + Opposite * SwingAmount, 0, 0);
+  RotateSavedBone(SavedBones, "LowerArm.L", Math.max(0, -Swing) * 0.035, 0, 0);
+  RotateSavedBone(SavedBones, "LowerArm.R", Math.max(0, -Opposite) * 0.035, 0, 0);
+  RotateSavedBone(SavedBones, "Wrist.L", Step * 0.012, 0, 0);
+  RotateSavedBone(SavedBones, "Wrist.R", -Step * 0.012, 0, 0);
+  return SavedBones;
 }
 
-function ApplySecondaryAnimation(Delta, Time, ThirdPerson) {
-  State.Phase += Delta * (State.Moving ? (State.Sprinting ? 11.2 : 7.4) : 1.35);
-  const Swing = State.Moving ? Math.sin(State.Phase) : 0;
-  const Opposite = State.Moving ? Math.sin(State.Phase + Math.PI) : 0;
-  const StepBob = State.Moving ? Math.sin(State.Phase * 2) : 0;
-  const Breath = Math.sin(Time * 1.75);
-
-  if (ThirdPerson) {
-    const ArmAmount = State.Sprinting ? 0.15 : 0.095;
-    const TorsoAmount = State.Sprinting ? 0.045 : 0.025;
-    RotateBone("Hips", Breath * 0.004 + StepBob * 0.008, Swing * 0.018, StepBob * 0.018);
-    RotateBone("Abdomen", State.Sprinting ? 0.025 : 0.008, -Swing * TorsoAmount, -StepBob * 0.012);
-    RotateBone("Torso", Breath * 0.009, Swing * TorsoAmount * 0.72, StepBob * 0.009);
-    RotateBone("Chest", Breath * 0.006, -Swing * TorsoAmount * 0.45, -StepBob * 0.007);
-    RotateBone("Neck", -Breath * 0.004, Swing * 0.008, -StepBob * 0.004);
-    RotateBone("Shoulder.L", 0, Swing * 0.012, StepBob * 0.012);
-    RotateBone("Shoulder.R", 0, Opposite * 0.012, -StepBob * 0.012);
-    RotateBone("UpperArm.L", -Swing * ArmAmount, 0, 0);
-    RotateBone("UpperArm.R", -Opposite * ArmAmount, 0, 0);
-    RotateBone("LowerArm.L", Math.max(0, -Swing) * 0.045, 0, 0);
-    RotateBone("LowerArm.R", Math.max(0, -Opposite) * 0.045, 0, 0);
-    return;
-  }
-
-  const FirstPersonSwing = State.Moving ? 0.12 : 0.018;
-  const SprintLift = State.Sprinting ? 0.065 : 0;
-  RotateBone("Shoulder.L", Breath * 0.006 + StepBob * 0.008, Swing * 0.018, 0.025 + StepBob * 0.018);
-  RotateBone("Shoulder.R", Breath * 0.006 - StepBob * 0.008, Opposite * 0.018, -0.025 - StepBob * 0.018);
-  RotateBone("UpperArm.L", -SprintLift - Swing * FirstPersonSwing, 0.018, 0.022);
-  RotateBone("UpperArm.R", -SprintLift - Opposite * FirstPersonSwing, -0.018, -0.022);
-  RotateBone("LowerArm.L", -0.035 + Math.max(0, -Swing) * 0.075, 0, StepBob * 0.012);
-  RotateBone("LowerArm.R", -0.035 + Math.max(0, -Opposite) * 0.075, 0, -StepBob * 0.012);
-  RotateBone("Wrist.L", StepBob * 0.025, Swing * 0.018, 0);
-  RotateBone("Wrist.R", -StepBob * 0.025, Opposite * 0.018, 0);
+function RestoreBones(SavedBones) {
+  for (const [Bone, Quaternion] of SavedBones) Bone.quaternion.copy(Quaternion);
 }
 
 function SegmentAabbDistance(Start, End, Bounds, Padding = 0.1) {
@@ -199,55 +179,8 @@ function CameraDistance(Target, Desired) {
   return Allowed;
 }
 
-function SaveArmTransforms() {
-  const Saved = [];
-  for (const Mesh of State.ArmMeshes) {
-    Saved.push({ Mesh, Position: Mesh.position.clone(), Scale: Mesh.scale.clone() });
-    Mesh.position.y += 0.055;
-    Mesh.position.z += 0.16;
-    Mesh.scale.multiplyScalar(1.045);
-  }
-  return Saved;
-}
-
-function RestoreArmTransforms(Saved) {
-  for (const Entry of Saved) {
-    Entry.Mesh.position.copy(Entry.Position);
-    Entry.Mesh.scale.copy(Entry.Scale);
-  }
-}
-
-function RenderFirstPerson(Renderer, Scene, Camera, Delta, Time) {
-  SetViewVisibility(false);
-  const SavedArmTransforms = SaveArmTransforms();
-  if (State.Pivot) {
-    State.SavedPivotPosition.copy(State.Pivot.position);
-    State.SavedPivotQuaternion.copy(State.Pivot.quaternion);
-    Camera.getWorldDirection(State.TempDirection);
-    State.TempDirection.y = 0;
-    if (State.TempDirection.lengthSq() > 0.0001) {
-      State.TempDirection.normalize();
-      State.Pivot.rotation.y = Math.atan2(State.TempDirection.x, State.TempDirection.z);
-    }
-  }
-  ApplySecondaryAnimation(Delta, Time, false);
-  Renderer.render(Scene, Camera);
-  RestoreBones();
-  RestoreArmTransforms(SavedArmTransforms);
-  if (State.Pivot) {
-    State.Pivot.position.copy(State.SavedPivotPosition);
-    State.Pivot.quaternion.copy(State.SavedPivotQuaternion);
-  }
-}
-
-function RenderThirdPerson(Renderer, Scene, Camera, Delta, Time) {
-  SetViewVisibility(true);
-  if (State.Pivot && State.PendingThirdPersonAnchor) {
-    State.Pivot.position.set(Camera.position.x, 0, Camera.position.z);
-    State.PendingThirdPersonAnchor = false;
-  }
-
-  ApplySecondaryAnimation(Delta, Time, true);
+function RenderThirdPerson(Renderer, Scene, Camera) {
+  SetThirdPersonVisibility();
   State.SavedCameraPosition.copy(Camera.position);
   State.SavedCameraQuaternion.copy(Camera.quaternion);
 
@@ -283,7 +216,6 @@ function RenderThirdPerson(Renderer, Scene, Camera, Delta, Time) {
   Camera.lookAt(State.TempTarget);
   Camera.updateMatrixWorld(true);
   Renderer.render(Scene, Camera);
-  RestoreBones();
   Camera.position.copy(State.SavedCameraPosition);
   Camera.quaternion.copy(State.SavedCameraQuaternion);
   Camera.updateMatrixWorld(true);
@@ -301,15 +233,22 @@ function Render(Renderer, Scene, Camera) {
   const Now = performance.now();
   const Delta = Math.min((Now - State.LastFrameAt) / 1000, 0.05);
   State.LastFrameAt = Now;
-  const Time = Now / 1000;
   UpdateZoom(Delta);
   RefreshCharacterReferences();
+
+  if (!IsThirdPerson()) {
+    const SavedBones = ApplyFirstPersonArmMotion(Delta, Now / 1000);
+    BasePlayer.Render(Renderer, Scene, Camera);
+    RestoreBones(SavedBones);
+    return;
+  }
+
   if (!State.Pivot) {
     BasePlayer.Render(Renderer, Scene, Camera);
     return;
   }
-  if (IsThirdPerson()) RenderThirdPerson(Renderer, Scene, Camera, Delta, Time);
-  else RenderFirstPerson(Renderer, Scene, Camera, Delta, Time);
+
+  RenderThirdPerson(Renderer, Scene, Camera);
 }
 
 function GetMovementSpeed(WantsSprint, Moving) {
@@ -325,28 +264,27 @@ function GetPlayerRadius() {
 
 addEventListener("wheel", Event => {
   if (!Event.isTrusted || !IsGameplayActive()) return;
-  const WasThirdPerson = IsThirdPerson();
+  Event.preventDefault();
+  Event.stopImmediatePropagation();
   const Direction = Math.sign(Event.deltaY);
   if (!Direction) return;
   if (Direction > 0) {
-    if (!WasThirdPerson) State.ZoomTarget = THIRD_PERSON_MIN;
+    if (!IsThirdPerson()) State.ZoomTarget = THIRD_PERSON_MIN;
     else State.ZoomTarget = Math.min(THIRD_PERSON_MAX, State.ZoomTarget + ZOOM_STEP);
-  } else if (!WasThirdPerson) {
-    State.ZoomTarget = 0;
-  } else if (State.ZoomTarget <= THIRD_PERSON_MIN + 0.001) {
+  } else if (!IsThirdPerson() || State.ZoomTarget <= THIRD_PERSON_MIN + 0.001) {
     State.ZoomTarget = 0;
   } else {
     State.ZoomTarget = Math.max(THIRD_PERSON_MIN, State.ZoomTarget - ZOOM_STEP);
   }
-  if (!WasThirdPerson && IsThirdPerson()) StartThirdPerson();
-  RestoreBaseThirdPersonIfNeeded();
-}, { passive: false });
+  SyncBaseMode();
+}, { capture: true, passive: false });
 
 addEventListener("keydown", Event => {
   if (!Event.isTrusted || Event.code !== "KeyV" || Event.repeat) return;
-  const WasThirdPerson = IsThirdPerson();
-  State.ZoomTarget = WasThirdPerson ? 0 : THIRD_PERSON_DEFAULT;
-  if (!WasThirdPerson) StartThirdPerson();
+  Event.preventDefault();
+  Event.stopImmediatePropagation();
+  State.ZoomTarget = IsThirdPerson() ? 0 : THIRD_PERSON_DEFAULT;
+  SyncBaseMode();
 }, true);
 
 window.__STORE_PLAYER__ = {
@@ -359,4 +297,4 @@ window.__STORE_PLAYER__ = {
   IsThirdPerson
 };
 
-window.__STORE_PLAYER_POLISH_BUILD__ = "V0.12";
+window.__STORE_PLAYER_POLISH_BUILD__ = "V0.13";
