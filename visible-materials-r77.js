@@ -24,7 +24,7 @@ function ReplacementFor(Object, Material) {
 
 function LiftMaterial(Object, Material) {
   if (!Material?.color?.isColor) return Material;
-  if (Luminance(Material.color) >= 0.19) return Material;
+  if (Luminance(Material.color) >= 0.30) return Material;
 
   const Clone = Material.clone();
   Clone.color.setHex(ReplacementFor(Object, Material));
