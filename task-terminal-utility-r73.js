@@ -1,23 +1,23 @@
 import * as THREE from "three";
 import { Create3DText } from "./three-text-utility-r73.js";
 
-const CabinetMaterial = new THREE.MeshStandardMaterial({ color: 0x3b403d, roughness: 0.58, metalness: 0.56 });
-const CabinetDarkMaterial = new THREE.MeshStandardMaterial({ color: 0x171a19, roughness: 0.64, metalness: 0.58 });
-const CabinetTrimMaterial = new THREE.MeshStandardMaterial({ color: 0x747a74, roughness: 0.48, metalness: 0.70 });
-const LabelMaterial = new THREE.MeshStandardMaterial({ color: 0xd9cfb4, roughness: 0.58, metalness: 0.03 });
-const RedMaterial = new THREE.MeshStandardMaterial({ color: 0x8f241b, roughness: 0.52, metalness: 0.10 });
-const AmberMaterial = new THREE.MeshStandardMaterial({ color: 0xc58a2d, emissive: 0x4a2604, emissiveIntensity: 0.28, roughness: 0.50 });
-const GreenMaterial = new THREE.MeshStandardMaterial({ color: 0x55a467, emissive: 0x235b31, emissiveIntensity: 0.90, roughness: 0.34 });
-const BlackMaterial = new THREE.MeshStandardMaterial({ color: 0x101211, roughness: 0.60, metalness: 0.28 });
+const CabinetMaterial = new THREE.MeshStandardMaterial({ color: 0x727c76, roughness: 0.56, metalness: 0.48 });
+const CabinetDoorMaterial = new THREE.MeshStandardMaterial({ color: 0x56615c, roughness: 0.62, metalness: 0.44 });
+const CabinetTrimMaterial = new THREE.MeshStandardMaterial({ color: 0xa3aaa1, roughness: 0.46, metalness: 0.62 });
+const LabelMaterial = new THREE.MeshStandardMaterial({ color: 0xf0dfbc, roughness: 0.55, metalness: 0.03, emissive: 0x4d381c, emissiveIntensity: 0.10 });
+const RedMaterial = new THREE.MeshStandardMaterial({ color: 0xb84b3b, roughness: 0.50, metalness: 0.08 });
+const AmberMaterial = new THREE.MeshStandardMaterial({ color: 0xd59b43, emissive: 0x7b4b16, emissiveIntensity: 0.34, roughness: 0.48 });
+const GreenMaterial = new THREE.MeshStandardMaterial({ color: 0x76b783, emissive: 0x356f43, emissiveIntensity: 0.88, roughness: 0.32 });
+const ControlMaterial = new THREE.MeshStandardMaterial({ color: 0x625d52, roughness: 0.58, metalness: 0.24 });
 
 function AddCabinetShell(Group) {
-  const Plinth = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.50), CabinetDarkMaterial);
+  const Plinth = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.08, 0.50), CabinetDoorMaterial);
   Plinth.position.y = 0.04;
   const Upright = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.72, 0.16), CabinetTrimMaterial);
   Upright.position.y = 0.42;
   const Body = new THREE.Mesh(new THREE.BoxGeometry(0.74, 0.88, 0.28), CabinetMaterial);
   Body.position.set(0, 1.00, 0);
-  const Door = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.80, 0.035), CabinetDarkMaterial);
+  const Door = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.80, 0.035), CabinetDoorMaterial);
   Door.position.set(0, 1.00, 0.158);
   const TopCap = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.07, 0.32), CabinetTrimMaterial);
   TopCap.position.set(0, 1.47, 0);
@@ -63,7 +63,7 @@ async function AddBreakerFace(Group) {
   const HandleGeometry = new THREE.BoxGeometry(0.045, 0.09, 0.05);
   for (let Index = 0; Index < 4; Index += 1) {
     const X = -0.20 + Index * 0.13;
-    const Toggle = new THREE.Mesh(ToggleGeometry, BlackMaterial);
+    const Toggle = new THREE.Mesh(ToggleGeometry, ControlMaterial);
     Toggle.position.set(X, 1.08, 0.218);
     const Handle = new THREE.Mesh(HandleGeometry, CabinetTrimMaterial);
     Handle.position.set(X, 1.095, 0.268);
@@ -88,7 +88,7 @@ async function AddBreakerFace(Group) {
     MaxWidth: 0.14,
     MaxHeight: 0.035,
     Depth: 0.012,
-    Material: BlackMaterial
+    Material: ControlMaterial
   });
   StatusText.position.set(-0.13, 0.82, 0.210);
   Group.add(StatusPlate, StatusText);
@@ -116,7 +116,7 @@ async function AddScreenTerminalFace(Group, Type) {
     MaxWidth: 0.24,
     MaxHeight: 0.065,
     Depth: 0.015,
-    Material: BlackMaterial
+    Material: ControlMaterial
   });
   Ready.position.set(0, 1.02, 0.250);
   Group.add(Ready);
@@ -150,4 +150,4 @@ export async function CreateTaskTerminal3D(Type) {
   return { Group, Screen };
 }
 
-window.__STORE_TASK_TERMINAL_UTILITY_BUILD__ = "V0.15.0-R73";
+window.__STORE_TASK_TERMINAL_UTILITY_BUILD__ = "V0.16.0-R74";
