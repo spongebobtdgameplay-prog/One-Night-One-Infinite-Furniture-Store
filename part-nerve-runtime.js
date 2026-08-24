@@ -7,7 +7,7 @@ const Collision = window.__STORE_COLLISION_UTILITY__;
 if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes || !Player || !Collision) throw new Error("Game, player, and collision utility must load before part nerve collision.");
 
 const BatchWindowMs = 3.5;
-const MovementRadius = () => THREE.MathUtils.clamp(Number(Player.GetPlayerRadius?.()) || 0.34, 0.28, 0.38);
+const MovementRadius = () => THREE.MathUtils.clamp((Number(Player.GetPlayerRadius?.()) || 0.34) * 0.62, 0.19, 0.22);
 
 const MovementBatch = {
   Camera: null,
