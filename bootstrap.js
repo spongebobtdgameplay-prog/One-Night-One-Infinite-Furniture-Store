@@ -1,4 +1,4 @@
-const Cache = "20260823-46";
+const Cache = "20260823-47";
 const Version = "0.12.12";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
