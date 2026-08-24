@@ -1,0 +1,193 @@
+import * as THREE from "three";
+import { CreateDepartmentSign3D } from "./sign-utility-r73.js?v=20260824-88";
+import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-88";
+import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-88";
+import {
+  CreateOnlineSurfaceDecoration,
+  CreateOnlineWallDecoration,
+  OnlineDecorationKeys,
+  PreloadOnlineDecorations
+} from "./online-decoration-library-r75.js?v=20260824-88";
+
+const Game = window.__STORE_GAME__;
+if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) throw new Error("Store game must load before stable visual dressing.");
+
+const Processing = new WeakSet();
+const FurnitureNames = new Set([
+  "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
+  "NightStand_2", "Shelf_Large", "Bookshelf", "Kitchen_Cabinet1", "Kitchen_Fridge",
+  "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1"
+]);
+
+function RemoveNamed(Chunk) {
+  const Remove = [];
+  Chunk.Group?.traverse?.(Object => {
+    const Name = String(Object?.name || "");
+    if (
+      Name === "SectionSign" ||
+      Name === "SignMount" ||
+      Name === "DepartmentHeaderR72" ||
+      Name === "DepartmentHeaderV13" ||
+      Name === "FurniturePriceSignR72" ||
+      Name === "FurniturePriceSignR73" ||
+      Name === "SuppressedLegacyPriceSignR83" ||
+      Name.startsWith("FurnitureItemSignR74-") ||
+      Name.startsWith("FurnitureItemSignR80-")
+    ) Remove.push(Object);
+  });
+  for (const Object of Remove) Object.parent?.remove(Object);
+}
+
+async function ReplaceDepartmentSign(Chunk) {
+  const Existing = Chunk.Group.getObjectByName("DepartmentHeaderR73");
+  if (Existing) return Existing;
+  const Sign = await CreateDepartmentSign3D(Chunk.Theme, {
+    Name: "DepartmentHeaderR73",
+    Width: 6.55,
+    Height: 1.06,
+    Depth: 0.20
+  });
+  Sign.userData.ChunkId = Chunk.Id;
+  Sign.userData.DecorationNoCollision = false;
+  Sign.position.set(0, 2.84, Chunk.TopZ - 2.72);
+  Chunk.Group.add(Sign);
+  return Sign;
+}
+
+async function ReplaceTaskTerminal(Chunk, Task) {
+  const Root = Task?.Object;
+  if (!Root?.isObject3D || Root.userData?.StableTerminalR83) return;
+  const Terminal = await CreateTaskTerminal3D(Task.Type);
+  while (Root.children.length) Root.remove(Root.children[0]);
+  Root.add(...Terminal.Group.children);
+  Root.userData.StableTerminalR83 = true;
+  Root.userData.NoBeaconR83 = true;
+  Task.Screen = Terminal.Screen;
+}
+
+function DecorationPlans(Model, Index) {
+  const Flip = Index % 2 === 0 ? 1 : -1;
+  if (Model.name === "Couch_Large1" || Model.name === "Couch_L") {
+    return [
+      { Key: OnlineDecorationKeys.PillowA, TargetHeight: 0.18, HeightRatio: 0.47, OffsetX: -0.18, OffsetZ: 0.03, RotationY: 0.12 * Flip },
+      { Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.17, HeightRatio: 0.47, OffsetX: 0.18, OffsetZ: 0.02, RotationY: -0.18 * Flip }
+    ];
+  }
+  if (Model.name === "Bed_King") {
+    return [
+      { Key: OnlineDecorationKeys.PillowA, TargetHeight: 0.16, HeightRatio: 0.43, OffsetX: -0.19, OffsetZ: -0.14, RotationY: 0.08 },
+      { Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.16, HeightRatio: 0.43, OffsetX: 0.19, OffsetZ: -0.14, RotationY: -0.08 }
+    ];
+  }
+  if (Model.name === "Bed_Single") return [{ Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.15, HeightRatio: 0.43, OffsetX: 0, OffsetZ: -0.14, RotationY: 0.08 * Flip }];
+  if (Model.name === "NightStand_2") return [{ Key: OnlineDecorationKeys.TableLamp, TargetHeight: 0.44, OffsetX: -0.10 * Flip, OffsetZ: 0.02, RotationY: 0 }];
+  if (Model.name === "Table_RoundLarge") return [{ Key: OnlineDecorationKeys.StandingFrame, TargetHeight: 0.27, OffsetX: -0.15 * Flip, OffsetZ: -0.10, RotationY: 0.22 * Flip }];
+  return [];
+}
+
+async function AddFurnitureDecorations(Chunk) {
+  if (Chunk.Group.userData?.StableFurnitureDecorR83) return;
+  const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name));
+  let Added = 0;
+  for (let Index = 0; Index < Models.length; Index += 1) {
+    for (const Plan of DecorationPlans(Models[Index], Index)) {
+      try {
+        const Decoration = await CreateOnlineSurfaceDecoration(Plan.Key, Models[Index], Plan);
+        if (!Decoration) continue;
+        Decoration.name = `OnlineSurfaceDecorationR76-StableR83-${Added}`;
+        Decoration.userData.ChunkId = Chunk.Id;
+        Decoration.userData.DecorationNoCollision = false;
+        Chunk.Group.add(Decoration);
+        Added += 1;
+      } catch (Error) {
+        console.warn("Stable furniture decoration unavailable", Error);
+      }
+    }
+  }
+  Chunk.Group.userData.StableFurnitureDecorR83 = true;
+}
+
+async function AddWallDecorations(Chunk) {
+  if (Chunk.Group.userData?.StableWallDecorR83) return;
+  const CenterZ = Chunk.CenterZ;
+  const Plans = [
+    { Key: OnlineDecorationKeys.WallFrameLarge, X: -16.86, Y: 2.00, Z: CenterZ + 6.1, Height: 0.86, RotationY: Math.PI * 0.5 },
+    { Key: OnlineDecorationKeys.WallFrameMedium, X: 16.86, Y: 1.92, Z: CenterZ - 6.1, Height: 0.72, RotationY: -Math.PI * 0.5 }
+  ];
+  for (let Index = 0; Index < Plans.length; Index += 1) {
+    const Plan = Plans[Index];
+    try {
+      const Decoration = await CreateOnlineWallDecoration(Plan.Key, Plan.X, Plan.Y, Plan.Z, Plan.Height, Plan.RotationY);
+      if (!Decoration) continue;
+      Decoration.name = `OnlineWallDecorationR76-StableR83-${Index}`;
+      Decoration.userData.ChunkId = Chunk.Id;
+      Decoration.userData.DecorationNoCollision = false;
+      Chunk.Group.add(Decoration);
+    } catch (Error) {
+      console.warn("Stable wall decoration unavailable", Error);
+    }
+  }
+  Chunk.Group.userData.StableWallDecorR83 = true;
+}
+
+function RemoveTerminalSpheres(Chunk) {
+  for (const Task of Chunk.TaskRecords || []) {
+    const Remove = [];
+    Task.Object?.traverse?.(Object => {
+      if (Object?.isMesh && String(Object.geometry?.type || "") === "SphereGeometry") Remove.push(Object);
+    });
+    for (const Object of Remove) Object.parent?.remove(Object);
+  }
+}
+
+export async function ProcessChunk(Chunk) {
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Processing.has(Chunk)) return;
+  if (Chunk.Group.userData?.PresentationReadyR83) return;
+  if (Chunk.Group.userData?.VisualRedesignR83) {
+    RemoveNamed(Chunk);
+    RemoveTerminalSpheres(Chunk);
+    return;
+  }
+  Processing.add(Chunk);
+  try {
+    RemoveNamed(Chunk);
+    await ReplaceDepartmentSign(Chunk);
+    for (const Task of Chunk.TaskRecords || []) await ReplaceTaskTerminal(Chunk, Task);
+    RemoveTerminalSpheres(Chunk);
+    await AddFurnitureDecorations(Chunk);
+    await AddWallDecorations(Chunk);
+    Chunk.Group.userData.VisualRedesignR83 = true;
+    Chunk.Group.userData.VisualRedesignR76 = true;
+  } finally {
+    Processing.delete(Chunk);
+  }
+}
+
+function FindChunk(Index) {
+  return Game.ActiveChunks.get(Index) || [...Game.PreparedChunks.values()].find(Chunk => Chunk?.Index === Index) || null;
+}
+
+function UpdateDepartmentVisibility() {
+  for (const Chunk of Game.ActiveChunks.values()) {
+    const Sign = Chunk.Group?.getObjectByName?.("DepartmentHeaderR73");
+    if (!Sign) continue;
+    const Previous = FindChunk(Chunk.Index - 1);
+    Sign.visible = !Previous || Previous.Theme !== Chunk.Theme;
+  }
+}
+
+await Promise.allSettled([Preload3DTextFont(), PreloadOnlineDecorations()]);
+
+function Discover() {
+  for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
+  for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
+  UpdateDepartmentVisibility();
+}
+
+Discover();
+const Interval = setInterval(Discover, 1400);
+addEventListener("pagehide", () => clearInterval(Interval), { once: true });
+
+window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
+window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk };
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.22.0-R83";
