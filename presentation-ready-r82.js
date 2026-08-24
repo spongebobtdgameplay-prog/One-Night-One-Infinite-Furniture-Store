@@ -82,6 +82,7 @@ async function RunWorldPasses(Chunk) {
   Finish?.ProcessAll?.();
   PriceTags?.ProcessChunk?.(Chunk);
   window.__STORE_SOLID_OBJECT_COLLISION_R77__?.ProcessAll?.();
+  window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessAll?.();
   window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessAll?.();
 }
 
@@ -96,6 +97,7 @@ export async function FinalizeChunk(Chunk) {
       await Delay(Pass < 5 ? 70 : 120);
       Pass += 1;
     }
+    await RunWorldPasses(Chunk);
     if (!ReadyForPresentation(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out; exposing completed core chunk.`);
     Chunk.Group.userData.PresentationReadyR82 = true;
     Chunk.Group.userData.PresentationReadyAt = performance.now();
@@ -111,11 +113,8 @@ async function PrimeBootWorld() {
   await Promise.allSettled(Chunks.map(Chunk => FinalizeChunk(Chunk)));
 }
 
-// Finish the already-buffered boot world while the loading screen is still visible.
 await PrimeBootWorld();
 
-// After boot, hide prepared chunks from the native activation path until all
-// retail dressing, price tags and zone assets have been completed off-screen.
 const PreviousPreparedGet = Game.PreparedChunks.get.bind(Game.PreparedChunks);
 Game.PreparedChunks.get = function(Index) {
   const Chunk = PreviousPreparedGet(Index);
@@ -137,4 +136,4 @@ const Interval = setInterval(Discover, 140);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R82__ = { FinalizeChunk, ReadyForPresentation, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.21.0-R82";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.21.1-R82";
