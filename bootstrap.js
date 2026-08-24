@@ -1,6 +1,6 @@
-const Cache = "20260824-82";
-const Version = "0.19.0";
-const FaviconVersion = "20260824-3";
+const Cache = "20260824-83";
+const Version = "0.20.0";
+const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   {
     rel: "icon",
@@ -24,6 +24,12 @@ const FaviconLinks = [
     href: `favicon_io/site.webmanifest?v=${FaviconVersion}`
   }
 ];
+
+document.title = "The Infinity Store";
+const PromoEyebrow = document.querySelector("#BootScreen .Eyebrow");
+if (PromoEyebrow) PromoEyebrow.remove();
+const StoreTitle = document.querySelector("#BootScreen h1");
+if (StoreTitle) StoreTitle.innerHTML = "THE INFINITY<br>STORE";
 
 document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"], link[data-store-icon="1"]').forEach(Link => Link.remove());
 
@@ -87,6 +93,7 @@ try {
   await OptionalImport("./solid-object-collision-r77.js", "Physical sign and decoration collision");
   await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
+  await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
