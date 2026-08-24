@@ -28,33 +28,24 @@ function StockTargets(Chunk) {
   return Targets.slice(0, 5);
 }
 
+function ExistingStock(Chunk) {
+  const Stock = [];
+  Chunk.Group?.traverse?.(Object => {
+    if (Object?.userData?.ShelfStockR83) Stock.push(Object);
+  });
+  return Stock;
+}
+
+function RemoveExistingStock(Chunk) {
+  for (const Object of ExistingStock(Chunk)) Object.parent?.remove(Object);
+}
+
 function PlansFor(Index) {
   const Flip = Index % 2 === 0 ? 1 : -1;
   return [
-    {
-      Key: OnlineDecorationKeys.BookSet,
-      TargetHeight: 0.18,
-      HeightRatio: 0.29,
-      OffsetX: -0.22 * Flip,
-      OffsetZ: 0,
-      RotationY: 0.08 * Flip
-    },
-    {
-      Key: OnlineDecorationKeys.BookSingle,
-      TargetHeight: 0.14,
-      HeightRatio: 0.56,
-      OffsetX: 0.20 * Flip,
-      OffsetZ: 0.01,
-      RotationY: -0.24 * Flip
-    },
-    {
-      Key: Index % 3 === 0 ? OnlineDecorationKeys.StandingFrame : OnlineDecorationKeys.BookSet,
-      TargetHeight: Index % 3 === 0 ? 0.20 : 0.16,
-      HeightRatio: 0.80,
-      OffsetX: -0.05 * Flip,
-      OffsetZ: 0,
-      RotationY: 0.12 * Flip
-    }
+    { Key: OnlineDecorationKeys.BookSet, TargetHeight: 0.18, HeightRatio: 0.29, OffsetX: -0.22 * Flip, OffsetZ: 0, RotationY: 0.08 * Flip },
+    { Key: OnlineDecorationKeys.BookSingle, TargetHeight: 0.14, HeightRatio: 0.56, OffsetX: 0.20 * Flip, OffsetZ: 0.01, RotationY: -0.24 * Flip },
+    { Key: Index % 3 === 0 ? OnlineDecorationKeys.StandingFrame : OnlineDecorationKeys.BookSet, TargetHeight: Index % 3 === 0 ? 0.20 : 0.16, HeightRatio: 0.80, OffsetX: -0.05 * Flip, OffsetZ: 0, RotationY: 0.12 * Flip }
   ];
 }
 
@@ -67,15 +58,20 @@ async function Yield() {
 
 export async function ProcessChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Processing.has(Chunk)) return;
-  if (Chunk.Group.userData?.ShelfStockR83) return;
+  if (Chunk.Group.userData?.PresentationReadyR83) return;
+
+  const Targets = StockTargets(Chunk);
+  const Expected = Targets.length * 3;
+  const Existing = ExistingStock(Chunk);
+  if (Chunk.Group.userData?.ShelfStockR83 && Existing.length >= Expected) return;
+
   Processing.add(Chunk);
   try {
-    const Targets = StockTargets(Chunk);
+    RemoveExistingStock(Chunk);
     let DecorationIndex = 0;
     for (let TargetIndex = 0; TargetIndex < Targets.length; TargetIndex += 1) {
       const Target = Targets[TargetIndex];
-      const Plans = PlansFor(TargetIndex);
-      for (const Plan of Plans) {
+      for (const Plan of PlansFor(TargetIndex)) {
         try {
           const Decoration = await CreateOnlineSurfaceDecoration(Plan.Key, Target, Plan);
           if (!Decoration) continue;
@@ -98,6 +94,11 @@ export async function ProcessChunk(Chunk) {
   }
 }
 
+export function IsStocked(Chunk) {
+  const Targets = StockTargets(Chunk);
+  return ExistingStock(Chunk).length >= Targets.length * 3;
+}
+
 await PreloadOnlineDecorations().catch(() => {});
 
 function Discover() {
@@ -109,5 +110,5 @@ Discover();
 const Interval = setInterval(Discover, 1200);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.22.0-R83";
+window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.22.1-R83";
