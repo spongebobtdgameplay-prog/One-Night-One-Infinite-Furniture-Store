@@ -9,8 +9,8 @@ if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) {
   throw new Error("The Infinity Store game must load before store finishing.");
 }
 
-const FinishedPartitions = new WeakSet();
-const RearDecorated = new WeakSet();
+const PartitionWork = new WeakSet();
+const RearWork = new WeakSet();
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -28,42 +28,53 @@ function BrightPartitionMaterial(Material, Color) {
 }
 
 async function FinishPartitions(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || FinishedPartitions.has(Chunk)) return;
-  FinishedPartitions.add(Chunk);
-  const Partitions = [];
-  Chunk.Group?.traverse?.(Object => {
-    if (Object?.name === "ShowroomPartition" && Object.isMesh) Partitions.push(Object);
-    else if ((Object?.name === "PartitionCap" || Object?.name === "PartitionBase") && Object.isMesh) {
-      Object.material = BrightPartitionMaterial(Object.material, 0x8f877a);
-    }
-  });
-
-  for (let Index = 0; Index < Partitions.length; Index += 1) {
-    const Partition = Partitions[Index];
-    Partition.material = BrightPartitionMaterial(Partition.material, 0xc4beb2);
-    Partition.userData.MerchandisingWallR80 = true;
-    const Bounds = BoundsOf(Partition);
-    const Center = Bounds.getCenter(new THREE.Vector3());
-    const TowardAisle = Center.x > 0 ? -1 : 1;
-    const X = Center.x + TowardAisle * (Bounds.getSize(new THREE.Vector3()).x * 0.5 + 0.035);
-    try {
-      const Frame = await CreateOnlineWallDecoration(
-        Index % 2 === 0 ? OnlineDecorationKeys.WallFrameMedium : OnlineDecorationKeys.WallFrameLarge,
-        X,
-        1.62,
-        Center.z,
-        Index % 2 === 0 ? 0.62 : 0.76,
-        Center.x > 0 ? -Math.PI * 0.5 : Math.PI * 0.5
-      );
-      if (Frame) {
-        Frame.name = `OnlineWallDecorationR76-PartitionR80-${Index}`;
-        Frame.userData.ChunkId = Chunk.Id;
-        Frame.userData.DecorationNoCollision = false;
-        Chunk.Group.add(Frame);
+  if (!Chunk?.Ready || Chunk.Cancelled || PartitionWork.has(Chunk) || Chunk.Group.userData?.PresentationReadyR83) return;
+  PartitionWork.add(Chunk);
+  try {
+    const Partitions = [];
+    Chunk.Group?.traverse?.(Object => {
+      if (Object?.name === "ShowroomPartition" && Object.isMesh) Partitions.push(Object);
+      else if ((Object?.name === "PartitionCap" || Object?.name === "PartitionBase") && Object.isMesh && !Object.userData?.FinishColorR83) {
+        Object.material = BrightPartitionMaterial(Object.material, 0x8f877a);
+        Object.userData.FinishColorR83 = true;
       }
-    } catch (Error) {
-      console.warn("Partition display frame unavailable", Error);
+    });
+
+    for (let Index = 0; Index < Partitions.length; Index += 1) {
+      const Partition = Partitions[Index];
+      if (!Partition.userData?.FinishColorR83) {
+        Partition.material = BrightPartitionMaterial(Partition.material, 0xc4beb2);
+        Partition.userData.FinishColorR83 = true;
+      }
+      Partition.userData.MerchandisingWallR80 = true;
+
+      const FrameName = `OnlineWallDecorationR76-PartitionR80-${Index}`;
+      if (Chunk.Group.getObjectByName(FrameName)) continue;
+      const Bounds = BoundsOf(Partition);
+      const Center = Bounds.getCenter(new THREE.Vector3());
+      const TowardAisle = Center.x > 0 ? -1 : 1;
+      const X = Center.x + TowardAisle * (Bounds.getSize(new THREE.Vector3()).x * 0.5 + 0.035);
+      try {
+        const Frame = await CreateOnlineWallDecoration(
+          Index % 2 === 0 ? OnlineDecorationKeys.WallFrameMedium : OnlineDecorationKeys.WallFrameLarge,
+          X,
+          1.62,
+          Center.z,
+          Index % 2 === 0 ? 0.62 : 0.76,
+          Center.x > 0 ? -Math.PI * 0.5 : Math.PI * 0.5
+        );
+        if (Frame) {
+          Frame.name = FrameName;
+          Frame.userData.ChunkId = Chunk.Id;
+          Frame.userData.DecorationNoCollision = false;
+          Chunk.Group.add(Frame);
+        }
+      } catch (Error) {
+        console.warn("Partition display frame unavailable", Error);
+      }
     }
+  } finally {
+    PartitionWork.delete(Chunk);
   }
 }
 
@@ -89,54 +100,57 @@ function AddRearCollision(Chunk, Bounds) {
 
 async function EnsureRearClosure() {
   const Chunk = Game.ActiveChunks.get(0) || [...Game.PreparedChunks.values()].find(Value => Value?.Index === 0);
-  if (!Chunk?.Ready || !Chunk.Group || RearDecorated.has(Chunk)) return;
-  RearDecorated.add(Chunk);
-
-  const Existing = Chunk.Group.getObjectByName("RearStoreClosureR80");
-  if (Existing) return;
-  const WallSource = Chunk.Group.getObjectByName("WallLeft");
-  const BaseSource = Chunk.Group.getObjectByName("BaseboardLeft");
-  const WallMaterial = BrightPartitionMaterial(WallSource?.material, 0xc2bcb1) || new THREE.MeshStandardMaterial({ color: 0xc2bcb1, roughness: 0.94 });
-  const BaseMaterial = BrightPartitionMaterial(BaseSource?.material, 0x8e8577) || new THREE.MeshStandardMaterial({ color: 0x8e8577, roughness: 0.78, metalness: 0.12 });
-
-  const Group = new THREE.Group();
-  Group.name = "RearStoreClosureR80";
-  Group.userData.ChunkId = Chunk.Id;
-  const RearZ = Chunk.TopZ + 0.08;
-
-  const Wall = new THREE.Mesh(new THREE.BoxGeometry(34, 3.80, 0.22), WallMaterial);
-  Wall.name = "RearStoreWallR80";
-  Wall.position.set(0, 1.86, RearZ);
-  const Base = new THREE.Mesh(new THREE.BoxGeometry(33.7, 0.18, 0.26), BaseMaterial);
-  Base.name = "RearStoreBaseboardR80";
-  Base.position.set(0, 0.09, RearZ - 0.02);
-  Group.add(Wall, Base);
-  Chunk.Group.add(Group);
-
-  Wall.updateWorldMatrix(true, true);
-  AddRearCollision(Chunk, BoundsOf(Wall));
-
-  const RearFrames = [
-    { X: -7.2, Key: OnlineDecorationKeys.WallFrameLarge, Height: 0.92 },
-    { X: 7.2, Key: OnlineDecorationKeys.WallFrameLarge, Height: 0.92 }
-  ];
-  for (let Index = 0; Index < RearFrames.length; Index += 1) {
-    const Plan = RearFrames[Index];
-    try {
-      const Frame = await CreateOnlineWallDecoration(Plan.Key, Plan.X, 1.82, RearZ - 0.13, Plan.Height, 0);
-      if (!Frame) continue;
-      Frame.name = `OnlineWallDecorationR76-RearR80-${Index}`;
-      Frame.userData.ChunkId = Chunk.Id;
-      Frame.userData.DecorationNoCollision = false;
-      Chunk.Group.add(Frame);
-    } catch (Error) {
-      console.warn("Rear wall decoration unavailable", Error);
+  if (!Chunk?.Ready || !Chunk.Group || RearWork.has(Chunk) || Chunk.Group.userData?.PresentationReadyR83) return;
+  RearWork.add(Chunk);
+  try {
+    let Group = Chunk.Group.getObjectByName("RearStoreClosureR80");
+    const RearZ = Chunk.TopZ + 0.08;
+    if (!Group) {
+      const WallSource = Chunk.Group.getObjectByName("WallLeft");
+      const BaseSource = Chunk.Group.getObjectByName("BaseboardLeft");
+      const WallMaterial = BrightPartitionMaterial(WallSource?.material, 0xc2bcb1) || new THREE.MeshStandardMaterial({ color: 0xc2bcb1, roughness: 0.94 });
+      const BaseMaterial = BrightPartitionMaterial(BaseSource?.material, 0x8e8577) || new THREE.MeshStandardMaterial({ color: 0x8e8577, roughness: 0.78, metalness: 0.12 });
+      Group = new THREE.Group();
+      Group.name = "RearStoreClosureR80";
+      Group.userData.ChunkId = Chunk.Id;
+      const Wall = new THREE.Mesh(new THREE.BoxGeometry(34, 3.80, 0.22), WallMaterial);
+      Wall.name = "RearStoreWallR80";
+      Wall.position.set(0, 1.86, RearZ);
+      const Base = new THREE.Mesh(new THREE.BoxGeometry(33.7, 0.18, 0.26), BaseMaterial);
+      Base.name = "RearStoreBaseboardR80";
+      Base.position.set(0, 0.09, RearZ - 0.02);
+      Group.add(Wall, Base);
+      Chunk.Group.add(Group);
+      Wall.updateWorldMatrix(true, true);
+      AddRearCollision(Chunk, BoundsOf(Wall));
     }
+
+    const RearFrames = [
+      { X: -7.2, Key: OnlineDecorationKeys.WallFrameLarge, Height: 0.92 },
+      { X: 7.2, Key: OnlineDecorationKeys.WallFrameLarge, Height: 0.92 }
+    ];
+    for (let Index = 0; Index < RearFrames.length; Index += 1) {
+      const Name = `OnlineWallDecorationR76-RearR80-${Index}`;
+      if (Chunk.Group.getObjectByName(Name)) continue;
+      const Plan = RearFrames[Index];
+      try {
+        const Frame = await CreateOnlineWallDecoration(Plan.Key, Plan.X, 1.82, RearZ - 0.13, Plan.Height, 0);
+        if (!Frame) continue;
+        Frame.name = Name;
+        Frame.userData.ChunkId = Chunk.Id;
+        Frame.userData.DecorationNoCollision = false;
+        Chunk.Group.add(Frame);
+      } catch (Error) {
+        console.warn("Rear wall decoration unavailable", Error);
+      }
+    }
+  } finally {
+    RearWork.delete(Chunk);
   }
 }
 
 function ProcessChunk(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled) return;
+  if (!Chunk?.Ready || Chunk.Cancelled || Chunk.Group.userData?.PresentationReadyR83) return;
   FinishPartitions(Chunk).catch(Error => console.warn("Partition finish failed", Error));
 }
 
@@ -151,4 +165,4 @@ const Interval = setInterval(ProcessAll, 1400);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_FINISH_R80__ = { ProcessAll, ProcessChunk, EnsureRearClosure };
-window.__STORE_FINISH_BUILD__ = "V0.22.0-R83";
+window.__STORE_FINISH_BUILD__ = "V0.22.1-R83";
