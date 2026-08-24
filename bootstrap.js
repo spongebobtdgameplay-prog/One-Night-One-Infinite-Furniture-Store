@@ -1,5 +1,5 @@
-const Cache = "20260824-76";
-const Version = "0.16.0";
+const Cache = "20260824-77";
+const Version = "0.16.1";
 const FaviconVersion = "20260824-3";
 const FaviconLinks = [
   {
@@ -85,7 +85,6 @@ try {
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
-  await import(`./movement-frame-authority-r74.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
