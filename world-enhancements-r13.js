@@ -3,14 +3,15 @@ import * as THREE from "three";
 const State = {
   Scene: null,
   Initialized: false,
-  ScanTimer: null,
+  AnimationFrame: 0,
   Horizon: null,
   HorizonKey: ""
 };
 
-const HORIZON_SEGMENTS = 12;
+const HORIZON_SEGMENTS = 14;
 const HORIZON_CHUNK_LENGTH = 30;
 const HORIZON_HEIGHT = 3.72;
+const HORIZON_GAP = 0.16;
 
 function AddAtmosphereOverlay() {
   if (document.getElementById("StoreAtmosphereOverlay")) return;
@@ -43,10 +44,11 @@ function CloneMaterial(Material) {
   return Clone;
 }
 
-function CreateHorizonSide(Materials, Direction) {
+function CreateForwardHorizon(Materials) {
   const Group = new THREE.Group();
-  Group.name = Direction > 0 ? "StoreHorizonPositive" : "StoreHorizonNegative";
+  Group.name = "StoreHorizonForward";
   Group.userData.StoreHorizon = true;
+  Group.userData.ForwardOnly = true;
 
   const Floor = new THREE.InstancedMesh(
     new THREE.BoxGeometry(34, 0.16, HORIZON_CHUNK_LENGTH),
@@ -68,9 +70,17 @@ function CreateHorizonSide(Materials, Direction) {
     CloneMaterial(Materials.Housing),
     HORIZON_SEGMENTS * 3
   );
+  const GlowMaterial = CloneMaterial(Materials.Glow);
+  if (GlowMaterial) {
+    GlowMaterial.depthWrite = false;
+    GlowMaterial.depthTest = true;
+    GlowMaterial.toneMapped = false;
+    GlowMaterial.transparent = false;
+    GlowMaterial.opacity = 1;
+  }
   const Glows = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(3.10, 0.035, 0.28),
-    CloneMaterial(Materials.Glow),
+    new THREE.BoxGeometry(3.04, 0.012, 0.20),
+    GlowMaterial,
     HORIZON_SEGMENTS * 3
   );
 
@@ -79,7 +89,7 @@ function CreateHorizonSide(Materials, Direction) {
   let LightIndex = 0;
 
   for (let Segment = 0; Segment < HORIZON_SEGMENTS; Segment += 1) {
-    const CenterZ = Direction * (Segment + 0.5) * HORIZON_CHUNK_LENGTH;
+    const CenterZ = -(Segment + 0.5) * HORIZON_CHUNK_LENGTH;
     Matrix.makeTranslation(0, -0.08, CenterZ);
     Floor.setMatrixAt(Segment, Matrix);
     Matrix.makeTranslation(0, HORIZON_HEIGHT, CenterZ);
@@ -92,10 +102,10 @@ function CreateHorizonSide(Materials, Direction) {
     }
 
     for (const LocalZ of [-9, 0, 9]) {
-      const Z = CenterZ + Direction * LocalZ;
+      const Z = CenterZ + LocalZ;
       Matrix.makeTranslation(0, 3.56, Z);
       Housing.setMatrixAt(LightIndex, Matrix);
-      Matrix.makeTranslation(0, 3.505, Z);
+      Matrix.makeTranslation(0, 3.507, Z);
       Glows.setMatrixAt(LightIndex, Matrix);
       LightIndex += 1;
     }
@@ -106,11 +116,11 @@ function CreateHorizonSide(Materials, Direction) {
     Object.frustumCulled = false;
   }
 
-  Floor.name = "HorizonFloorR75";
-  Ceiling.name = "HorizonCeilingR75";
-  Walls.name = "HorizonWallsR75";
-  Housing.name = "HorizonLightHousingR75";
-  Glows.name = "HorizonLightGlowR75";
+  Floor.name = "HorizonFloorR78";
+  Ceiling.name = "HorizonCeilingR78";
+  Walls.name = "HorizonWallsR78";
+  Housing.name = "HorizonLightHousingR78";
+  Glows.name = "HorizonLightGlowR78";
   Group.add(Floor, Ceiling, Walls, Housing, Glows);
   return Group;
 }
@@ -141,10 +151,9 @@ function EnsureHorizon() {
   if (!Game?.ActiveChunks?.size || !State.Scene) return null;
   const Materials = FindHorizonMaterials(Game);
   if (!Materials) return null;
-  const Positive = CreateHorizonSide(Materials, 1);
-  const Negative = CreateHorizonSide(Materials, -1);
-  State.Scene.add(Positive, Negative);
-  State.Horizon = { Positive, Negative };
+  const Forward = CreateForwardHorizon(Materials);
+  State.Scene.add(Forward);
+  State.Horizon = Forward;
   return State.Horizon;
 }
 
@@ -156,25 +165,26 @@ function UpdateHorizon() {
   const Chunks = [...Game.ActiveChunks.values()].filter(Chunk => Number.isFinite(Chunk.Index));
   if (!Chunks.length) return;
 
-  let Minimum = Chunks[0];
   let Maximum = Chunks[0];
   for (const Chunk of Chunks) {
-    if (Chunk.Index < Minimum.Index) Minimum = Chunk;
     if (Chunk.Index > Maximum.Index) Maximum = Chunk;
   }
 
-  const Key = `${Minimum.Index}:${Maximum.Index}`;
+  const Key = `${Maximum.Index}:${Maximum.BottomZ}`;
   if (Key === State.HorizonKey) return;
   State.HorizonKey = Key;
-  Horizon.Positive.position.set(0, 0, Minimum.TopZ);
-  Horizon.Negative.position.set(0, 0, Maximum.BottomZ);
-  Horizon.Positive.updateMatrixWorld(true);
-  Horizon.Negative.updateMatrixWorld(true);
+  Horizon.position.set(0, 0, Maximum.BottomZ - HORIZON_GAP);
+  Horizon.updateMatrixWorld(true);
 }
 
 function ProcessSceneAssets() {
   if (!State.Scene) return;
   UpdateHorizon();
+}
+
+function Frame() {
+  ProcessSceneAssets();
+  State.AnimationFrame = requestAnimationFrame(Frame);
 }
 
 function Initialize() {
@@ -187,7 +197,8 @@ function Initialize() {
   AddAtmosphereOverlay();
   AddBackStoreMood();
   ProcessSceneAssets();
-  State.ScanTimer = setInterval(ProcessSceneAssets, 700);
+  State.AnimationFrame = requestAnimationFrame(Frame);
+  addEventListener("pagehide", () => cancelAnimationFrame(State.AnimationFrame), { once: true });
 }
 
 const OriginalSceneAdd = THREE.Scene.prototype.add;
@@ -199,4 +210,4 @@ THREE.Scene.prototype.add = function(...Objects) {
   return OriginalSceneAdd.apply(this, Objects);
 };
 
-window.__STORE_ENHANCEMENTS_BUILD__ = "V0.17.0-R75";
+window.__STORE_ENHANCEMENTS_BUILD__ = "V0.19.0-R78";
