@@ -3,7 +3,9 @@ if (!Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.Colli
   throw new Error("Game must load before forward generation authority.");
 }
 
-const MinimumChunkIndex = -1;
+// Chunk 0 is now the physical rear/start boundary. Infinite generation only
+// continues into positive chunk indices from there.
+const MinimumChunkIndex = 0;
 const FakeChunks = new Map();
 
 function FakeChunk(Index) {
@@ -66,4 +68,4 @@ window.__STORE_FORWARD_GENERATION_R78__ = {
   MinimumChunkIndex,
   RemoveChunk
 };
-window.__STORE_FORWARD_GENERATION_BUILD__ = "V0.19.0-R78";
+window.__STORE_FORWARD_GENERATION_BUILD__ = "V0.20.1-R80";
