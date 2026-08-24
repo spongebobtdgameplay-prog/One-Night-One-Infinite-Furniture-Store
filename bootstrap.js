@@ -1,12 +1,7 @@
 const Cache = "20260824-73";
 const Version = "0.14.0";
-const FaviconVersion = "20260824-2";
+const FaviconVersion = "20260824-3";
 const FaviconLinks = [
-  {
-    rel: "icon",
-    type: "image/x-icon",
-    href: `favicon_io/favicon.ico?v=${FaviconVersion}`
-  },
   {
     rel: "icon",
     type: "image/png",
@@ -30,7 +25,7 @@ const FaviconLinks = [
   }
 ];
 
-document.head.querySelectorAll('link[data-store-icon="1"]').forEach(Link => Link.remove());
+document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"], link[data-store-icon="1"]').forEach(Link => Link.remove());
 
 for (const LinkData of FaviconLinks) {
   const Link = document.createElement("link");
