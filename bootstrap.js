@@ -1,5 +1,5 @@
-const Cache = "20260824-74";
-const Version = "0.15.0";
+const Cache = "20260824-75";
+const Version = "0.16.0";
 const FaviconVersion = "20260824-3";
 const FaviconLinks = [
   {
@@ -30,7 +30,6 @@ document.head.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"], lin
 for (const LinkData of FaviconLinks) {
   const Link = document.createElement("link");
   Link.setAttribute("data-store-icon", "1");
-
   for (const [Property, Value] of Object.entries(LinkData)) Link.setAttribute(Property, Value);
   document.head.appendChild(Link);
 }
@@ -81,10 +80,12 @@ try {
   await OptionalImport("./precision-collision-v2.js", "Precise collision");
   await import(`./precise-collision-authority-r27.js?v=${Cache}`);
   await import(`./world-polish-r72.js?v=${Cache}`);
-  await OptionalImport("./store-visual-redesign-r73.js", "3D signage and breaker redesign");
+  await OptionalImport("./store-visual-redesign-r73.js", "3D item signage and breaker redesign");
+  await OptionalImport("./render-distance-lighting-r74.js", "Stable distant store lighting");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
+  await import(`./movement-frame-authority-r74.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
