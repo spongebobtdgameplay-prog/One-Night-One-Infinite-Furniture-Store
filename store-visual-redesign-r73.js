@@ -15,8 +15,8 @@ import {
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes || !Game?.Placement) throw new Error("Store game must load before visual redesign.");
 
-const ProcessedChunks = new WeakSet();
-const QueuedChunks = new WeakSet();
+const ProcessedModelCounts = new WeakMap();
+const QueuedModelCounts = new WeakMap();
 const ProcessingChunks = new WeakSet();
 const Queue = [];
 const FurnitureNames = new Set([
@@ -38,6 +38,14 @@ const FurnitureNames = new Set([
   "Light_Floor1"
 ]);
 const AccentColors = [0xb85f47, 0x708c72, 0x6f87a0, 0xb58d48, 0x9a708f, 0x5f918d];
+
+function FurnitureCount(Chunk) {
+  let Count = 0;
+  for (const Model of Chunk.Models || []) {
+    if (Model?.parent && FurnitureNames.has(Model.name)) Count += 1;
+  }
+  return Count;
+}
 
 function RemoveByName(Chunk, Name) {
   const Object = Chunk.Group?.getObjectByName?.(Name);
@@ -222,7 +230,7 @@ function UpdateDepartmentVisibility() {
 }
 
 async function ProcessChunk(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || ProcessedChunks.has(Chunk) || ProcessingChunks.has(Chunk)) return;
+  if (!Chunk?.Ready || Chunk.Cancelled || ProcessingChunks.has(Chunk)) return;
   ProcessingChunks.add(Chunk);
 
   try {
@@ -231,23 +239,24 @@ async function ProcessChunk(Chunk) {
     await CreateItemSigns(Chunk);
     Chunk.Group.userData.VisualRedesignR73 = true;
     Chunk.Group.userData.VisualRedesignR74 = true;
-    ProcessedChunks.add(Chunk);
+    ProcessedModelCounts.set(Chunk, FurnitureCount(Chunk));
   } finally {
     ProcessingChunks.delete(Chunk);
   }
 }
 
+function QueueChunkIfNeeded(Chunk) {
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group?.userData?.WorldPolishR72 || ProcessingChunks.has(Chunk)) return;
+  const Count = FurnitureCount(Chunk);
+  if (Chunk.Group.userData.VisualRedesignR74 && ProcessedModelCounts.get(Chunk) === Count) return;
+  if (QueuedModelCounts.get(Chunk) === Count) return;
+  QueuedModelCounts.set(Chunk, Count);
+  Queue.push({ Chunk, Count });
+}
+
 function Discover() {
-  for (const Chunk of Game.ActiveChunks.values()) {
-    if (!Chunk?.Ready || ProcessedChunks.has(Chunk) || QueuedChunks.has(Chunk) || !Chunk.Group?.userData?.WorldPolishR72) continue;
-    QueuedChunks.add(Chunk);
-    Queue.push(Chunk);
-  }
-  for (const Chunk of Game.PreparedChunks.values()) {
-    if (!Chunk?.Ready || ProcessedChunks.has(Chunk) || QueuedChunks.has(Chunk) || !Chunk.Group?.userData?.WorldPolishR72) continue;
-    QueuedChunks.add(Chunk);
-    Queue.push(Chunk);
-  }
+  for (const Chunk of Game.ActiveChunks.values()) QueueChunkIfNeeded(Chunk);
+  for (const Chunk of Game.PreparedChunks.values()) QueueChunkIfNeeded(Chunk);
   Pump();
   UpdateDepartmentVisibility();
 }
@@ -258,8 +267,11 @@ function Pump() {
   Running = true;
 
   const Run = async () => {
-    const Chunk = Queue.shift();
-    if (Chunk) await ProcessChunk(Chunk);
+    const Job = Queue.shift();
+    if (Job?.Chunk) {
+      QueuedModelCounts.delete(Job.Chunk);
+      await ProcessChunk(Job.Chunk);
+    }
     Running = false;
     UpdateDepartmentVisibility();
     if (Queue.length) setTimeout(Pump, 28);
