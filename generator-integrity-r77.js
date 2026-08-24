@@ -70,6 +70,16 @@ function StaticObstacleBounds(Chunk) {
   return Results;
 }
 
+function GeneratedProps(Chunk) {
+  const Props = [];
+  Chunk.Group?.traverse?.(Object => {
+    const Name = String(Object?.name || "");
+    if (Name.startsWith("FurnitureItemSignR74-") || Name.startsWith("OnlineChunkDecorationR76-")) Props.push(Object);
+  });
+  Props.sort((A, B) => String(A.name).localeCompare(String(B.name)));
+  return Props;
+}
+
 function InsideChunk(Chunk, Bounds) {
   if (Bounds.min.x < -16.52 || Bounds.max.x > 16.52) return false;
   if (Bounds.min.z < Chunk.BottomZ + 0.40 || Bounds.max.z > Chunk.TopZ - 0.40) return false;
@@ -88,7 +98,7 @@ function ClearOfAccepted(Bounds, Accepted) {
 
 function CandidateOffsets() {
   const Offsets = [[0, 0]];
-  for (let Radius = 0.35; Radius <= 6.30; Radius += 0.35) {
+  for (let Radius = 0.35; Radius <= 7.70; Radius += 0.35) {
     for (let Step = 0; Step < 16; Step += 1) {
       const Angle = Step / 16 * Math.PI * 2;
       Offsets.push([Math.cos(Angle) * Radius, Math.sin(Angle) * Radius]);
@@ -243,6 +253,33 @@ function ResolveFurniture(Chunk) {
   }
 }
 
+function ResolveGeneratedProps(Chunk) {
+  const Accepted = StaticObstacleBounds(Chunk);
+  for (const Model of Chunk.Models || []) {
+    if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
+    const Bounds = BoundsOf(Model);
+    if (!Bounds.isEmpty()) Accepted.push(Bounds);
+  }
+
+  for (const Prop of GeneratedProps(Chunk)) {
+    if (!Prop?.parent) continue;
+    const Bounds = BoundsOf(Prop);
+    if (Bounds.isEmpty()) continue;
+    const Safe = FindSafePosition(Chunk, Bounds, Accepted);
+    if (!Safe) {
+      Prop.parent.remove(Prop);
+      continue;
+    }
+    if (Math.abs(Safe.DX) > 0.0001 || Math.abs(Safe.DZ) > 0.0001) {
+      Prop.position.x += Safe.DX;
+      Prop.position.z += Safe.DZ;
+      Prop.updateWorldMatrix(true, true);
+      Prop.userData.GeneratorRelocatedR77 = { X: Safe.DX, Z: Safe.DZ };
+    }
+    Accepted.push(BoundsOf(Prop));
+  }
+}
+
 function IsReservationObject(Object) {
   const Name = String(Object?.name || "");
   if (FurnitureNames.has(Name)) return true;
@@ -277,6 +314,9 @@ function ChunkSignature(Chunk) {
     if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
     Signature += `|${Model.name}:${Model.position.x.toFixed(2)}:${Model.position.z.toFixed(2)}:${Model.rotation.y.toFixed(2)}`;
   }
+  for (const Prop of GeneratedProps(Chunk)) {
+    Signature += `|P${Prop.name}:${Prop.position.x.toFixed(2)}:${Prop.position.z.toFixed(2)}:${Prop.rotation.y.toFixed(2)}`;
+  }
   const Warehouse = Chunk.Group?.getObjectByName?.("WarehouseBoxes");
   Signature += `|W${Warehouse?.count || 0}|T${Chunk.TaskRecords?.length || 0}`;
   return Signature;
@@ -287,6 +327,7 @@ function ProcessChunk(Chunk) {
   const Signature = ChunkSignature(Chunk);
   if (State.get(Chunk) === Signature) return;
   ResolveFurniture(Chunk);
+  ResolveGeneratedProps(Chunk);
   RebuildReservations(Chunk);
   State.set(Chunk, ChunkSignature(Chunk));
   Chunk.Group.userData.GeneratorIntegrityR77 = true;
