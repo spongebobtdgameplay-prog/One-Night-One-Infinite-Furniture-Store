@@ -1,5 +1,5 @@
-const Cache = "20260824-64";
-const Version = "0.12.28";
+const Cache = "20260824-65";
+const Version = "0.12.29";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -43,11 +43,11 @@ try {
   await OptionalImport("./task-visual-fix.js", "Task visual fix");
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
   await OptionalImport("./precision-collision-v2.js", "Precise collision");
-  await OptionalImport("./collision-cleanup.js", "Collision cleanup");
+  await import(`./precise-collision-authority-r27.js?v=${Cache}`);
   await OptionalImport("./sign-fix.js", "Section sign upgrade");
   await OptionalImport("./price-signs.js", "Price signs");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
-  await import(`./movement-authority-r26.js?v=${Cache}`);
+  await import(`./movement-authority-r27.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
