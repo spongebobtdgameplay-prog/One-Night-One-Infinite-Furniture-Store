@@ -13,6 +13,7 @@ const TempC = new THREE.Vector3();
 const TempAB = new THREE.Vector3();
 const TempAC = new THREE.Vector3();
 const TempNormal = new THREE.Vector3();
+const LegacyCollisionModels = new Set(["Bathroom_Toilet"]);
 const MIN_AREA = 0.006;
 const MIN_UP = 0.22;
 
@@ -111,6 +112,7 @@ function CircleHitsGeometry(X, Z, Radius, Geometry) {
 }
 
 function CandidateEntries(Model) {
+  if (LegacyCollisionModels.has(Model?.name)) return [];
   const ChunkId = Model.userData?.ChunkId;
   if (!ChunkId || !Model.name) return [];
   return Game.CollisionBoxes.filter(Entry => Entry.ChunkId === ChunkId && Entry.Type === Model.name && !Entry.PreciseGeometry);
@@ -199,4 +201,4 @@ function ScheduleWork() {
 
 setInterval(EnqueueActiveModels, 350);
 setTimeout(EnqueueActiveModels, 0);
-window.__STORE_PRECISION_COLLISION_BUILD__ = "V0.11-R43";
+window.__STORE_PRECISION_COLLISION_BUILD__ = "V0.13.1-R71";
