@@ -6,7 +6,8 @@ const Player = window.__STORE_PLAYER__;
 const Collision = window.__STORE_COLLISION_UTILITY__;
 if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes || !Player || !Collision) throw new Error("Game, player, and collision utility must load before part nerve collision.");
 
-const CoreRadius = () => THREE.MathUtils.clamp((Number(Player.GetPlayerRadius?.()) || 0.34) * 0.64, 0.20, 0.225);
+const OriginalGetPlayerRadius = typeof Player.GetPlayerRadius === "function" ? Player.GetPlayerRadius.bind(Player) : null;
+const CoreRadius = () => THREE.MathUtils.clamp((Number(OriginalGetPlayerRadius?.()) || 0.34) * 0.64, 0.20, 0.225);
 
 const MovementScratch = {
   Forward: new THREE.Vector3(),
@@ -29,6 +30,7 @@ const PoseScratch = {
   PreferredDirection: new THREE.Vector3(),
   CameraForward: new THREE.Vector3(),
   CameraRight: new THREE.Vector3(),
+  Down: new THREE.Vector3(0, -1, 0),
   SavedPose: new Map()
 };
 
@@ -186,14 +188,14 @@ function PreferredDirection(Segment, Camera) {
 
   const Side = Segment.Preference.endsWith("left") ? -1 : 1;
   if (Segment.Preference.startsWith("down")) {
-    PoseScratch.PreferredDirection.set(0, -1, 0)
+    PoseScratch.PreferredDirection.copy(PoseScratch.Down)
       .addScaledVector(PoseScratch.CameraRight, Side * 0.30)
       .addScaledVector(PoseScratch.CameraForward, -0.12)
       .normalize();
   } else {
     PoseScratch.PreferredDirection.copy(PoseScratch.CameraForward).multiplyScalar(-0.70)
       .addScaledVector(PoseScratch.CameraRight, Side * 0.22)
-      .addScaledVector(new THREE.Vector3(0, -1, 0), 0.18)
+      .addScaledVector(PoseScratch.Down, 0.18)
       .normalize();
   }
   return PoseScratch.PreferredDirection;
@@ -282,10 +284,13 @@ Player.Render = function RenderWithPartNerves(Renderer, Scene, Camera) {
   return PreviousRender.call(Player, ProxyRenderer, Scene, Camera);
 };
 
+Player.GetPlayerRadius = () => CoreRadius();
+
 window.__STORE_PART_NERVE_COLLISION__ = {
   Segments: NerveSegments,
   State: NerveState,
   Apply: ApplyNerveCollision,
-  ResolveRootMove
+  ResolveRootMove,
+  GetCoreRadius: CoreRadius
 };
 window.__STORE_PART_NERVE_COLLISION_BUILD__ = "V0.12.13";
