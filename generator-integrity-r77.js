@@ -25,7 +25,7 @@ const FurnitureNames = new Set([
 ]);
 
 const State = new WeakMap();
-const ClaimedEntries = new WeakSet();
+const ClaimedEntries = new Set();
 const TempCenter = new THREE.Vector3();
 const TempSize = new THREE.Vector3();
 const TempDelta = new THREE.Vector3();
@@ -68,7 +68,7 @@ function CandidateOffsets() {
 
 const Offsets = CandidateOffsets();
 
-function FindSafePosition(Chunk, Model, Bounds, Accepted) {
+function FindSafePosition(Chunk, Bounds, Accepted) {
   Bounds.getCenter(TempCenter);
   const OriginalSide = Math.abs(TempCenter.x) > 4.3 ? Math.sign(TempCenter.x) : 0;
 
@@ -183,7 +183,7 @@ function ModelVolume(Model) {
 }
 
 function ResolveFurniture(Chunk) {
-  ClaimedEntries.clear?.();
+  ClaimedEntries.clear();
   const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name) && !BoundsOf(Model).isEmpty());
   Models.sort((A, B) => ModelVolume(B) - ModelVolume(A));
   const Accepted = [];
@@ -192,7 +192,7 @@ function ResolveFurniture(Chunk) {
     const Bounds = BoundsOf(Model);
     if (Bounds.isEmpty()) continue;
     const Entry = NearestEntry(Chunk, Model, Bounds);
-    const Safe = FindSafePosition(Chunk, Model, Bounds, Accepted);
+    const Safe = FindSafePosition(Chunk, Bounds, Accepted);
 
     if (!Safe) {
       RemoveModel(Chunk, Model, Entry);
