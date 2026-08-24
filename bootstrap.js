@@ -1,5 +1,5 @@
-const Cache = "20260823-44";
-const Version = "0.12.5";
+const Cache = "20260823-46";
+const Version = "0.12.12";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -27,6 +27,7 @@ try {
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
   await OptionalImport("./menu-visuals.js", "Main menu illustration");
+  await import(`./collision-utility.js?v=${Cache}`);
 
   await import("./player-controller.js?v=20260823-33");
   await import("./player-system-r24.js?v=20260823-33");
@@ -37,7 +38,6 @@ try {
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
-  CoreReady = true;
 
   await OptionalImport("./task-visual-fix.js", "Task visual fix");
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
@@ -45,6 +45,8 @@ try {
   await OptionalImport("./collision-cleanup.js", "Collision cleanup");
   await OptionalImport("./sign-fix.js", "Section sign upgrade");
   await OptionalImport("./price-signs.js", "Price signs");
+  await import(`./part-nerve-runtime.js?v=${Cache}`);
+  CoreReady = true;
 } catch (Error) {
   console.error("Core store boot failed.", Error);
   ShowBootError(Error);
