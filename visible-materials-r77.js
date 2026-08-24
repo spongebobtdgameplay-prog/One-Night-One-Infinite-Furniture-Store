@@ -9,7 +9,7 @@ const ExactReplacements = new Map([
   [0x232722, 0x667266],
   [0x171b1a, 0x626b68],
   [0x292a26, 0x746f63],
-  [0x242628, 0x70797d],
+  [0x242628, 0x7f8986],
   [0x2f2c28, 0x71695f],
   [0x323a3b, 0x667472],
   [0x282d30, 0x68757a]
@@ -28,21 +28,56 @@ function IsTrueNearBlack(Hex) {
   return Math.max(Red, Green, Blue) <= 28;
 }
 
-function ReplacementFor(Hex) {
-  if (ExactReplacements.has(Hex)) return ExactReplacements.get(Hex);
-  if (IsTrueNearBlack(Hex)) return 0x6c726f;
+function FindModelRoot(Object) {
+  let Current = Object;
+  while (Current && Current !== Game.Scene) {
+    const Name = String(Current.name || "");
+    if (Name === "Shelf_Large" || Name === "Window_Large1") return Current;
+    Current = Current.parent;
+  }
   return null;
 }
 
-function CorrectMaterial(Material) {
-  const Hex = SrgbHex(Material);
-  const Replacement = ReplacementFor(Hex);
-  if (Replacement === null) return Material;
+function CorrectShelfMaterial(Material) {
+  if (!Material) return Material;
+  const Clone = Material.clone();
+  Clone.map = null;
+  Clone.color?.setHex(0x8d9995, THREE.SRGBColorSpace);
+  if ("roughness" in Clone) Clone.roughness = 0.66;
+  if ("metalness" in Clone) Clone.metalness = 0.22;
+  if (Clone.emissive?.isColor) {
+    Clone.emissive.setHex(0x202724, THREE.SRGBColorSpace);
+    Clone.emissiveIntensity = 0.10;
+  }
+  Clone.needsUpdate = true;
+  return Clone;
+}
 
+function CorrectWindowMaterial(Material) {
+  if (!Material) return Material;
+  const Clone = Material.clone();
+  Clone.color?.setHex(0x84949a, THREE.SRGBColorSpace);
+  if ("roughness" in Clone) Clone.roughness = 0.52;
+  Clone.needsUpdate = true;
+  return Clone;
+}
+
+function CorrectBlackMaterial(Material) {
+  const Hex = SrgbHex(Material);
+  if (Hex === null) return Material;
+  const Replacement = ExactReplacements.get(Hex) ?? (IsTrueNearBlack(Hex) ? 0x6c7371 : null);
+  if (Replacement === null) return Material;
   const Clone = Material.clone();
   Clone.color.setHex(Replacement, THREE.SRGBColorSpace);
   Clone.needsUpdate = true;
   return Clone;
+}
+
+function CorrectMaterial(Object, Material) {
+  const Root = FindModelRoot(Object);
+  if (Root?.name === "Shelf_Large") return CorrectShelfMaterial(Material);
+  if (Root?.name === "Window_Large1") return CorrectWindowMaterial(Material);
+  return CorrectBlackMaterial(Material);
 }
 
 function ProcessMesh(Object) {
@@ -50,18 +85,20 @@ function ProcessMesh(Object) {
   const Current = Object.material;
   if (!Current) return;
 
+  const Root = FindModelRoot(Object);
+  const RootName = Root?.name || "";
   const Signature = Array.isArray(Current)
-    ? Current.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
-    : `${Current.uuid || ""}:${SrgbHex(Current) ?? ""}`;
+    ? `${RootName}:` + Current.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
+    : `${RootName}:${Current.uuid || ""}:${SrgbHex(Current) ?? ""}`;
   if (Processed.get(Object) === Signature) return;
 
-  if (Array.isArray(Current)) Object.material = Current.map(CorrectMaterial);
-  else Object.material = CorrectMaterial(Current);
+  if (Array.isArray(Current)) Object.material = Current.map(Material => CorrectMaterial(Object, Material));
+  else Object.material = CorrectMaterial(Object, Current);
 
   const Updated = Object.material;
   const UpdatedSignature = Array.isArray(Updated)
-    ? Updated.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
-    : `${Updated?.uuid || ""}:${SrgbHex(Updated) ?? ""}`;
+    ? `${RootName}:` + Updated.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
+    : `${RootName}:${Updated?.uuid || ""}:${SrgbHex(Updated) ?? ""}`;
   Processed.set(Object, UpdatedSignature);
 }
 
@@ -78,8 +115,8 @@ function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 700);
+const Interval = setInterval(ProcessAll, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll };
-window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.18.1-R77";
+window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.19.0-R78";
