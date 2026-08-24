@@ -141,13 +141,10 @@ export async function CreateTaskTerminal3D(Type) {
   if (Normalized === "breaker") Screen = await AddBreakerFace(Group);
   else Screen = await AddScreenTerminalFace(Group, Normalized);
 
-  const Beacon = new THREE.Mesh(new THREE.SphereGeometry(0.055, 14, 10), AmberMaterial);
-  Beacon.position.set(0, 1.57, 0);
-  Group.add(Beacon);
-
   Group.userData.TaskTerminalUtilityR73 = true;
   Group.userData.TaskType = Normalized;
+  Group.userData.NoBeaconR83 = true;
   return { Group, Screen };
 }
 
-window.__STORE_TASK_TERMINAL_UTILITY_BUILD__ = "V0.16.0-R74";
+window.__STORE_TASK_TERMINAL_UTILITY_BUILD__ = "V0.22.0-R83";
