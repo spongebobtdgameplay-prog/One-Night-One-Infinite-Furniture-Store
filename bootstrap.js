@@ -1,4 +1,4 @@
-const Cache = "20260824-72";
+const Cache = "20260824-73";
 const Version = "0.14.0";
 const FaviconVersion = "20260824-2";
 const FaviconLinks = [
@@ -67,6 +67,7 @@ let CoreReady = false;
 
 try {
   await import("./loading-prewarm-r38.js?v=20260823-33");
+  await import(`./idle-budget-r72.js?v=${Cache}`);
   await import(`./single-menu-pre-r24.js?v=${Cache}`);
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
