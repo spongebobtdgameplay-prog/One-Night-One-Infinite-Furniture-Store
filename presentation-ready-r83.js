@@ -54,12 +54,25 @@ function HasVisibleLegacyPriceSign(Chunk) {
 function PartitionsFinished(Chunk) {
   let Total = 0;
   let Finished = 0;
+  let Frames = 0;
   Chunk.Group?.traverse?.(Object => {
-    if (Object?.name !== "ShowroomPartition") return;
-    Total += 1;
-    if (Object.userData?.MerchandisingWallR80) Finished += 1;
+    if (Object?.name === "ShowroomPartition") {
+      Total += 1;
+      if (Object.userData?.MerchandisingWallR80) Finished += 1;
+    }
+    if (String(Object?.name || "").startsWith("OnlineWallDecorationR76-PartitionR80-")) Frames += 1;
   });
-  return Total === Finished;
+  return Total === Finished && Frames >= Total;
+}
+
+function RearFinished(Chunk) {
+  if (Chunk.Index !== 0) return true;
+  if (!Chunk.Group.getObjectByName("RearStoreClosureR80")) return false;
+  let Frames = 0;
+  Chunk.Group.traverse(Object => {
+    if (String(Object?.name || "").startsWith("OnlineWallDecorationR76-RearR80-")) Frames += 1;
+  });
+  return Frames >= 2;
 }
 
 function RemoveTerminalBeacons(Chunk) {
@@ -79,6 +92,7 @@ function RemoveTerminalBeacons(Chunk) {
 function CoreReady(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
   const Stable = UpdateStability(Chunk);
+  const ShelfStocked = window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ?? Boolean(Chunk.Group.userData?.ShelfStockR83);
   return Boolean(
     Stable.StableFor >= 950 &&
     Chunk.Group.userData?.WorldPolishR72 &&
@@ -86,9 +100,10 @@ function CoreReady(Chunk) {
     Chunk.Group.userData?.RetailShowroomR79 &&
     Chunk.Group.userData?.RetailZonesR82 &&
     Chunk.Group.userData?.RetailOrganizationR83 &&
-    Chunk.Group.userData?.ShelfStockR83 &&
+    ShelfStocked &&
     Chunk.Group.userData?.PriceTagsR83 &&
     PartitionsFinished(Chunk) &&
+    RearFinished(Chunk) &&
     CompactTagCount(Chunk) >= Stable.Count &&
     !HasVisibleLegacyPriceSign(Chunk)
   );
@@ -113,6 +128,7 @@ async function RunWorldPasses(Chunk) {
   if (Organize?.ProcessChunk) await Organize.ProcessChunk(Chunk);
   if (ShelfStock?.ProcessChunk) await ShelfStock.ProcessChunk(Chunk);
   Finish?.ProcessChunk?.(Chunk);
+  if (Chunk.Index === 0) await Finish?.EnsureRearClosure?.();
   await Tags?.RebuildChunk?.(Chunk);
   RemoveTerminalBeacons(Chunk);
   window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
@@ -133,7 +149,7 @@ export async function FinalizeChunk(Chunk) {
     }
 
     await RunWorldPasses(Chunk);
-    await Delay(80);
+    await Delay(120);
     UpdateStability(Chunk);
     if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final dressing pass.`);
 
@@ -177,4 +193,4 @@ const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.22.0-R83";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.22.1-R83";
