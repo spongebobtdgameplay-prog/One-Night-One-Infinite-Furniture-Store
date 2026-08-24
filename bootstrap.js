@@ -1,5 +1,5 @@
-const Cache = "20260824-69";
-const Version = "0.12.33";
+const Cache = "20260824-70";
+const Version = "0.13.0";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -38,14 +38,13 @@ try {
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
-  await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
 
-  await OptionalImport("./task-visual-fix.js", "Task visual fix");
+  await import(`./detail-world-update-r32.js?v=${Cache}`);
+  await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
   await OptionalImport("./precision-collision-v2.js", "Precise collision");
   await import(`./precise-collision-authority-r27.js?v=${Cache}`);
-  await OptionalImport("./sign-fix.js", "Section sign upgrade");
-  await OptionalImport("./price-signs.js", "Price signs");
+  await OptionalImport("./price-signs.js", "Detailed furniture price signs");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
