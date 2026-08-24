@@ -6,6 +6,7 @@ const MoveEnterSpeed = 0.18;
 const MoveExitSpeed = 0.07;
 const SpeedResponse = 18;
 const WeightResponse = 18;
+const ContactFreshMs = 120;
 
 function FindPlayerPivot(Mixer) {
   let Root = Mixer?.getRoot?.() || null;
@@ -25,7 +26,8 @@ function StateFor(Mixer) {
     HasPosition: false,
     SmoothedSpeed: 0,
     Moving: false,
-    Target: "idle"
+    Target: "idle",
+    Blocked: false
   };
   MixerStates.set(Mixer, State);
   return State;
@@ -59,6 +61,7 @@ function UpdateMeasuredMotion(Mixer, Delta) {
     State.HasPosition = true;
     State.SmoothedSpeed = 0;
     State.Moving = false;
+    State.Blocked = false;
     return State;
   }
 
@@ -72,7 +75,17 @@ function UpdateMeasuredMotion(Mixer, Delta) {
   const Alpha = 1 - Math.exp(-SafeDelta * SpeedResponse);
   State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, RawSpeed, Alpha);
 
-  if (State.Moving) {
+  const Contact = window.__STORE_MOVEMENT_CONTACT__;
+  State.Blocked = Boolean(
+    Contact?.Strength > 0.01 &&
+    performance.now() - Contact.LastHit <= ContactFreshMs &&
+    RawSpeed < MoveEnterSpeed
+  );
+
+  if (State.Blocked) {
+    State.Moving = false;
+    State.SmoothedSpeed = 0;
+  } else if (State.Moving) {
     if (State.SmoothedSpeed < MoveExitSpeed) State.Moving = false;
   } else if (State.SmoothedSpeed > MoveEnterSpeed) {
     State.Moving = true;
@@ -90,7 +103,7 @@ function ApplyMeasuredAnimationWeights(Mixer, Delta, State) {
   if (!Actions[Target]) Target = Actions.walk ? "walk" : Actions.idle ? "idle" : "sprint";
   if (State) State.Target = Target;
 
-  const Alpha = 1 - Math.exp(-Math.max(Delta, 0.001) * WeightResponse);
+  const Alpha = State?.Blocked ? 1 : 1 - Math.exp(-Math.max(Delta, 0.001) * WeightResponse);
   for (const Kind of ["idle", "walk", "sprint"]) {
     const Action = Actions[Kind];
     if (!Action) continue;
