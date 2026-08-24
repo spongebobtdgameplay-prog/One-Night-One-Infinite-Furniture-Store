@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { CreateDepartmentSign3D, CreateStandingPriceSign3D } from "./sign-utility-r73.js";
-import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js";
-import { Preload3DTextFont } from "./three-text-utility-r73.js";
+import { CreateDepartmentSign3D, CreateStandingPriceSign3D } from "./sign-utility-r73.js?v=20260824-78";
+import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-78";
+import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-78";
 import {
   CreateOnlineFloorDecoration,
   CreateOnlineRug,
   OnlineDecorationKeys,
   PreloadOnlineDecorations
-} from "./online-decoration-library-r75.js";
-import { FurniturePrice } from "./store-pricing-r75.js";
+} from "./online-decoration-library-r75.js?v=20260824-78";
+import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-78";
 import {
   DisplayVariant,
   FaceTowardAisle,
@@ -16,7 +16,7 @@ import {
   FriendlyItemName,
   RecordSignPosition,
   ShouldUseCarpet
-} from "./display-layout-utility-r74.js";
+} from "./display-layout-utility-r74.js?v=20260824-78";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes || !Game?.Placement) throw new Error("Store game must load before visual redesign.");
@@ -217,7 +217,7 @@ async function CreateItemSigns(Chunk) {
 
 function SafeDecorationPlacement(Chunk, Type, X, Z) {
   try {
-    const Result = Game.Placement.ShapeCastPlacement(Chunk, Type, X, Z, 0, true);
+    const Result = Game.Placement.ShapeCastPlacement(Chunk, Type, X, Z, 0, false);
     if (!Result) return null;
     if (Math.hypot(Result.X - X, Result.Z - Z) > 2.8) return null;
     return Result;
