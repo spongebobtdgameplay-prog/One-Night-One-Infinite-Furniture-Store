@@ -13,7 +13,6 @@ const ContactGap = 0.012;
 const IntentDominanceMargin = 0.08;
 const IntentBlendWidth = 0.24;
 const FacingDirectionDeadzone = 0.12;
-const SkipWindowMs = 5;
 const LegacyBinarySteps = 16;
 const KeyState = new Set();
 
@@ -34,7 +33,7 @@ const Scratch = {
 };
 
 let SkipAxis = "";
-let SkipUntil = -Infinity;
+let SkipResetScheduled = false;
 
 function InputAxes() {
   let Forward = 0;
@@ -172,8 +171,6 @@ function SlideFromIntentAndFacing(Normal, IntentDirection) {
   Scratch.IntentTangent.y = 0;
   const IntentTangentAmount = Scratch.IntentTangent.length();
 
-  // Critical gate: if movement is still mostly INTO the wall, absolutely no slide.
-  // A slight camera/character angle cannot manufacture sideways motion anymore.
   const Dominance = IntentTangentAmount - IntentInward - IntentDominanceMargin;
   if (Dominance <= 0 || IntentTangentAmount <= 0.000001) {
     ReadCharacterFacing(IntentDirection);
@@ -193,7 +190,6 @@ function SlideFromIntentAndFacing(Normal, IntentDirection) {
 
   Scratch.FacingTangent.normalize();
 
-  // Facing chooses the side, but never contradicts the movement intent.
   if (Scratch.FacingTangent.dot(Scratch.IntentTangent) <= 0) {
     return NoSlide(IntentInward, IntentTangentAmount, FacingTangentAmount);
   }
@@ -304,15 +300,23 @@ function TotalDistance(ComponentDistance, ComponentAmount) {
   return Math.abs(ComponentDistance / ComponentAmount);
 }
 
+function ScheduleSkipReset() {
+  if (SkipResetScheduled) return;
+  SkipResetScheduled = true;
+  requestAnimationFrame(() => {
+    SkipAxis = "";
+    SkipResetScheduled = false;
+  });
+}
+
 function SetSkip(Axis) {
   SkipAxis = Axis;
-  SkipUntil = performance.now() + SkipWindowMs;
+  ScheduleSkipReset();
 }
 
 function ConsumeSkip(Axis) {
-  if (SkipAxis !== Axis || performance.now() > SkipUntil) return false;
+  if (SkipAxis !== Axis) return false;
   SkipAxis = "";
-  SkipUntil = -Infinity;
   return true;
 }
 
@@ -362,7 +366,7 @@ addEventListener("keyup", Event => {
 addEventListener("blur", () => {
   KeyState.clear();
   SkipAxis = "";
-  SkipUntil = -Infinity;
+  SkipResetScheduled = false;
 });
 
 Player.GetPlayerRadius = () => CoreRadius;
@@ -374,4 +378,4 @@ window.__STORE_MOVEMENT_AUTHORITY__ = {
   GetContactGap: () => ContactGap,
   GetIntentDominanceMargin: () => IntentDominanceMargin
 };
-window.__STORE_MOVEMENT_AUTHORITY_BUILD__ = "V0.12.32";
+window.__STORE_MOVEMENT_AUTHORITY_BUILD__ = "V0.16.1-R30";
