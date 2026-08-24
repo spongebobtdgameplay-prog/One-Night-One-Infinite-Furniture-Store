@@ -139,19 +139,12 @@ function NearestCollisionEntry(Chunk, Type, Center) {
   return Best;
 }
 
-function TightenExistingCollision(Chunk, Model) {
-  const Bounds = BoundsOf(Model);
-  if (Bounds.isEmpty()) return;
-  const Center = Bounds.getCenter(new THREE.Vector3());
-  const Size = Bounds.getSize(new THREE.Vector3());
-  const Entry = NearestCollisionEntry(Chunk, Model.name, Center);
-  if (!Entry) return;
-  const HalfX = Math.max(0.11, Size.x * 0.485);
-  const HalfZ = Math.max(0.11, Size.z * 0.485);
-  const Box = new THREE.Box3(
-    new THREE.Vector3(Center.x - HalfX, Math.max(0, Bounds.min.y), Center.z - HalfZ),
-    new THREE.Vector3(Center.x + HalfX, Bounds.max.y, Center.z + HalfZ)
-  );
+function ApplySolidBounds(Chunk, Entry, Bounds, Type = null) {
+  if (!Entry) {
+    Entry = { ChunkId: Chunk.Id, Type: Type || "RetailObjectR79" };
+    Chunk.CollisionEntries.push(Entry);
+  }
+  const Box = Bounds.clone();
   Entry.Box = Box;
   Entry.OriginalBox = Box.clone();
   Entry.OriginalLegacyBox = Box.clone();
@@ -165,15 +158,39 @@ function TightenExistingCollision(Chunk, Model) {
   Entry.Active = Boolean(Chunk.Active);
   Entry.RetailModelR79 = true;
   if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
+  return Entry;
+}
+
+function TightenExistingCollision(Chunk, Model) {
+  const Bounds = BoundsOf(Model);
+  if (Bounds.isEmpty()) return;
+  const Center = Bounds.getCenter(new THREE.Vector3());
+  const Size = Bounds.getSize(new THREE.Vector3());
+  const HalfX = Math.max(0.11, Size.x * 0.485);
+  const HalfZ = Math.max(0.11, Size.z * 0.485);
+  const TightBounds = new THREE.Box3(
+    new THREE.Vector3(Center.x - HalfX, Math.max(0, Bounds.min.y), Center.z - HalfZ),
+    new THREE.Vector3(Center.x + HalfX, Bounds.max.y, Center.z + HalfZ)
+  );
+  ApplySolidBounds(Chunk, NearestCollisionEntry(Chunk, Model.name, Center), TightBounds, Model.name);
 }
 
 async function ReplaceShelfModel(Chunk, Model, Key, TargetHeight, MaximumWidth, MaximumDepth) {
   if (!Model?.parent || ShelfModels.has(Model)) return;
   ShelfModels.add(Model);
   try {
+    const OriginalBounds = BoundsOf(Model);
+    if (OriginalBounds.isEmpty()) return;
+    const OriginalCenter = OriginalBounds.getCenter(new THREE.Vector3());
+    const RotationY = Model.rotation.y;
     const Imported = await CloneAsset(Key);
     if (!NormalizeLocalAsset(Imported, TargetHeight, MaximumWidth, MaximumDepth)) return;
+
     while (Model.children.length) Model.remove(Model.children[0]);
+    Model.scale.set(1, 1, 1);
+    Model.position.set(OriginalCenter.x, 0, OriginalCenter.z);
+    Model.rotation.set(0, RotationY, 0);
+    Imported.position.set(0, 0, 0);
     Model.add(Imported);
     Model.userData.RetailImportedShelfR79 = true;
     Model.userData.RetailSource = KayKitSource;
@@ -199,7 +216,30 @@ function MakeBreakerIndicator() {
   return Indicator;
 }
 
-async function BuildImportedBreaker(Task) {
+function ReplaceTaskCollision(Chunk, Task) {
+  const Group = Task?.Object;
+  if (!Group?.isObject3D) return;
+  const Bounds = BoundsOf(Group);
+  if (Bounds.isEmpty()) return;
+  const Center = Bounds.getCenter(new THREE.Vector3());
+  let Best = null;
+  let BestDistance = Infinity;
+  for (const Entry of Chunk.CollisionEntries || []) {
+    if (!/StoreTask|TaskTerminal|Breaker/i.test(String(Entry?.Type || ""))) continue;
+    const Box = Entry.OriginalLegacyBox || Entry.OriginalBox || Entry.Box;
+    if (!Box?.min || !Box?.max) continue;
+    const X = (Box.min.x + Box.max.x) * 0.5;
+    const Z = (Box.min.z + Box.max.z) * 0.5;
+    const Distance = (X - Center.x) ** 2 + (Z - Center.z) ** 2;
+    if (Distance < BestDistance) {
+      BestDistance = Distance;
+      Best = Entry;
+    }
+  }
+  ApplySolidBounds(Chunk, Best, Bounds, "StoreTaskTerminalR79");
+}
+
+async function BuildImportedBreaker(Chunk, Task) {
   if (!Task?.Object?.isObject3D || BreakerTasks.has(Task.Object)) return;
   BreakerTasks.add(Task.Object);
   try {
@@ -257,6 +297,8 @@ async function BuildImportedBreaker(Task) {
     Task.Screen = Indicator;
     Group.userData.ImportedBreakerR79 = true;
     Group.userData.RetailSource = KayKitSource;
+    Group.updateWorldMatrix(true, true);
+    ReplaceTaskCollision(Chunk, Task);
   } catch (Error) {
     BreakerTasks.delete(Task.Object);
     console.warn("Imported breaker enclosure unavailable", Error);
@@ -265,7 +307,7 @@ async function BuildImportedBreaker(Task) {
 
 async function ReplaceBreakers(Chunk) {
   for (const Task of Chunk.TaskRecords || []) {
-    if (Task?.Type === "breaker") await BuildImportedBreaker(Task);
+    if (Task?.Type === "breaker") await BuildImportedBreaker(Chunk, Task);
   }
 }
 
@@ -339,23 +381,14 @@ function CanPlaceBounds(Chunk, Bounds) {
 function AddExactCollision(Chunk, Object, Type) {
   const Bounds = BoundsOf(Object);
   if (Bounds.isEmpty()) return;
-  const Entry = {
-    Box: Bounds.clone(),
-    OriginalBox: Bounds.clone(),
-    OriginalLegacyBox: Bounds.clone(),
-    ChunkId: Chunk.Id,
-    Type,
-    Active: Boolean(Chunk.Active),
-    RetailImportedR79: true
-  };
-  Chunk.CollisionEntries.push(Entry);
-  if (Chunk.Active) Game.CollisionBoxes.push(Entry);
+  const Entry = ApplySolidBounds(Chunk, null, Bounds, Type);
+  Entry.RetailImportedR79 = true;
   Chunk.ReservedBounds.push(Bounds.clone());
 }
 
-async function TryPlaceRetailAsset(Chunk, Key, TargetHeight, Candidates, Name) {
+async function TryPlaceRetailAsset(Chunk, Key, TargetHeight, Candidates, Name, MaximumWidth = 2.20, MaximumDepth = 1.10) {
   const Object = await CloneAsset(Key);
-  if (!NormalizeLocalAsset(Object, TargetHeight, 2.20, 1.10)) return false;
+  if (!NormalizeLocalAsset(Object, TargetHeight, MaximumWidth, MaximumDepth)) return false;
   for (const [X, Z, Rotation] of Candidates) {
     Object.position.set(X, 0, Z);
     Object.rotation.y = Rotation;
@@ -382,22 +415,34 @@ async function AddRealShowroomPieces(Chunk) {
       await TryPlaceRetailAsset(Chunk, "ArmchairPillows", 0.96, [
         [Flip * 13.7, C + 1.7, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
         [-Flip * 13.5, C - 6.4, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailArmchairR79");
+      ], "RetailArmchairR79", 1.35, 1.35);
+      await TryPlaceRetailAsset(Chunk, "ShelfSmallDecorated", 1.42, [
+        [-Flip * 14.0, C + 6.5, Flip > 0 ? Math.PI / 2 : -Math.PI / 2],
+        [Flip * 14.0, C - 6.2, Flip > 0 ? -Math.PI / 2 : Math.PI / 2]
+      ], "RetailLivingShelfR79", 1.25, 0.72);
     } else if (Chunk.Theme === "BEDROOMS") {
       await TryPlaceRetailAsset(Chunk, "CabinetSmallDecorated", 1.32, [
         [Flip * 13.9, C + 0.8, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
         [-Flip * 13.8, C - 6.2, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailBedroomCabinetR79");
+      ], "RetailBedroomCabinetR79", 1.30, 0.82);
+      await TryPlaceRetailAsset(Chunk, "ArmchairPillows", 0.90, [
+        [-Flip * 13.4, C + 6.3, Flip > 0 ? Math.PI / 2 : -Math.PI / 2],
+        [Flip * 13.4, C - 5.9, Flip > 0 ? -Math.PI / 2 : Math.PI / 2]
+      ], "RetailBedroomChairR79", 1.30, 1.30);
     } else if (Chunk.Theme === "WAREHOUSE" || Chunk.Theme === "STORAGE") {
       await TryPlaceRetailAsset(Chunk, "ShelfSmallDecorated", 1.52, [
         [Flip * 14.0, C + 0.5, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
         [-Flip * 14.0, C - 6.0, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailStorageShelfR79");
+      ], "RetailStorageShelfR79", 1.35, 0.78);
+      await TryPlaceRetailAsset(Chunk, "CabinetSmallDecorated", 1.18, [
+        [-Flip * 14.0, C + 6.3, Flip > 0 ? Math.PI / 2 : -Math.PI / 2],
+        [Flip * 14.0, C - 6.3, Flip > 0 ? -Math.PI / 2 : Math.PI / 2]
+      ], "RetailStorageCabinetR79", 1.25, 0.78);
     } else {
       await TryPlaceRetailAsset(Chunk, "CabinetSmallDecorated", 1.22, [
         [Flip * 14.0, C + 5.8, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
         [-Flip * 14.0, C - 5.8, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailDisplayCabinetR79");
+      ], "RetailDisplayCabinetR79", 1.25, 0.78);
     }
   } catch (Error) {
     console.warn("Retail showroom decoration unavailable", Error);
