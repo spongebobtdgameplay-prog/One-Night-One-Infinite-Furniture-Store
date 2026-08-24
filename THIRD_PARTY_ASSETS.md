@@ -19,6 +19,6 @@ The player is an imported rigged mesh. The game does not construct the humanoid 
 - Source: https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0
 - License: CC0 1.0 Universal
 - Runtime format: glTF with the original KayKit sidecar buffers and atlas texture
-- Usage here: rugs, cactus decorations, standing lamps, and standing picture frames
+- Usage here: striped and oval rugs, standing lamps, table lamps, books, pillows, tabletop picture frames, and wall picture frames
 
-The decoration loader uses the original KayKit glTF assets directly. These imported decorations are visual-only and do not create gameplay collision boxes.
+The original in-game plant/cactus assets remain unchanged. KayKit decorations are added around the authored furniture instead of replacing the original plants. Imported decorations are visual-only and do not create gameplay collision boxes.
