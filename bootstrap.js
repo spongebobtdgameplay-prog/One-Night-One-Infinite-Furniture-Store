@@ -1,5 +1,5 @@
-const Cache = "20260824-86";
-const Version = "0.21.0";
+const Cache = "20260824-87";
+const Version = "0.21.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   {
@@ -97,6 +97,7 @@ try {
   await OptionalImport("./store-finish-r80.js", "Rear closure, merchandising walls and close price tags");
   await OptionalImport("./price-tag-authority-r81.js", "Compact per-item retail price placards");
   await OptionalImport("./retail-zones-r82.js", "Real cart, bag and large-rug retail zones");
+  await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
   await OptionalImport("./presentation-ready-r82.js", "Off-screen chunk presentation gate");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
