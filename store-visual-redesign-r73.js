@@ -3,7 +3,13 @@ import { CreateDepartmentSign3D, CreateStandingPriceSign3D } from "./sign-utilit
 import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js";
 import { Preload3DTextFont } from "./three-text-utility-r73.js";
 import {
-  CreateDisplayCarpet,
+  CreateOnlineFloorDecoration,
+  CreateOnlineRug,
+  OnlineDecorationKeys,
+  PreloadOnlineDecorations
+} from "./online-decoration-library-r75.js";
+import { FurniturePrice } from "./store-pricing-r75.js";
+import {
   DisplayVariant,
   FaceTowardAisle,
   FindSpacedSignPlacement,
@@ -38,6 +44,13 @@ const FurnitureNames = new Set([
   "Light_Floor1"
 ]);
 const AccentColors = [0xb85f47, 0x708c72, 0x6f87a0, 0xb58d48, 0x9a708f, 0x5f918d];
+const SignCollisionTypes = new Set([
+  "FurniturePriceSignR72",
+  "FurniturePriceSignR73",
+  "FurnitureItemSignR74",
+  "SectionSign",
+  "SignMount"
+]);
 
 function FurnitureCount(Chunk) {
   let Count = 0;
@@ -53,6 +66,22 @@ function RemoveByName(Chunk, Name) {
   return Object || null;
 }
 
+function RemoveCollisionEntry(Chunk, Entry) {
+  const GlobalIndex = Game.CollisionBoxes.indexOf(Entry);
+  if (GlobalIndex >= 0) Game.CollisionBoxes.splice(GlobalIndex, 1);
+  Entry.Active = false;
+  const LocalIndex = Chunk.CollisionEntries.indexOf(Entry);
+  if (LocalIndex >= 0) Chunk.CollisionEntries.splice(LocalIndex, 1);
+}
+
+function RemoveSignGhostCollision(Chunk) {
+  for (let Index = Chunk.CollisionEntries.length - 1; Index >= 0; Index -= 1) {
+    const Entry = Chunk.CollisionEntries[Index];
+    if (!Entry || !SignCollisionTypes.has(String(Entry.Type || ""))) continue;
+    RemoveCollisionEntry(Chunk, Entry);
+  }
+}
+
 function RemoveOldDisplayObjects(Chunk) {
   const Remove = [];
   Chunk.Group?.traverse?.(Object => {
@@ -61,20 +90,13 @@ function RemoveOldDisplayObjects(Chunk) {
       Name === "FurniturePriceSignR72" ||
       Name === "FurniturePriceSignR73" ||
       Name.startsWith("FurnitureItemSignR74-") ||
-      Name.startsWith("FurnitureDisplayCarpetR74-")
+      Name.startsWith("FurnitureDisplayCarpetR74-") ||
+      Name.startsWith("OnlineDisplayRugR75-") ||
+      Name.startsWith("OnlineChunkDecorationR75-")
     ) Remove.push(Object);
   });
   for (const Object of Remove) Object.parent?.remove(Object);
-
-  for (let Index = Chunk.CollisionEntries.length - 1; Index >= 0; Index -= 1) {
-    const Entry = Chunk.CollisionEntries[Index];
-    if (!Entry) continue;
-    if (Entry.Type !== "FurniturePriceSignR72" && Entry.Type !== "FurniturePriceSignR73" && Entry.Type !== "FurnitureItemSignR74") continue;
-    const GlobalIndex = Game.CollisionBoxes.indexOf(Entry);
-    if (GlobalIndex >= 0) Game.CollisionBoxes.splice(GlobalIndex, 1);
-    Entry.Active = false;
-    Chunk.CollisionEntries.splice(Index, 1);
-  }
+  RemoveSignGhostCollision(Chunk);
 }
 
 function CollisionBoxFromObject(Object, Height = null) {
@@ -89,27 +111,10 @@ function CollisionBoxFromObject(Object, Height = null) {
   );
 }
 
-function AddCollisionFromObject(Chunk, Type, Object, Height = null) {
-  const Box = CollisionBoxFromObject(Object, Height);
-  if (!Box) return null;
-  const Entry = {
-    Box,
-    OriginalBox: Box.clone(),
-    OriginalLegacyBox: Box.clone(),
-    ChunkId: Chunk.Id,
-    Type,
-    Active: Boolean(Chunk.Active),
-    VisualRedesignR74: true
-  };
-  Chunk.CollisionEntries.push(Entry);
-  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
-  return Entry;
-}
-
 function ReplaceCollisionFromObject(Chunk, Type, Object, Height = null) {
   const Box = CollisionBoxFromObject(Object, Height);
   if (!Box) return null;
-  let Entry = Chunk.CollisionEntries.find(Value => Value?.Type === Type && Value.VisualRedesignR74 !== true);
+  let Entry = Chunk.CollisionEntries.find(Value => Value?.Type === Type && Value.VisualRedesignR75 !== true);
   if (!Entry) Entry = Chunk.CollisionEntries.find(Value => Value?.Type === Type);
   if (!Entry) {
     Entry = { ChunkId: Chunk.Id, Type };
@@ -125,7 +130,7 @@ function ReplaceCollisionFromObject(Chunk, Type, Object, Height = null) {
   Entry.TestCollision = null;
   Entry.LegacyCollisionDisabled = false;
   Entry.RedundantPreciseSibling = false;
-  Entry.VisualRedesignR74 = true;
+  Entry.VisualRedesignR75 = true;
   Entry.Active = Boolean(Chunk.Active);
   if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
   return Entry;
@@ -133,8 +138,8 @@ function ReplaceCollisionFromObject(Chunk, Type, Object, Height = null) {
 
 function YieldVisualWork() {
   return new Promise(Resolve => {
-    if ("requestIdleCallback" in window) requestIdleCallback(() => Resolve(), { timeout: 700 });
-    else setTimeout(Resolve, 20);
+    if ("requestIdleCallback" in window) requestIdleCallback(() => Resolve(), { timeout: 850 });
+    else setTimeout(Resolve, 22);
   });
 }
 
@@ -144,15 +149,17 @@ async function ReplaceDepartmentSign(Chunk) {
   RemoveByName(Chunk, "DepartmentHeaderV13");
   RemoveByName(Chunk, "SectionSign");
   RemoveByName(Chunk, "SignMount");
+  RemoveSignGhostCollision(Chunk);
 
   const Sign = await CreateDepartmentSign3D(Chunk.Theme, {
     Name: "DepartmentHeaderR73",
-    Width: 6.25,
-    Height: 0.96,
+    Width: 6.55,
+    Height: 1.06,
     Depth: 0.20
   });
   Sign.userData.ChunkId = Chunk.Id;
-  Sign.position.set(0, 2.88, Chunk.TopZ - 2.72);
+  Sign.userData.DecorationNoCollision = true;
+  Sign.position.set(0, 2.84, Chunk.TopZ - 2.72);
   Chunk.Group.add(Sign);
 }
 
@@ -170,7 +177,7 @@ async function CreateItemSigns(Chunk) {
 
   for (let Index = 0; Index < Models.length; Index += 1) {
     const Model = Models[Index];
-    const Position = FindSpacedSignPlacement(Game, Chunk, Model, Occupied, { MinimumSpacing: 1.55 });
+    const Position = FindSpacedSignPlacement(Game, Chunk, Model, Occupied, { MinimumSpacing: 1.70 });
     if (!Position) continue;
 
     const Variant = DisplayVariant(Model, Index);
@@ -178,32 +185,98 @@ async function CreateItemSigns(Chunk) {
       Name: `FurnitureItemSignR74-${Index}`,
       Style: Variant,
       AccentColor: AccentColors[Variant % AccentColors.length],
-      AisleLabel: `AISLE ${AisleNumber}`
+      AisleLabel: `AISLE ${AisleNumber}`,
+      Price: FurniturePrice(Model.name, Chunk.Index, Index)
     });
     Sign.userData.ChunkId = Chunk.Id;
     Sign.userData.SourceModel = Model;
+    Sign.userData.DecorationNoCollision = true;
     Sign.position.set(Position.X, 0, Position.Z);
     FaceTowardAisle(Sign, Position.X, Position.Z);
     Chunk.Group.add(Sign);
-    AddCollisionFromObject(Chunk, "FurnitureItemSignR74", Sign, 1.16);
     RecordSignPosition(Occupied, Position);
 
     if (ShouldUseCarpet(Chunk.Index, Model, Index) && Model.name !== "Light_Floor1") {
-      const Carpet = CreateDisplayCarpet(Model, Variant);
-      if (Carpet) {
-        Carpet.name = `FurnitureDisplayCarpetR74-${Index}`;
-        Carpet.userData.ChunkId = Chunk.Id;
-        Chunk.Group.add(Carpet);
+      try {
+        const Rug = await CreateOnlineRug(Model, Variant);
+        if (Rug) {
+          Rug.name = `OnlineDisplayRugR75-${Index}`;
+          Rug.userData.ChunkId = Chunk.Id;
+          Chunk.Group.add(Rug);
+        }
+      } catch (Error) {
+        console.warn("Online rug decoration unavailable", Error);
       }
     }
 
     if (Index % 2 === 1) await YieldVisualWork();
   }
+
+  RemoveSignGhostCollision(Chunk);
+}
+
+function SafeDecorationPlacement(Chunk, Type, X, Z) {
+  try {
+    const Result = Game.Placement.ShapeCastPlacement(Chunk, Type, X, Z, 0, true);
+    if (!Result) return null;
+    if (Math.hypot(Result.X - X, Result.Z - Z) > 2.8) return null;
+    return Result;
+  } catch {
+    return null;
+  }
+}
+
+async function AddOnlineChunkDecorations(Chunk) {
+  const CenterZ = (Chunk.TopZ + Chunk.BottomZ) * 0.5;
+  const Side = Chunk.Index % 2 === 0 ? -1 : 1;
+  const Plans = [
+    {
+      Key: OnlineDecorationKeys.Cactus,
+      Type: "Houseplant_3",
+      X: Side * 13.9,
+      Z: CenterZ + 5.8,
+      Height: 0.92
+    },
+    {
+      Key: OnlineDecorationKeys.StandingLamp,
+      Type: "Light_Floor1",
+      X: -Side * 13.4,
+      Z: CenterZ - 5.4,
+      Height: 1.48
+    }
+  ];
+
+  if (Math.abs(Chunk.Index) % 3 === 0) {
+    Plans.push({
+      Key: OnlineDecorationKeys.StandingFrame,
+      Type: "Houseplant_3",
+      X: Side * 12.8,
+      Z: CenterZ - 8.1,
+      Height: 0.78
+    });
+  }
+
+  for (let Index = 0; Index < Plans.length; Index += 1) {
+    const Plan = Plans[Index];
+    const Placement = SafeDecorationPlacement(Chunk, Plan.Type, Plan.X, Plan.Z);
+    if (!Placement) continue;
+    try {
+      const Decoration = await CreateOnlineFloorDecoration(Plan.Key, Placement.X, Placement.Z, Plan.Height);
+      if (!Decoration) continue;
+      Decoration.name = `OnlineChunkDecorationR75-${Index}`;
+      Decoration.userData.ChunkId = Chunk.Id;
+      Decoration.userData.DecorationNoCollision = true;
+      Chunk.Group.add(Decoration);
+    } catch (Error) {
+      console.warn("Online display decoration unavailable", Error);
+    }
+    await YieldVisualWork();
+  }
 }
 
 async function ReplaceTaskTerminal(Chunk, Task) {
   const Root = Task?.Object;
-  if (!Root?.isObject3D || Root.userData?.VisualRedesignR74) return;
+  if (!Root?.isObject3D || Root.userData?.VisualRedesignR75) return;
 
   const Terminal = await CreateTaskTerminal3D(Task.Type);
   const Children = [...Terminal.Group.children];
@@ -211,6 +284,7 @@ async function ReplaceTaskTerminal(Chunk, Task) {
   Root.add(...Children);
   Root.userData.VisualRedesignR73 = true;
   Root.userData.VisualRedesignR74 = true;
+  Root.userData.VisualRedesignR75 = true;
   Root.userData.TaskTerminalUtilityR73 = true;
   Task.Screen = Terminal.Screen;
   ReplaceCollisionFromObject(Chunk, "StoreTaskTerminalR72", Root, 1.62);
@@ -237,8 +311,11 @@ async function ProcessChunk(Chunk) {
     await ReplaceDepartmentSign(Chunk);
     for (const Task of Chunk.TaskRecords || []) await ReplaceTaskTerminal(Chunk, Task);
     await CreateItemSigns(Chunk);
+    await AddOnlineChunkDecorations(Chunk);
+    RemoveSignGhostCollision(Chunk);
     Chunk.Group.userData.VisualRedesignR73 = true;
     Chunk.Group.userData.VisualRedesignR74 = true;
+    Chunk.Group.userData.VisualRedesignR75 = true;
     ProcessedModelCounts.set(Chunk, FurnitureCount(Chunk));
   } finally {
     ProcessingChunks.delete(Chunk);
@@ -248,7 +325,7 @@ async function ProcessChunk(Chunk) {
 function QueueChunkIfNeeded(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group?.userData?.WorldPolishR72 || ProcessingChunks.has(Chunk)) return;
   const Count = FurnitureCount(Chunk);
-  if (Chunk.Group.userData.VisualRedesignR74 && ProcessedModelCounts.get(Chunk) === Count) return;
+  if (Chunk.Group.userData.VisualRedesignR75 && ProcessedModelCounts.get(Chunk) === Count) return;
   if (QueuedModelCounts.get(Chunk) === Count) return;
   QueuedModelCounts.set(Chunk, Count);
   Queue.push({ Chunk, Count });
@@ -274,17 +351,18 @@ function Pump() {
     }
     Running = false;
     UpdateDepartmentVisibility();
-    if (Queue.length) setTimeout(Pump, 28);
+    if (Queue.length) setTimeout(Pump, 32);
   };
 
-  if ("requestIdleCallback" in window) requestIdleCallback(() => Run(), { timeout: 950 });
-  else setTimeout(Run, 36);
+  if ("requestIdleCallback" in window) requestIdleCallback(() => Run(), { timeout: 1100 });
+  else setTimeout(Run, 40);
 }
 
 Preload3DTextFont().catch(Error => console.warn("3D text font failed to preload", Error));
+PreloadOnlineDecorations().catch(Error => console.warn("Online decorations failed to preload", Error));
 Discover();
-const Interval = setInterval(Discover, 560);
+const Interval = setInterval(Discover, 620);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.16.0-R74";
+window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk, RemoveSignGhostCollision };
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.17.0-R75";
