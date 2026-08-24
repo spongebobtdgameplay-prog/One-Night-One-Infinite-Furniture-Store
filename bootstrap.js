@@ -1,5 +1,5 @@
-const Cache = "20260824-83";
-const Version = "0.20.0";
+const Cache = "20260824-84";
+const Version = "0.20.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   {
@@ -94,6 +94,7 @@ try {
   await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
   await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
+  await OptionalImport("./store-finish-r80.js", "Rear closure, merchandising walls and close price tags");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
