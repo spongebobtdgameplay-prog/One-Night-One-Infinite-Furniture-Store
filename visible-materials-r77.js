@@ -28,6 +28,16 @@ function IsTrueNearBlack(Hex) {
   return Math.max(Red, Green, Blue) <= 28;
 }
 
+function HasImportedRetailAncestor(Object) {
+  let Current = Object;
+  while (Current && Current !== Game.Scene) {
+    if (Current.userData?.RetailImportedR79 || Current.userData?.RetailImportedShelfR79) return true;
+    if (String(Current.name || "").startsWith("RetailImported-")) return true;
+    Current = Current.parent;
+  }
+  return false;
+}
+
 function FindModelRoot(Object) {
   let Current = Object;
   while (Current && Current !== Game.Scene) {
@@ -74,6 +84,7 @@ function CorrectBlackMaterial(Material) {
 }
 
 function CorrectMaterial(Object, Material) {
+  if (HasImportedRetailAncestor(Object)) return Material;
   const Root = FindModelRoot(Object);
   if (Root?.name === "Shelf_Large") return CorrectShelfMaterial(Material);
   if (Root?.name === "Window_Large1") return CorrectWindowMaterial(Material);
@@ -87,9 +98,10 @@ function ProcessMesh(Object) {
 
   const Root = FindModelRoot(Object);
   const RootName = Root?.name || "";
+  const Imported = HasImportedRetailAncestor(Object) ? "R79" : "";
   const Signature = Array.isArray(Current)
-    ? `${RootName}:` + Current.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
-    : `${RootName}:${Current.uuid || ""}:${SrgbHex(Current) ?? ""}`;
+    ? `${RootName}:${Imported}:` + Current.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
+    : `${RootName}:${Imported}:${Current.uuid || ""}:${SrgbHex(Current) ?? ""}`;
   if (Processed.get(Object) === Signature) return;
 
   if (Array.isArray(Current)) Object.material = Current.map(Material => CorrectMaterial(Object, Material));
@@ -97,8 +109,8 @@ function ProcessMesh(Object) {
 
   const Updated = Object.material;
   const UpdatedSignature = Array.isArray(Updated)
-    ? `${RootName}:` + Updated.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
-    : `${RootName}:${Updated?.uuid || ""}:${SrgbHex(Updated) ?? ""}`;
+    ? `${RootName}:${Imported}:` + Updated.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
+    : `${RootName}:${Imported}:${Updated?.uuid || ""}:${SrgbHex(Updated) ?? ""}`;
   Processed.set(Object, UpdatedSignature);
 }
 
@@ -119,4 +131,4 @@ const Interval = setInterval(ProcessAll, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll };
-window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.19.0-R78";
+window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.20.0-R79";
