@@ -14,7 +14,14 @@ const Prices = new Map([
   ["Kitchen_Sink", 349.99],
   ["Bathroom_Bathtub", 799.99],
   ["Bathroom_Toilet", 269.99],
-  ["Light_Floor1", 89.99]
+  ["Light_Floor1", 89.99],
+  ["RetailArmchairR79", 249.99],
+  ["RetailLivingShelfR79", 219.99],
+  ["RetailBedroomCabinetR79", 329.99],
+  ["RetailBedroomChairR79", 239.99],
+  ["RetailStorageShelfR79", 199.99],
+  ["RetailStorageCabinetR79", 279.99],
+  ["RetailDisplayCabinetR79", 289.99]
 ]);
 
 function Hash(Text) {
@@ -34,4 +41,4 @@ export function FurniturePrice(Name, ChunkIndex = 0, ItemIndex = 0) {
   return `$${Price.toFixed(2)}`;
 }
 
-window.__STORE_PRICING_BUILD__ = "V0.17.0-R75";
+window.__STORE_PRICING_BUILD__ = "V0.20.1-R80";
