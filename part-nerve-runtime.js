@@ -6,22 +6,13 @@ const Player = window.__STORE_PLAYER__;
 const Collision = window.__STORE_COLLISION_UTILITY__;
 if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes || !Player || !Collision) throw new Error("Game, player, and collision utility must load before part nerve collision.");
 
-const BatchWindowMs = 3.5;
-const MovementRadius = () => THREE.MathUtils.clamp((Number(Player.GetPlayerRadius?.()) || 0.34) * 0.62, 0.19, 0.22);
-
-const MovementBatch = {
-  Camera: null,
-  Start: new THREE.Vector3(),
-  Desired: new THREE.Vector3(),
-  LastCallAt: -Infinity
-};
+const CoreRadius = () => THREE.MathUtils.clamp((Number(Player.GetPlayerRadius?.()) || 0.34) * 0.64, 0.20, 0.225);
 
 const MovementScratch = {
   Forward: new THREE.Vector3(),
   Right: new THREE.Vector3(),
   Delta: new THREE.Vector3(),
-  DesiredDirection: new THREE.Vector3(),
-  ResolvedDirection: new THREE.Vector3()
+  DesiredDirection: new THREE.Vector3()
 };
 
 const PoseScratch = {
@@ -35,21 +26,26 @@ const PoseScratch = {
   DeltaQuaternion: new THREE.Quaternion(),
   DesiredQuaternion: new THREE.Quaternion(),
   LocalQuaternion: new THREE.Quaternion(),
+  PreferredDirection: new THREE.Vector3(),
+  CameraForward: new THREE.Vector3(),
+  CameraRight: new THREE.Vector3(),
   SavedPose: new Map()
 };
 
 const NerveSegments = [
-  ["Shoulder.L", "UpperArm.L", 0.070, 0.76],
-  ["UpperArm.L", "LowerArm.L", 0.068, 0.82],
-  ["LowerArm.L", "Wrist.L", 0.060, 0.88],
-  ["Shoulder.R", "UpperArm.R", 0.070, 0.76],
-  ["UpperArm.R", "LowerArm.R", 0.068, 0.82],
-  ["LowerArm.R", "Wrist.R", 0.060, 0.88],
-  ["UpperLeg.L", "LowerLeg.L", 0.082, 0.76],
-  ["LowerLeg.L", "Foot.L", 0.074, 0.82],
-  ["UpperLeg.R", "LowerLeg.R", 0.082, 0.76],
-  ["LowerLeg.R", "Foot.R", 0.074, 0.82]
+  { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.072, Preference: "down-left" },
+  { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.070, Preference: "down-left" },
+  { Joint: "LowerArm.L", Child: "Wrist.L", Radius: 0.062, Preference: "down-left" },
+  { Joint: "Shoulder.R", Child: "UpperArm.R", Radius: 0.072, Preference: "down-right" },
+  { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.070, Preference: "down-right" },
+  { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.062, Preference: "down-right" },
+  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.086, Preference: "back-left" },
+  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.078, Preference: "back-left" },
+  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.086, Preference: "back-right" },
+  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.078, Preference: "back-right" }
 ];
+
+const NerveState = new Map();
 
 function StructuralCollision(Entry) {
   return Collision.IsStructure(Entry);
@@ -79,51 +75,30 @@ function RecordMovementContact(Result, Desired) {
   MovementScratch.DesiredDirection.copy(Desired);
   if (MovementScratch.DesiredDirection.lengthSq() > 0.000001) MovementScratch.DesiredDirection.normalize();
   const Inward = Math.max(0, -MovementScratch.DesiredDirection.dot(Result.Normal));
-  Contact.Strength = THREE.MathUtils.clamp(0.56 + Inward * 0.44, 0, 1);
-
-  MovementScratch.ResolvedDirection.copy(Result.Resolved);
-  if (MovementScratch.ResolvedDirection.lengthSq() > 0.000001) MovementScratch.ResolvedDirection.normalize();
-  Contact.Sliding = Result.Resolved.lengthSq() > 0.00001 && Math.abs(MovementScratch.ResolvedDirection.dot(Result.Normal)) < 0.25;
+  Contact.Strength = THREE.MathUtils.clamp(0.58 + Inward * 0.42, 0, 1);
+  Contact.Sliding = false;
   Contact.Type = Result.Entry?.Type || "Collision";
   Contact.LastHit = performance.now();
 }
 
-function ResolveCameraMove(Camera, Desired) {
+function ResolveRootMove(Camera, Desired) {
   const Result = Collision.ResolveHorizontalMove(
-    MovementBatch.Start,
+    Camera.position,
     Desired,
-    MovementRadius(),
+    CoreRadius(),
     Game.CollisionBoxes,
     {
-      Skin: 0.007,
-      MaxIterations: 3,
-      MaxSweepSteps: 30,
-      BinarySteps: 10,
-      AllowSlide: true,
-      SlideIntentThreshold: 0.14
+      Skin: 0.005,
+      MaxIterations: 1,
+      MaxSweepSteps: 36,
+      BinarySteps: 12,
+      AllowSlide: false
     }
   );
   Camera.position.x = Result.Position.x;
   Camera.position.z = Result.Position.z;
   RecordMovementContact(Result, Desired);
-}
-
-function ApplyMovementRequest(Camera, WorldDelta) {
-  if (!Camera || WorldDelta.lengthSq() <= 0.00000001) return;
-  const Now = performance.now();
-  const SameBatch = MovementBatch.Camera === Camera && Now - MovementBatch.LastCallAt <= BatchWindowMs;
-
-  if (SameBatch) {
-    Camera.position.copy(MovementBatch.Start);
-    MovementBatch.Desired.add(WorldDelta);
-  } else {
-    MovementBatch.Camera = Camera;
-    MovementBatch.Start.copy(Camera.position);
-    MovementBatch.Desired.copy(WorldDelta);
-  }
-
-  ResolveCameraMove(Camera, MovementBatch.Desired);
-  MovementBatch.LastCallAt = Now;
+  return Result;
 }
 
 const PreviousMoveForward = PointerLockControls.prototype.moveForward;
@@ -133,31 +108,31 @@ function ControlCamera(Control) {
   return Control?.object || Control?.camera || Game.Camera;
 }
 
-PointerLockControls.prototype.moveForward = function MoveForwardWithUtility(Distance) {
+PointerLockControls.prototype.moveForward = function MoveForwardWithNerveCore(Distance) {
   const Camera = ControlCamera(this);
   if (Camera !== Game.Camera || !Number.isFinite(Distance)) return PreviousMoveForward.call(this, Distance);
   MovementScratch.Forward.set(0, 0, -1).applyQuaternion(Camera.quaternion);
   MovementScratch.Forward.y = 0;
   if (MovementScratch.Forward.lengthSq() <= 0.000001) return;
   MovementScratch.Delta.copy(MovementScratch.Forward).normalize().multiplyScalar(Distance);
-  ApplyMovementRequest(Camera, MovementScratch.Delta);
+  ResolveRootMove(Camera, MovementScratch.Delta);
 };
 
-PointerLockControls.prototype.moveRight = function MoveRightWithUtility(Distance) {
+PointerLockControls.prototype.moveRight = function MoveRightWithNerveCore(Distance) {
   const Camera = ControlCamera(this);
   if (Camera !== Game.Camera || !Number.isFinite(Distance)) return PreviousMoveRight.call(this, Distance);
   MovementScratch.Right.set(1, 0, 0).applyQuaternion(Camera.quaternion);
   MovementScratch.Right.y = 0;
   if (MovementScratch.Right.lengthSq() <= 0.000001) return;
   MovementScratch.Delta.copy(MovementScratch.Right).normalize().multiplyScalar(Distance);
-  ApplyMovementRequest(Camera, MovementScratch.Delta);
+  ResolveRootMove(Camera, MovementScratch.Delta);
 };
 
 function SavePose(Pivot) {
   PoseScratch.SavedPose.clear();
-  for (const [JointName, ChildName] of NerveSegments) {
-    const Joint = Pivot.getObjectByName(JointName);
-    const Child = Pivot.getObjectByName(ChildName);
+  for (const Segment of NerveSegments) {
+    const Joint = Pivot.getObjectByName(Segment.Joint);
+    const Child = Pivot.getObjectByName(Segment.Child);
     if (Joint?.isBone && !PoseScratch.SavedPose.has(Joint)) PoseScratch.SavedPose.set(Joint, Joint.quaternion.clone());
     if (Child?.isBone && !PoseScratch.SavedPose.has(Child)) PoseScratch.SavedPose.set(Child, Child.quaternion.clone());
   }
@@ -168,85 +143,149 @@ function RestorePose(Pivot) {
   Pivot.updateMatrixWorld(true);
 }
 
-function RotateJointToward(Joint, Child, Target, Strength) {
-  if (!Joint?.isBone || !Child?.isBone || !Joint.parent) return;
+function RotateJointExactly(Joint, Child, Target) {
+  if (!Joint?.isBone || !Child?.isBone || !Joint.parent) return false;
   Joint.getWorldPosition(PoseScratch.Start);
   Child.getWorldPosition(PoseScratch.End);
   PoseScratch.CurrentDirection.copy(PoseScratch.End).sub(PoseScratch.Start);
   PoseScratch.TargetDirection.copy(Target).sub(PoseScratch.Start);
-  if (PoseScratch.CurrentDirection.lengthSq() <= 0.000001 || PoseScratch.TargetDirection.lengthSq() <= 0.000001) return;
+  if (PoseScratch.CurrentDirection.lengthSq() <= 0.000001 || PoseScratch.TargetDirection.lengthSq() <= 0.000001) return false;
 
   PoseScratch.CurrentDirection.normalize();
   PoseScratch.TargetDirection.normalize();
+  if (PoseScratch.CurrentDirection.dot(PoseScratch.TargetDirection) > 0.999999) return false;
+
   PoseScratch.DeltaQuaternion.setFromUnitVectors(PoseScratch.CurrentDirection, PoseScratch.TargetDirection);
   Joint.getWorldQuaternion(PoseScratch.JointQuaternion);
   PoseScratch.DesiredQuaternion.copy(PoseScratch.DeltaQuaternion).multiply(PoseScratch.JointQuaternion);
-  Joint.parent.getWorldQuaternion(PoseScratch.ParentQuaternion);
-  PoseScratch.ParentQuaternion.invert();
+  Joint.parent.getWorldQuaternion(PoseScratch.ParentQuaternion).invert();
   PoseScratch.LocalQuaternion.copy(PoseScratch.ParentQuaternion).multiply(PoseScratch.DesiredQuaternion).normalize();
-  Joint.quaternion.slerp(PoseScratch.LocalQuaternion, THREE.MathUtils.clamp(Strength, 0, 1));
+  Joint.quaternion.copy(PoseScratch.LocalQuaternion);
   Joint.updateMatrixWorld(true);
+  return true;
 }
 
-function ConstrainNerveSegment(Pivot, JointName, ChildName, Radius, Strength) {
-  const Joint = Pivot.getObjectByName(JointName);
-  const Child = Pivot.getObjectByName(ChildName);
+function SegmentState(Segment) {
+  const Key = `${Segment.Joint}>${Segment.Child}`;
+  if (!NerveState.has(Key)) {
+    NerveState.set(Key, {
+      PreviousDirection: new THREE.Vector3(),
+      HasPrevious: false,
+      Contact: false
+    });
+  }
+  return NerveState.get(Key);
+}
+
+function PreferredDirection(Segment, Camera) {
+  PoseScratch.CameraForward.set(0, 0, -1).applyQuaternion(Camera.quaternion);
+  PoseScratch.CameraForward.y = 0;
+  if (PoseScratch.CameraForward.lengthSq() <= 0.000001) PoseScratch.CameraForward.set(0, 0, -1);
+  else PoseScratch.CameraForward.normalize();
+  PoseScratch.CameraRight.set(-PoseScratch.CameraForward.z, 0, PoseScratch.CameraForward.x).normalize();
+
+  const Side = Segment.Preference.endsWith("left") ? -1 : 1;
+  if (Segment.Preference.startsWith("down")) {
+    PoseScratch.PreferredDirection.set(0, -1, 0)
+      .addScaledVector(PoseScratch.CameraRight, Side * 0.30)
+      .addScaledVector(PoseScratch.CameraForward, -0.12)
+      .normalize();
+  } else {
+    PoseScratch.PreferredDirection.copy(PoseScratch.CameraForward).multiplyScalar(-0.70)
+      .addScaledVector(PoseScratch.CameraRight, Side * 0.22)
+      .addScaledVector(new THREE.Vector3(0, -1, 0), 0.18)
+      .normalize();
+  }
+  return PoseScratch.PreferredDirection;
+}
+
+function ConstrainNerveSegment(Pivot, Segment, Camera) {
+  const Joint = Pivot.getObjectByName(Segment.Joint);
+  const Child = Pivot.getObjectByName(Segment.Child);
   if (!Joint?.isBone || !Child?.isBone) return false;
 
   Joint.getWorldPosition(PoseScratch.Start);
   Child.getWorldPosition(PoseScratch.End);
-  const Result = Collision.ClampSegmentToWorld(
+  const State = SegmentState(Segment);
+  const Result = Collision.ResolveFixedLengthCapsule(
     PoseScratch.Start,
     PoseScratch.End,
-    Radius,
+    Segment.Radius,
     Game.CollisionBoxes,
     PoseScratch.SafeEnd,
-    { Skin: 0.007, Filter: StructuralCollision }
+    {
+      Skin: 0.006,
+      Filter: StructuralCollision,
+      PreviousDirection: State.HasPrevious ? State.PreviousDirection : null,
+      PreferredDirection: PreferredDirection(Segment, Camera),
+      AngleStepDegrees: 6,
+      AzimuthSteps: 18,
+      MaxAngleDegrees: 118
+    }
   );
-  if (!Result.Hit) return false;
 
-  RotateJointToward(Joint, Child, PoseScratch.SafeEnd, Strength);
+  if (!Result.Hit) {
+    PoseScratch.CurrentDirection.copy(PoseScratch.End).sub(PoseScratch.Start);
+    if (PoseScratch.CurrentDirection.lengthSq() > 0.000001) {
+      State.PreviousDirection.copy(PoseScratch.CurrentDirection).normalize();
+      State.HasPrevious = true;
+    }
+    State.Contact = false;
+    return false;
+  }
+
+  State.Contact = true;
+  if (!Result.Solved) return false;
+
+  RotateJointExactly(Joint, Child, PoseScratch.SafeEnd);
   Pivot.updateMatrixWorld(true);
+  Child.getWorldPosition(PoseScratch.End);
+  PoseScratch.CurrentDirection.copy(PoseScratch.End).sub(PoseScratch.Start);
+  if (PoseScratch.CurrentDirection.lengthSq() > 0.000001) {
+    State.PreviousDirection.copy(PoseScratch.CurrentDirection).normalize();
+    State.HasPrevious = true;
+  }
   return true;
 }
 
-function ApplyNerveCollision(Pivot) {
-  for (let Pass = 0; Pass < 3; Pass += 1) {
+function ApplyNerveCollision(Pivot, Camera) {
+  for (let Pass = 0; Pass < 4; Pass += 1) {
     let Changed = false;
-    for (const [JointName, ChildName, Radius, Strength] of NerveSegments) {
-      if (ConstrainNerveSegment(Pivot, JointName, ChildName, Radius, Strength)) Changed = true;
+    for (const Segment of NerveSegments) {
+      if (ConstrainNerveSegment(Pivot, Segment, Camera)) Changed = true;
     }
     if (!Changed) break;
   }
 }
 
 const PreviousRender = Player.Render;
-if (typeof PreviousRender === "function") {
-  Player.Render = function RenderWithPartNerves(Renderer, Scene, Camera) {
-    const ProxyRenderer = {
-      render(RenderScene, RenderCamera) {
-        const Pivot = RenderScene.getObjectByName("PlayerCharacterPivot");
-        if (!Pivot) {
-          Renderer.render(RenderScene, RenderCamera);
-          return;
-        }
+if (typeof PreviousRender !== "function") throw new Error("Player render function is unavailable for part nerves.");
 
-        SavePose(Pivot);
-        try {
-          ApplyNerveCollision(Pivot);
-          Renderer.render(RenderScene, RenderCamera);
-        } finally {
-          RestorePose(Pivot);
-        }
+Player.Render = function RenderWithPartNerves(Renderer, Scene, Camera) {
+  const ProxyRenderer = {
+    render(RenderScene, RenderCamera) {
+      const Pivot = RenderScene.getObjectByName("PlayerCharacterPivot");
+      if (!Pivot) {
+        Renderer.render(RenderScene, RenderCamera);
+        return;
       }
-    };
-    return PreviousRender.call(Player, ProxyRenderer, Scene, Camera);
+
+      SavePose(Pivot);
+      try {
+        ApplyNerveCollision(Pivot, RenderCamera);
+        Renderer.render(RenderScene, RenderCamera);
+      } finally {
+        RestorePose(Pivot);
+      }
+    }
   };
-}
+  return PreviousRender.call(Player, ProxyRenderer, Scene, Camera);
+};
 
 window.__STORE_PART_NERVE_COLLISION__ = {
   Segments: NerveSegments,
-  ConstrainSegment: ConstrainNerveSegment,
-  Apply: ApplyNerveCollision
+  State: NerveState,
+  Apply: ApplyNerveCollision,
+  ResolveRootMove
 };
-window.__STORE_PART_NERVE_COLLISION_BUILD__ = "V0.12.12";
+window.__STORE_PART_NERVE_COLLISION_BUILD__ = "V0.12.13";
