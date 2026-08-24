@@ -40,14 +40,16 @@ function ControlCamera(Control) {
 function ResolveOnce(Camera, Distance, Axis) {
   const Axes = InputAxes();
   if (Math.abs(Axes.Forward) <= 0.000001 && Math.abs(Axes.Right) <= 0.000001) return false;
+
+  const Component = Axis === "forward" ? Axes.Forward : Axes.Right;
+  if (Math.abs(Component) <= 0.000001 || Math.abs(Distance) <= 0.000001) return false;
   if (FrameClaimed) return true;
+
+  const TotalDistance = Math.abs(Distance / Component);
+  if (!Number.isFinite(TotalDistance) || TotalDistance <= 0.000001) return false;
 
   FrameClaimed = true;
   ScheduleFrameReset();
-
-  const Component = Axis === "forward" ? Axes.Forward : Axes.Right;
-  const TotalDistance = Math.abs(Component) > 0.000001 ? Math.abs(Distance / Component) : Math.abs(Distance);
-  if (!Number.isFinite(TotalDistance) || TotalDistance <= 0) return true;
 
   if (Math.abs(Axes.Forward) > 0.000001 && Math.abs(Axes.Right) <= 0.000001 && typeof ForwardInvariant?.ResolveForwardOnly === "function") {
     ForwardInvariant.ResolveForwardOnly(Camera, TotalDistance * Math.sign(Axes.Forward));
