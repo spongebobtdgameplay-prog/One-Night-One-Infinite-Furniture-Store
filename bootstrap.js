@@ -1,5 +1,5 @@
-const Cache = "20260823-54";
-const Version = "0.12.18";
+const Cache = "20260823-55";
+const Version = "0.12.19";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -49,6 +49,7 @@ try {
   await import(`./post-animation-nerve-runtime-r17.js?v=${Cache}`);
   await import(`./movement-authority-r19.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
+  await import(`./first-person-visibility-r20.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
   console.error("Core store boot failed.", Error);
