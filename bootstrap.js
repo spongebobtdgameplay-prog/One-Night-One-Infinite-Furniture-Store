@@ -1,5 +1,5 @@
-const Cache = "20260823-59";
-const Version = "0.12.23";
+const Cache = "20260824-60";
+const Version = "0.12.24";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -24,9 +24,9 @@ let CoreReady = false;
 
 try {
   await import("./loading-prewarm-r38.js?v=20260823-33");
+  await import(`./single-menu-pre-r24.js?v=${Cache}`);
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
-  await OptionalImport("./menu-visuals.js", "Main menu illustration");
   await import(`./collision-utility.js?v=${Cache}`);
   await import(`./surface-contact-utility-r17.js?v=${Cache}`);
 
@@ -47,7 +47,7 @@ try {
   await OptionalImport("./sign-fix.js", "Section sign upgrade");
   await OptionalImport("./price-signs.js", "Price signs");
   await import(`./post-animation-nerve-runtime-r17.js?v=${Cache}`);
-  await import(`./movement-authority-r22.js?v=${Cache}`);
+  await import(`./movement-authority-r23.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
