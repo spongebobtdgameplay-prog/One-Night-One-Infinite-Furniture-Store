@@ -1,5 +1,5 @@
-const Cache = "20260824-80";
-const Version = "0.18.0";
+const Cache = "20260824-81";
+const Version = "0.18.1";
 const FaviconVersion = "20260824-3";
 const FaviconLinks = [
   {
@@ -84,7 +84,7 @@ try {
   await OptionalImport("./store-visual-redesign-r73.js", "Priced 3D signage and online decorations");
   await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
   await OptionalImport("./solid-object-collision-r77.js", "Physical sign and decoration collision");
-  await OptionalImport("./visible-materials-r77.js", "Readable store materials");
+  await OptionalImport("./visible-materials-r77.js", "Near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
