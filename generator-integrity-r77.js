@@ -29,6 +29,7 @@ const ClaimedEntries = new Set();
 const TempCenter = new THREE.Vector3();
 const TempSize = new THREE.Vector3();
 const TempDelta = new THREE.Vector3();
+const TempMatrix = new THREE.Matrix4();
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -37,6 +38,36 @@ function BoundsOf(Object) {
 
 function HorizontalOverlap(A, B, Padding = 0.035) {
   return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding && A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
+}
+
+function InstanceBounds(Object) {
+  const Results = [];
+  if (!Object?.isInstancedMesh || !Object.geometry) return Results;
+  Object.geometry.computeBoundingBox?.();
+  const Local = Object.geometry.boundingBox;
+  if (!Local) return Results;
+  Object.updateWorldMatrix(true, false);
+  for (let Index = 0; Index < Object.count; Index += 1) {
+    Object.getMatrixAt(Index, TempMatrix);
+    TempMatrix.premultiply(Object.matrixWorld);
+    const Bounds = Local.clone().applyMatrix4(TempMatrix);
+    if (!Bounds.isEmpty()) Results.push(Bounds);
+  }
+  return Results;
+}
+
+function StaticObstacleBounds(Chunk) {
+  const Results = [];
+  for (const Task of Chunk.TaskRecords || []) {
+    if (!Task?.Object?.parent) continue;
+    const Bounds = BoundsOf(Task.Object);
+    if (!Bounds.isEmpty()) Results.push(Bounds);
+  }
+  Chunk.Group?.traverse?.(Object => {
+    if (Object?.name !== "WarehouseBoxes" || !Object.isInstancedMesh) return;
+    Results.push(...InstanceBounds(Object));
+  });
+  return Results;
 }
 
 function InsideChunk(Chunk, Bounds) {
@@ -186,7 +217,7 @@ function ResolveFurniture(Chunk) {
   ClaimedEntries.clear();
   const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name) && !BoundsOf(Model).isEmpty());
   Models.sort((A, B) => ModelVolume(B) - ModelVolume(A));
-  const Accepted = [];
+  const Accepted = StaticObstacleBounds(Chunk);
 
   for (const Model of [...Models]) {
     const Bounds = BoundsOf(Model);
@@ -216,14 +247,13 @@ function IsReservationObject(Object) {
   const Name = String(Object?.name || "");
   if (FurnitureNames.has(Name)) return true;
   if (Name === "StoreTask") return true;
-  if (Name === "DepartmentHeaderR73") return true;
   if (Name.startsWith("FurnitureItemSignR74-")) return true;
   if (Name.startsWith("OnlineChunkDecorationR76-")) return true;
   return false;
 }
 
 function RebuildReservations(Chunk) {
-  const Reservations = [];
+  const Reservations = StaticObstacleBounds(Chunk).map(Bounds => Bounds.clone());
   for (const Model of Chunk.Models || []) {
     if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
     const Bounds = BoundsOf(Model);
@@ -232,7 +262,7 @@ function RebuildReservations(Chunk) {
 
   Chunk.Group?.traverse?.(Object => {
     if (!Object?.parent || !IsReservationObject(Object)) return;
-    if (FurnitureNames.has(Object.name)) return;
+    if (FurnitureNames.has(Object.name) || Object.name === "StoreTask") return;
     const Bounds = BoundsOf(Object);
     if (!Bounds.isEmpty()) Reservations.push(Bounds.clone());
   });
@@ -247,6 +277,8 @@ function ChunkSignature(Chunk) {
     if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
     Signature += `|${Model.name}:${Model.position.x.toFixed(2)}:${Model.position.z.toFixed(2)}:${Model.rotation.y.toFixed(2)}`;
   }
+  const Warehouse = Chunk.Group?.getObjectByName?.("WarehouseBoxes");
+  Signature += `|W${Warehouse?.count || 0}|T${Chunk.TaskRecords?.length || 0}`;
   return Signature;
 }
 
@@ -272,7 +304,7 @@ function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 280);
+const Interval = setInterval(ProcessAll, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_GENERATOR_INTEGRITY_R77__ = { ProcessAll, ProcessChunk };
