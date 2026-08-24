@@ -4,9 +4,9 @@ const Game = window.__STORE_GAME__;
 if (!Game?.Camera || !Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.Renderer) throw new Error("Game must load before render distance lighting.");
 
 const ProcessedObjects = new WeakSet();
-const WarmGlow = 0xffe6b8;
-const BrokenGlow = 0x9f8d6c;
-const HousingColor = 0x777b76;
+const WarmGlow = 0xffe2ad;
+const BrokenGlow = 0xa49372;
+const HousingColor = 0x7f8986;
 let ProjectionConfigured = false;
 
 function Brightness(Color) {
@@ -18,18 +18,21 @@ function StabilizeGlow(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
   Object.frustumCulled = false;
-  Object.renderOrder = 0;
+  Object.renderOrder = 1;
   Object.geometry?.computeBoundingSphere?.();
 
   if (Object.material) {
     Object.material = Object.material.clone();
     const Broken = Brightness(Object.material.color) < 0.95;
     Object.material.color?.setHex(Broken ? BrokenGlow : WarmGlow);
-    Object.material.toneMapped = true;
-    Object.material.depthWrite = true;
+    Object.material.toneMapped = false;
+    Object.material.depthWrite = false;
     Object.material.depthTest = true;
     Object.material.transparent = false;
     Object.material.opacity = 1;
+    Object.material.polygonOffset = true;
+    Object.material.polygonOffsetFactor = -1;
+    Object.material.polygonOffsetUnits = -1;
     Object.material.needsUpdate = true;
   }
 }
@@ -41,7 +44,8 @@ function StabilizeHousing(Object) {
   if (!Object.material) return;
   Object.material = Object.material.clone();
   Object.material.color?.setHex(HousingColor);
-  if ("roughness" in Object.material) Object.material.roughness = 0.64;
+  if ("roughness" in Object.material) Object.material.roughness = 0.62;
+  if ("metalness" in Object.material) Object.material.metalness = Math.min(0.48, Object.material.metalness ?? 0.35);
   Object.material.needsUpdate = true;
 }
 
@@ -49,7 +53,7 @@ function StabilizePointLight(Object) {
   if (!Object?.isPointLight || ProcessedObjects.has(Object)) return;
   if (!Number.isFinite(Object.userData?.BaseIntensity)) return;
   ProcessedObjects.add(Object);
-  Object.distance = Math.max(Object.distance || 0, 18);
+  Object.distance = Math.max(Object.distance || 0, 20);
   Object.decay = 2;
   Object.intensity = Math.max(Object.intensity || 0, Object.userData.BaseIntensity || 1.75);
 }
@@ -58,12 +62,22 @@ function StabilizeHorizon(Object) {
   if (!Object?.isInstancedMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
   Object.frustumCulled = false;
-  if (!/HorizonLightGlow/i.test(String(Object.name || "")) || !Object.material) return;
+  if (!Object.material) return;
+
   Object.material = Object.material.clone();
-  Object.material.color?.setHex(WarmGlow);
-  Object.material.toneMapped = true;
-  Object.material.depthWrite = true;
-  Object.material.depthTest = true;
+  if (/HorizonLightGlow/i.test(String(Object.name || ""))) {
+    Object.material.color?.setHex(WarmGlow);
+    Object.material.toneMapped = false;
+    Object.material.depthWrite = false;
+    Object.material.depthTest = true;
+    Object.material.transparent = false;
+    Object.material.opacity = 1;
+    Object.material.polygonOffset = true;
+    Object.material.polygonOffsetFactor = -1;
+    Object.material.polygonOffsetUnits = -1;
+  } else if (/HorizonLightHousing/i.test(String(Object.name || ""))) {
+    Object.material.color?.setHex(HousingColor);
+  }
   Object.material.needsUpdate = true;
 }
 
@@ -81,7 +95,7 @@ function ConfigureProjection() {
   ProjectionConfigured = true;
   Game.Camera.far = 520;
   Game.Camera.updateProjectionMatrix();
-  Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.22));
+  Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
 }
 
 function ConfigureAtmosphere() {
@@ -101,8 +115,8 @@ function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 700);
+const Interval = setInterval(ProcessAll, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll };
-window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.17.0-R75";
+window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.19.0-R78";
