@@ -1,4 +1,4 @@
-const Cache = "20260824-75";
+const Cache = "20260824-76";
 const Version = "0.16.0";
 const FaviconVersion = "20260824-3";
 const FaviconLinks = [
