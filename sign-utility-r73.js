@@ -1,14 +1,15 @@
 import * as THREE from "three";
 import { Create3DText, CreateDoubleSided3DText } from "./three-text-utility-r73.js";
 
-const DepartmentFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x777064, roughness: 0.60, metalness: 0.46 });
-const DepartmentBoardMaterial = new THREE.MeshStandardMaterial({ color: 0x667268, roughness: 0.86, metalness: 0.04 });
-const DepartmentInsetMaterial = new THREE.MeshStandardMaterial({ color: 0x879184, roughness: 0.90, metalness: 0.02 });
-const DepartmentTextMaterial = new THREE.MeshStandardMaterial({ color: 0xf1dfb8, roughness: 0.46, metalness: 0.06, emissive: 0x56411f, emissiveIntensity: 0.16 });
-const PriceFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x7b7468, roughness: 0.68, metalness: 0.30 });
-const PriceBoardMaterial = new THREE.MeshStandardMaterial({ color: 0xd9cbaa, roughness: 0.92, metalness: 0.01 });
-const PriceTextMaterial = new THREE.MeshStandardMaterial({ color: 0x594735, roughness: 0.54, metalness: 0.02 });
-const PriceLightTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffefcc, roughness: 0.50, metalness: 0.02, emissive: 0x5b3f22, emissiveIntensity: 0.10 });
+const DepartmentFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x857d70, roughness: 0.60, metalness: 0.42 });
+const DepartmentBoardMaterial = new THREE.MeshStandardMaterial({ color: 0x748175, roughness: 0.86, metalness: 0.04 });
+const DepartmentInsetMaterial = new THREE.MeshStandardMaterial({ color: 0x9aa394, roughness: 0.90, metalness: 0.02 });
+const DepartmentTextMaterial = new THREE.MeshStandardMaterial({ color: 0xffe7b8, roughness: 0.42, metalness: 0.05, emissive: 0x6a4b20, emissiveIntensity: 0.13 });
+const PriceFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x8a8173, roughness: 0.68, metalness: 0.28 });
+const PriceBoardMaterial = new THREE.MeshStandardMaterial({ color: 0xe7d9b8, roughness: 0.92, metalness: 0.01 });
+const PriceTextMaterial = new THREE.MeshStandardMaterial({ color: 0x594735, roughness: 0.52, metalness: 0.02 });
+const PriceValueMaterial = new THREE.MeshStandardMaterial({ color: 0x9b3f31, roughness: 0.48, metalness: 0.02, emissive: 0x4a160f, emissiveIntensity: 0.05 });
+const PriceLightTextMaterial = new THREE.MeshStandardMaterial({ color: 0xfff0cf, roughness: 0.48, metalness: 0.02, emissive: 0x664523, emissiveIntensity: 0.10 });
 
 function AddBorderBars(Group, Width, Height, Depth, Material, Thickness = 0.055) {
   const Top = new THREE.Mesh(new THREE.BoxGeometry(Width, Thickness, Depth), Material);
@@ -28,64 +29,77 @@ function AccentMaterial(Color) {
 
 function AddPedestal(Group, Style) {
   if (Style % 3 === 1) {
-    const LeftPole = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.58, 0.045), PriceFrameMaterial);
-    LeftPole.position.set(-0.18, 0.31, 0);
+    const LeftPole = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.62, 0.045), PriceFrameMaterial);
+    LeftPole.position.set(-0.20, 0.33, 0);
     const RightPole = LeftPole.clone();
-    RightPole.position.x = 0.18;
-    const Foot = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.055, 0.32), PriceFrameMaterial);
+    RightPole.position.x = 0.20;
+    const Foot = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.055, 0.34), PriceFrameMaterial);
     Foot.position.y = 0.028;
     Group.add(LeftPole, RightPole, Foot);
     return;
   }
 
   if (Style % 3 === 2) {
-    const Pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.13, 0.56, 10), PriceFrameMaterial);
-    Pedestal.position.y = 0.31;
-    const Foot = new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.31, 0.055, 12), PriceFrameMaterial);
+    const Pedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.14, 0.62, 10), PriceFrameMaterial);
+    Pedestal.position.y = 0.33;
+    const Foot = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.32, 0.055, 12), PriceFrameMaterial);
     Foot.position.y = 0.028;
     Group.add(Pedestal, Foot);
     return;
   }
 
-  const Pole = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.040, 0.60, 10), PriceFrameMaterial);
-  Pole.position.y = 0.32;
-  const Foot = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 0.055, 14), PriceFrameMaterial);
+  const Pole = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.042, 0.64, 10), PriceFrameMaterial);
+  Pole.position.y = 0.34;
+  const Foot = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.29, 0.055, 14), PriceFrameMaterial);
   Foot.position.y = 0.028;
   Group.add(Pole, Foot);
 }
 
+async function AddDoubleSidedText(Group, Text, Options) {
+  const Front = await Create3DText(Text, Options);
+  Front.position.set(Options.X || 0, Options.Y || 0, Options.FrontZ);
+  const Back = Front.clone();
+  Back.position.z = Options.BackZ;
+  Back.rotation.y = Math.PI;
+  Group.add(Front, Back);
+  return { Front, Back };
+}
+
 export async function CreateDepartmentSign3D(Text, Options = {}) {
-  const Width = Options.Width ?? 6.25;
-  const Height = Options.Height ?? 0.96;
+  const Width = Options.Width ?? 6.55;
+  const Height = Options.Height ?? 1.06;
   const Depth = Options.Depth ?? 0.20;
   const Group = new THREE.Group();
   Group.name = Options.Name || "DepartmentSign3DR73";
 
   const Frame = new THREE.Mesh(new THREE.BoxGeometry(Width, Height, Depth), DepartmentFrameMaterial);
   const Board = new THREE.Mesh(new THREE.BoxGeometry(Width - 0.17, Height - 0.17, Depth + 0.018), DepartmentBoardMaterial);
-  const Inset = new THREE.Mesh(new THREE.BoxGeometry(Width - 0.38, Height - 0.34, Depth + 0.028), DepartmentInsetMaterial);
+  const Inset = new THREE.Mesh(new THREE.BoxGeometry(Width - 0.34, Height - 0.31, Depth + 0.028), DepartmentInsetMaterial);
   Frame.name = "DepartmentSignFrameR73";
   Board.name = "DepartmentSignBoardR73";
   Inset.name = "DepartmentSignInsetR73";
   Group.add(Frame, Board, Inset);
 
+  const TextDepth = 0.04;
+  const BoardFace = (Depth + 0.028) * 0.5;
+  const TextCenter = BoardFace + TextDepth * 0.5 + 0.0015;
   const TextGroup = await CreateDoubleSided3DText(Text, {
-    MaxWidth: Width - 0.82,
-    MaxHeight: Height - 0.43,
-    Depth: 0.075,
+    MaxWidth: Width - 0.43,
+    MaxHeight: Height - 0.23,
+    Depth: TextDepth,
     Material: DepartmentTextMaterial,
-    FrontZ: Depth * 0.5 + 0.055,
-    BackZ: -Depth * 0.5 - 0.055
+    FrontZ: TextCenter,
+    BackZ: -TextCenter
   });
   TextGroup.name = "DepartmentSignTextR73";
   Group.add(TextGroup);
 
-  AddBorderBars(Group, Width - 0.24, Height - 0.24, Depth + 0.06, DepartmentTextMaterial, 0.035);
+  AddBorderBars(Group, Width - 0.22, Height - 0.22, Depth + 0.045, DepartmentTextMaterial, 0.032);
 
-  const HangerLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.54, 8), DepartmentFrameMaterial);
-  HangerLeft.position.set(-2.0, Height * 0.5 + 0.27, 0);
+  const HangerLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.50, 8), DepartmentFrameMaterial);
+  HangerLeft.position.set(-2.12, Height * 0.5 + 0.25, 0);
   const HangerRight = HangerLeft.clone();
-  HangerRight.position.x = 2.0;
+  HangerRight.position.x = 2.12;
   Group.add(HangerLeft, HangerRight);
 
   Group.userData.SignUtilityR73 = true;
@@ -99,55 +113,66 @@ export async function CreateStandingPriceSign3D(ItemName, Options = {}) {
   const Style = Math.abs(Options.Style ?? 0) % 3;
   const Accent = AccentMaterial(Options.AccentColor ?? 0xb55f45);
   const AisleLabel = String(Options.AisleLabel || "AISLE TAG").toUpperCase();
+  const Price = String(Options.Price || "$0.00").toUpperCase();
 
-  const Frame = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.65, 0.09), PriceFrameMaterial);
-  Frame.position.y = 0.80;
-  const Board = new THREE.Mesh(new THREE.BoxGeometry(0.82, 0.57, 0.11), PriceBoardMaterial);
-  Board.position.y = 0.80;
-  const AccentBar = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.12, 0.125), Accent);
-  AccentBar.position.set(0, 1.015, 0);
+  const Frame = new THREE.Mesh(new THREE.BoxGeometry(0.98, 0.76, 0.09), PriceFrameMaterial);
+  Frame.position.y = 0.86;
+  const Board = new THREE.Mesh(new THREE.BoxGeometry(0.90, 0.68, 0.11), PriceBoardMaterial);
+  Board.position.y = 0.86;
+  const AccentBar = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.13, 0.125), Accent);
+  AccentBar.position.set(0, 1.105, 0);
   Group.add(Frame, Board, AccentBar);
   AddPedestal(Group, Style);
 
-  const DisplayTextFront = await Create3DText("DISPLAY", {
-    MaxWidth: 0.60,
-    MaxHeight: 0.075,
-    Depth: 0.025,
-    Material: PriceLightTextMaterial
-  });
-  DisplayTextFront.position.set(0, 1.015, 0.073);
-  const DisplayTextBack = DisplayTextFront.clone();
-  DisplayTextBack.position.z = -0.073;
-  DisplayTextBack.rotation.y = Math.PI;
-  Group.add(DisplayTextFront, DisplayTextBack);
+  const BoardTextDepth = 0.022;
+  const BoardTextZ = 0.055 + BoardTextDepth * 0.5 + 0.001;
+  const AccentTextDepth = 0.018;
+  const AccentTextZ = 0.0625 + AccentTextDepth * 0.5 + 0.001;
 
-  const NameTextFront = await Create3DText(ItemName, {
-    MaxWidth: 0.66,
-    MaxHeight: 0.17,
-    Depth: 0.032,
-    Material: PriceTextMaterial
+  await AddDoubleSidedText(Group, "DISPLAY", {
+    MaxWidth: 0.67,
+    MaxHeight: 0.085,
+    Depth: AccentTextDepth,
+    Material: PriceLightTextMaterial,
+    Y: 1.105,
+    FrontZ: AccentTextZ,
+    BackZ: -AccentTextZ
   });
-  NameTextFront.position.set(0, 0.81, 0.073);
-  const NameTextBack = NameTextFront.clone();
-  NameTextBack.position.z = -0.073;
-  NameTextBack.rotation.y = Math.PI;
-  Group.add(NameTextFront, NameTextBack);
 
-  const AisleTextFront = await Create3DText(AisleLabel, {
-    MaxWidth: 0.50,
-    MaxHeight: 0.07,
-    Depth: 0.022,
-    Material: PriceTextMaterial
+  await AddDoubleSidedText(Group, ItemName, {
+    MaxWidth: 0.74,
+    MaxHeight: 0.195,
+    Depth: BoardTextDepth,
+    Material: PriceTextMaterial,
+    Y: 0.91,
+    FrontZ: BoardTextZ,
+    BackZ: -BoardTextZ
   });
-  AisleTextFront.position.set(0, 0.62, 0.073);
-  const AisleTextBack = AisleTextFront.clone();
-  AisleTextBack.position.z = -0.073;
-  AisleTextBack.rotation.y = Math.PI;
-  Group.add(AisleTextFront, AisleTextBack);
+
+  await AddDoubleSidedText(Group, Price, {
+    MaxWidth: 0.64,
+    MaxHeight: 0.145,
+    Depth: 0.026,
+    Material: PriceValueMaterial,
+    Y: 0.73,
+    FrontZ: 0.069,
+    BackZ: -0.069
+  });
+
+  await AddDoubleSidedText(Group, AisleLabel, {
+    MaxWidth: 0.56,
+    MaxHeight: 0.072,
+    Depth: BoardTextDepth,
+    Material: PriceTextMaterial,
+    Y: 0.59,
+    FrontZ: BoardTextZ,
+    BackZ: -BoardTextZ
+  });
 
   Group.userData.SignUtilityR73 = true;
   Group.userData.SignKind = "Price";
   Group.userData.SignStyle = Style;
+  Group.userData.Price = Price;
   return Group;
 }
 
@@ -162,4 +187,4 @@ export function FaceSignTowardAisle(Sign, PositionX, PositionZ) {
   Sign.lookAt(new THREE.Vector3(TargetX, Sign.position.y, TargetZ));
 }
 
-window.__STORE_SIGN_UTILITY_BUILD__ = "V0.16.0-R74";
+window.__STORE_SIGN_UTILITY_BUILD__ = "V0.17.0-R75";
