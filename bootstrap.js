@@ -1,5 +1,5 @@
-const Cache = "20260824-71";
-const Version = "0.13.1";
+const Cache = "20260824-72";
+const Version = "0.14.0";
 const FaviconVersion = "20260824-2";
 const FaviconLinks = [
   {
@@ -82,13 +82,11 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
-  await import(`./detail-world-update-r32.js?v=${Cache}`);
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
   await OptionalImport("./precision-collision-v2.js", "Precise collision");
   await import(`./precise-collision-authority-r27.js?v=${Cache}`);
-  await OptionalImport("./price-signs.js", "Detailed furniture price signs");
-  await OptionalImport("./store-layout-cleanup-r71.js", "Store layout cleanup");
+  await import(`./world-polish-r72.js?v=${Cache}`);
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
