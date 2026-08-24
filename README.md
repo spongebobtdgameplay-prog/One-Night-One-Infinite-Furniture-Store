@@ -1,10 +1,10 @@
-# One Night, One Infinite Furniture Store
+# The Infinity Store
 
 A browser horror game set inside an enormous furniture store that changes after closing.
 
 ## Playable prototype
 
-The repo now has a GitHub Pages entry point at `index.html` and a first-person Three.js showroom prototype.
+The repo has a GitHub Pages entry point at `index.html` and a Three.js showroom prototype with first- and third-person play.
 
 Current prototype features:
 - `index.html` at the repository root so GitHub Pages has a real entry page
@@ -12,8 +12,9 @@ Current prototype features:
 - mouse look / pointer lock
 - Shift to run
 - store-time HUD
-- large showroom shell with walls, dividers, ceiling lights and signs
-- 19 curated CC0 furniture/store models loaded directly from `Models/.../GLB/`
+- streamed infinite showroom sections with walls, dividers, ceiling lights and 3D signs
+- curated CC0 furniture/store models loaded from `Models/.../GLB/`
+- additional CC0 retail props and shelving used for showroom dressing
 - living room, bedroom, kitchen, bathroom, storage, lighting, architecture and decor sections
 
 ## Asset production kit
@@ -35,10 +36,10 @@ Important production files:
 
 ## Models
 
-`Models/` contains the first curated model set in both ready-to-load GLB format and source OBJ/MTL format.
+`Models/` contains the curated model set in ready-to-load GLB format and source OBJ/MTL format.
 
 The initial model geometry comes from Quaternius under CC0 1.0 / Public Domain. The original license is included in `Models/QUATERNIUS_LICENSE.txt`.
 
 ## Art rule
 
-Source good raw assets and materials, modify them into one coherent horror-store style, and custom-model the pieces that define the store. Rust, grime and wear should use proper PBR materials/decals instead of orange geometry pretending to be corrosion.
+Source good raw assets and materials, modify them into one coherent horror-store style, and custom-model only the pieces that define The Infinity Store. Rust, grime and wear should use proper PBR materials/decals instead of orange geometry pretending to be corrosion.
