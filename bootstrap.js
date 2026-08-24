@@ -1,5 +1,5 @@
-const Cache = "20260824-77";
-const Version = "0.16.1";
+const Cache = "20260824-78";
+const Version = "0.17.0";
 const FaviconVersion = "20260824-3";
 const FaviconLinks = [
   {
@@ -80,8 +80,9 @@ try {
   await OptionalImport("./precision-collision-v2.js", "Precise collision");
   await import(`./precise-collision-authority-r27.js?v=${Cache}`);
   await import(`./world-polish-r72.js?v=${Cache}`);
-  await OptionalImport("./store-visual-redesign-r73.js", "3D item signage and breaker redesign");
-  await OptionalImport("./render-distance-lighting-r74.js", "Stable distant store lighting");
+  await OptionalImport("./store-visual-redesign-r73.js", "Priced 3D signage and online decorations");
+  await OptionalImport("./collision-ghost-cleanup-r75.js", "Visual-only collision cleanup");
+  await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
