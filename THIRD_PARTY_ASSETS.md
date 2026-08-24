@@ -11,3 +11,14 @@
 - Usage here: rigged player body, first-person arm extraction, procedural bone locomotion, and third-person camera view
 
 The player is an imported rigged mesh. The game does not construct the humanoid body from Three.js primitive geometry.
+
+## Store decorations
+
+- Asset pack: KayKit Furniture Bits 1.0
+- Original creator: Kay Lousberg / KayKit
+- Source: https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0
+- License: CC0 1.0 Universal
+- Runtime format: glTF with the original KayKit sidecar buffers and atlas texture
+- Usage here: rugs, cactus decorations, standing lamps, and standing picture frames
+
+The decoration loader uses the original KayKit glTF assets directly. These imported decorations are visual-only and do not create gameplay collision boxes.
