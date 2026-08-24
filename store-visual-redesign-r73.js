@@ -1,14 +1,16 @@
 import * as THREE from "three";
-import { CreateDepartmentSign3D, CreateStandingPriceSign3D } from "./sign-utility-r73.js?v=20260824-78";
-import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-78";
-import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-78";
+import { CreateDepartmentSign3D, CreateStandingPriceSign3D } from "./sign-utility-r73.js?v=20260824-79";
+import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-79";
+import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-79";
 import {
   CreateOnlineFloorDecoration,
   CreateOnlineRug,
+  CreateOnlineSurfaceDecoration,
+  CreateOnlineWallDecoration,
   OnlineDecorationKeys,
   PreloadOnlineDecorations
-} from "./online-decoration-library-r75.js?v=20260824-78";
-import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-78";
+} from "./online-decoration-library-r75.js?v=20260824-79";
+import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-79";
 import {
   DisplayVariant,
   FaceTowardAisle,
@@ -16,7 +18,7 @@ import {
   FriendlyItemName,
   RecordSignPosition,
   ShouldUseCarpet
-} from "./display-layout-utility-r74.js?v=20260824-78";
+} from "./display-layout-utility-r74.js?v=20260824-79";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes || !Game?.Placement) throw new Error("Store game must load before visual redesign.");
@@ -92,7 +94,10 @@ function RemoveOldDisplayObjects(Chunk) {
       Name.startsWith("FurnitureItemSignR74-") ||
       Name.startsWith("FurnitureDisplayCarpetR74-") ||
       Name.startsWith("OnlineDisplayRugR75-") ||
-      Name.startsWith("OnlineChunkDecorationR75-")
+      Name.startsWith("OnlineChunkDecorationR75-") ||
+      Name.startsWith("OnlineChunkDecorationR76-") ||
+      Name.startsWith("OnlineSurfaceDecorationR76-") ||
+      Name.startsWith("OnlineWallDecorationR76-")
     ) Remove.push(Object);
   });
   for (const Object of Remove) Object.parent?.remove(Object);
@@ -215,6 +220,71 @@ async function CreateItemSigns(Chunk) {
   RemoveSignGhostCollision(Chunk);
 }
 
+function DecorationPlansForModel(Model, Index) {
+  const Angle = ((Index * 0.73) % 1) * Math.PI * 2;
+  if (Model.name === "Couch_Large1" || Model.name === "Couch_L") {
+    return [
+      { Key: Index % 2 === 0 ? OnlineDecorationKeys.PillowA : OnlineDecorationKeys.PillowB, TargetHeight: 0.18, HeightRatio: 0.47, OffsetX: -0.18, OffsetZ: 0.04, RotationY: Angle },
+      { Key: Index % 2 === 0 ? OnlineDecorationKeys.PillowB : OnlineDecorationKeys.PillowA, TargetHeight: 0.17, HeightRatio: 0.47, OffsetX: 0.18, OffsetZ: 0.02, RotationY: -Angle * 0.55 }
+    ];
+  }
+  if (Model.name === "Chair_2") {
+    return [{ Key: OnlineDecorationKeys.PillowA, TargetHeight: 0.15, HeightRatio: 0.49, OffsetX: 0, OffsetZ: 0.03, RotationY: Angle }];
+  }
+  if (Model.name === "Bed_King") {
+    return [
+      { Key: OnlineDecorationKeys.PillowA, TargetHeight: 0.16, HeightRatio: 0.43, OffsetX: -0.19, OffsetZ: -0.14, RotationY: Angle * 0.18 },
+      { Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.16, HeightRatio: 0.43, OffsetX: 0.19, OffsetZ: -0.14, RotationY: -Angle * 0.18 }
+    ];
+  }
+  if (Model.name === "Bed_Single") {
+    return [{ Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.15, HeightRatio: 0.43, OffsetX: 0, OffsetZ: -0.15, RotationY: Angle * 0.16 }];
+  }
+  if (Model.name === "NightStand_2") {
+    return [
+      { Key: OnlineDecorationKeys.TableLamp, TargetHeight: 0.47, OffsetX: -0.12, OffsetZ: 0.02, RotationY: Angle },
+      { Key: OnlineDecorationKeys.BookSingle, TargetHeight: 0.13, OffsetX: 0.24, OffsetZ: -0.16, RotationY: Angle * 0.35 }
+    ];
+  }
+  if (Model.name === "Table_RoundLarge") {
+    return [
+      { Key: OnlineDecorationKeys.BookSet, TargetHeight: 0.23, OffsetX: 0.15, OffsetZ: 0.10, RotationY: Angle },
+      { Key: OnlineDecorationKeys.StandingFrame, TargetHeight: 0.30, OffsetX: -0.18, OffsetZ: -0.13, RotationY: Angle + Math.PI * 0.25 }
+    ];
+  }
+  if (Model.name === "Shelf_Large" || Model.name === "Bookshelf") {
+    return [
+      { Key: OnlineDecorationKeys.BookSet, TargetHeight: 0.23, OffsetX: -0.17, OffsetZ: 0.05, RotationY: Angle },
+      { Key: OnlineDecorationKeys.BookSingle, TargetHeight: 0.15, OffsetX: 0.19, OffsetZ: -0.06, RotationY: Angle + Math.PI * 0.4 }
+    ];
+  }
+  return [];
+}
+
+async function AddFurnitureDecorations(Chunk) {
+  const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name));
+  let DecorationIndex = 0;
+
+  for (let ModelIndex = 0; ModelIndex < Models.length; ModelIndex += 1) {
+    const Model = Models[ModelIndex];
+    const Plans = DecorationPlansForModel(Model, ModelIndex + Math.abs(Chunk.Index) * 7);
+    for (const Plan of Plans) {
+      try {
+        const Decoration = await CreateOnlineSurfaceDecoration(Plan.Key, Model, Plan);
+        if (!Decoration) continue;
+        Decoration.name = `OnlineSurfaceDecorationR76-${DecorationIndex}`;
+        Decoration.userData.ChunkId = Chunk.Id;
+        Decoration.userData.DecorationNoCollision = true;
+        Chunk.Group.add(Decoration);
+        DecorationIndex += 1;
+      } catch (Error) {
+        console.warn("Online furniture decoration unavailable", Error);
+      }
+    }
+    if (Plans.length) await YieldVisualWork();
+  }
+}
+
 function SafeDecorationPlacement(Chunk, Type, X, Z) {
   try {
     const Result = Game.Placement.ShapeCastPlacement(Chunk, Type, X, Z, 0, false);
@@ -231,28 +301,23 @@ async function AddOnlineChunkDecorations(Chunk) {
   const Side = Chunk.Index % 2 === 0 ? -1 : 1;
   const Plans = [
     {
-      Key: OnlineDecorationKeys.Cactus,
-      Type: "Houseplant_3",
-      X: Side * 13.9,
-      Z: CenterZ + 5.8,
-      Height: 0.92
-    },
-    {
       Key: OnlineDecorationKeys.StandingLamp,
       Type: "Light_Floor1",
       X: -Side * 13.4,
       Z: CenterZ - 5.4,
-      Height: 1.48
+      Height: 1.48,
+      RotationY: Side > 0 ? 0.35 : -0.35
     }
   ];
 
-  if (Math.abs(Chunk.Index) % 3 === 0) {
+  if (Math.abs(Chunk.Index) % 2 === 0) {
     Plans.push({
-      Key: OnlineDecorationKeys.StandingFrame,
-      Type: "Houseplant_3",
-      X: Side * 12.8,
-      Z: CenterZ - 8.1,
-      Height: 0.78
+      Key: OnlineDecorationKeys.StandingLamp,
+      Type: "Light_Floor1",
+      X: Side * 13.1,
+      Z: CenterZ + 7.2,
+      Height: 1.34,
+      RotationY: Side > 0 ? -0.55 : 0.55
     });
   }
 
@@ -261,16 +326,43 @@ async function AddOnlineChunkDecorations(Chunk) {
     const Placement = SafeDecorationPlacement(Chunk, Plan.Type, Plan.X, Plan.Z);
     if (!Placement) continue;
     try {
-      const Decoration = await CreateOnlineFloorDecoration(Plan.Key, Placement.X, Placement.Z, Plan.Height);
+      const Decoration = await CreateOnlineFloorDecoration(Plan.Key, Placement.X, Placement.Z, Plan.Height, Plan.RotationY);
       if (!Decoration) continue;
-      Decoration.name = `OnlineChunkDecorationR75-${Index}`;
+      Decoration.name = `OnlineChunkDecorationR76-${Index}`;
       Decoration.userData.ChunkId = Chunk.Id;
       Decoration.userData.DecorationNoCollision = true;
       Chunk.Group.add(Decoration);
     } catch (Error) {
-      console.warn("Online display decoration unavailable", Error);
+      console.warn("Online floor decoration unavailable", Error);
     }
     await YieldVisualWork();
+  }
+}
+
+async function AddWallDecorations(Chunk) {
+  const CenterZ = (Chunk.TopZ + Chunk.BottomZ) * 0.5;
+  const Offset = Math.abs(Chunk.Index) % 2 === 0 ? 5.6 : 7.0;
+  const Plans = [
+    { Key: OnlineDecorationKeys.WallFrameLarge, X: -16.86, Y: 2.08, Z: CenterZ + Offset, Height: 1.04, RotationY: Math.PI * 0.5 },
+    { Key: OnlineDecorationKeys.WallFrameMedium, X: 16.86, Y: 1.95, Z: CenterZ - Offset, Height: 0.78, RotationY: -Math.PI * 0.5 }
+  ];
+
+  if (Math.abs(Chunk.Index) % 3 === 1) {
+    Plans.push({ Key: OnlineDecorationKeys.WallFrameMedium, X: -16.86, Y: 1.70, Z: CenterZ - 7.8, Height: 0.66, RotationY: Math.PI * 0.5 });
+  }
+
+  for (let Index = 0; Index < Plans.length; Index += 1) {
+    const Plan = Plans[Index];
+    try {
+      const Decoration = await CreateOnlineWallDecoration(Plan.Key, Plan.X, Plan.Y, Plan.Z, Plan.Height, Plan.RotationY);
+      if (!Decoration) continue;
+      Decoration.name = `OnlineWallDecorationR76-${Index}`;
+      Decoration.userData.ChunkId = Chunk.Id;
+      Decoration.userData.DecorationNoCollision = true;
+      Chunk.Group.add(Decoration);
+    } catch (Error) {
+      console.warn("Online wall decoration unavailable", Error);
+    }
   }
 }
 
@@ -311,11 +403,14 @@ async function ProcessChunk(Chunk) {
     await ReplaceDepartmentSign(Chunk);
     for (const Task of Chunk.TaskRecords || []) await ReplaceTaskTerminal(Chunk, Task);
     await CreateItemSigns(Chunk);
+    await AddFurnitureDecorations(Chunk);
     await AddOnlineChunkDecorations(Chunk);
+    await AddWallDecorations(Chunk);
     RemoveSignGhostCollision(Chunk);
     Chunk.Group.userData.VisualRedesignR73 = true;
     Chunk.Group.userData.VisualRedesignR74 = true;
     Chunk.Group.userData.VisualRedesignR75 = true;
+    Chunk.Group.userData.VisualRedesignR76 = true;
     ProcessedModelCounts.set(Chunk, FurnitureCount(Chunk));
   } finally {
     ProcessingChunks.delete(Chunk);
@@ -325,7 +420,7 @@ async function ProcessChunk(Chunk) {
 function QueueChunkIfNeeded(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group?.userData?.WorldPolishR72 || ProcessingChunks.has(Chunk)) return;
   const Count = FurnitureCount(Chunk);
-  if (Chunk.Group.userData.VisualRedesignR75 && ProcessedModelCounts.get(Chunk) === Count) return;
+  if (Chunk.Group.userData.VisualRedesignR76 && ProcessedModelCounts.get(Chunk) === Count) return;
   if (QueuedModelCounts.get(Chunk) === Count) return;
   QueuedModelCounts.set(Chunk, Count);
   Queue.push({ Chunk, Count });
@@ -365,4 +460,4 @@ const Interval = setInterval(Discover, 620);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk, RemoveSignGhostCollision };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.17.0-R75";
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.17.1-R76";
