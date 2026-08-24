@@ -4,38 +4,43 @@ const Game = window.__STORE_GAME__;
 if (!Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before visible material correction.");
 
 const Processed = new WeakMap();
-const WarmMetal = 0x777b74;
-const WarmTrim = 0x776d61;
-const WarmWood = 0x765b49;
-const SoftGray = 0x716f67;
+const ExactReplacements = new Map([
+  [0x171a18, 0x687268],
+  [0x232722, 0x667266],
+  [0x171b1a, 0x626b68],
+  [0x292a26, 0x746f63],
+  [0x242628, 0x70797d],
+  [0x2f2c28, 0x71695f],
+  [0x323a3b, 0x667472],
+  [0x282d30, 0x68757a]
+]);
 
-function Luminance(Color) {
-  if (!Color?.isColor) return 1;
-  return Color.r * 0.2126 + Color.g * 0.7152 + Color.b * 0.0722;
+function SrgbHex(Material) {
+  if (!Material?.color?.isColor) return null;
+  return Material.color.getHex(THREE.SRGBColorSpace);
 }
 
-function ReplacementFor(Object, Material) {
-  const Name = `${Object?.name || ""} ${Material?.name || ""}`;
-  if (/LightHousing|Metal|Steel|Frame|Rail|Post|Pole|Hanger/i.test(Name)) return WarmMetal;
-  if (/Trim|Cap|Baseboard|Handle|Control/i.test(Name)) return WarmTrim;
-  if (/Wood|Shelf|Book|Door/i.test(Name)) return WarmWood;
-  return SoftGray;
+function IsTrueNearBlack(Hex) {
+  if (!Number.isInteger(Hex)) return false;
+  const Red = (Hex >> 16) & 255;
+  const Green = (Hex >> 8) & 255;
+  const Blue = Hex & 255;
+  return Math.max(Red, Green, Blue) <= 28;
 }
 
-function LiftMaterial(Object, Material) {
-  if (!Material?.color?.isColor) return Material;
-  if (Luminance(Material.color) >= 0.30) return Material;
+function ReplacementFor(Hex) {
+  if (ExactReplacements.has(Hex)) return ExactReplacements.get(Hex);
+  if (IsTrueNearBlack(Hex)) return 0x6c726f;
+  return null;
+}
+
+function CorrectMaterial(Material) {
+  const Hex = SrgbHex(Material);
+  const Replacement = ReplacementFor(Hex);
+  if (Replacement === null) return Material;
 
   const Clone = Material.clone();
-  Clone.color.setHex(ReplacementFor(Object, Material));
-  if (Clone.isMeshStandardMaterial || Clone.isMeshPhysicalMaterial) {
-    Clone.roughness = Math.max(0.48, Clone.roughness ?? 0.7);
-    if (Clone.map) {
-      Clone.emissive = Clone.emissive?.isColor ? Clone.emissive : new THREE.Color();
-      Clone.emissive.setHex(0x29261f);
-      Clone.emissiveIntensity = Math.max(Clone.emissiveIntensity || 0, 0.14);
-    }
-  }
+  Clone.color.setHex(Replacement, THREE.SRGBColorSpace);
   Clone.needsUpdate = true;
   return Clone;
 }
@@ -44,18 +49,19 @@ function ProcessMesh(Object) {
   if (!Object?.isMesh) return;
   const Current = Object.material;
   if (!Current) return;
+
   const Signature = Array.isArray(Current)
-    ? Current.map(Material => Material?.uuid || "").join(":")
-    : Current.uuid || "";
+    ? Current.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
+    : `${Current.uuid || ""}:${SrgbHex(Current) ?? ""}`;
   if (Processed.get(Object) === Signature) return;
 
-  if (Array.isArray(Current)) Object.material = Current.map(Material => LiftMaterial(Object, Material));
-  else Object.material = LiftMaterial(Object, Current);
+  if (Array.isArray(Current)) Object.material = Current.map(CorrectMaterial);
+  else Object.material = CorrectMaterial(Current);
 
   const Updated = Object.material;
   const UpdatedSignature = Array.isArray(Updated)
-    ? Updated.map(Material => Material?.uuid || "").join(":")
-    : Updated?.uuid || "";
+    ? Updated.map(Material => `${Material?.uuid || ""}:${SrgbHex(Material) ?? ""}`).join(":")
+    : `${Updated?.uuid || ""}:${SrgbHex(Updated) ?? ""}`;
   Processed.set(Object, UpdatedSignature);
 }
 
@@ -76,4 +82,4 @@ const Interval = setInterval(ProcessAll, 700);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll };
-window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.18.0-R77";
+window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.18.1-R77";
