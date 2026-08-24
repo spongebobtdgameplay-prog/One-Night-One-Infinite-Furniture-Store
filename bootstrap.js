@@ -1,5 +1,5 @@
-const Cache = "20260823-58";
-const Version = "0.12.22";
+const Cache = "20260823-59";
+const Version = "0.12.23";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -47,7 +47,7 @@ try {
   await OptionalImport("./sign-fix.js", "Section sign upgrade");
   await OptionalImport("./price-signs.js", "Price signs");
   await import(`./post-animation-nerve-runtime-r17.js?v=${Cache}`);
-  await import(`./movement-authority-r21.js?v=${Cache}`);
+  await import(`./movement-authority-r22.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
