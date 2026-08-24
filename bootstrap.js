@@ -1,5 +1,5 @@
-const Cache = "20260824-81";
-const Version = "0.18.1";
+const Cache = "20260824-82";
+const Version = "0.19.0";
 const FaviconVersion = "20260824-3";
 const FaviconLinks = [
   {
@@ -75,6 +75,7 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
+  await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
   await OptionalImport("./precision-collision-v2.js", "Precise collision");
@@ -84,7 +85,7 @@ try {
   await OptionalImport("./store-visual-redesign-r73.js", "Priced 3D signage and online decorations");
   await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
   await OptionalImport("./solid-object-collision-r77.js", "Physical sign and decoration collision");
-  await OptionalImport("./visible-materials-r77.js", "Near-black material correction");
+  await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await import(`./movement-authority-r30.js?v=${Cache}`);
