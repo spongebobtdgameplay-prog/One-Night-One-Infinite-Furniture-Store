@@ -32,26 +32,22 @@ export function ShouldUseCarpet(ChunkIndex, Model, Index) {
 
 function CandidatePositions(Bounds, Chunk) {
   const Center = Bounds.getCenter(new THREE.Vector3());
-  const TowardAisleX = Center.x < 0 ? Bounds.max.x + 0.82 : Bounds.min.x - 0.82;
-  const AwayAisleX = Center.x < 0 ? Bounds.min.x - 0.82 : Bounds.max.x + 0.82;
+  const Gap = 0.61;
+  const TowardAisleX = Center.x < 0 ? Bounds.max.x + Gap : Bounds.min.x - Gap;
+  const SideZGap = 0.57;
   const Candidates = [
     [TowardAisleX, Center.z],
-    [TowardAisleX, Center.z + 0.95],
-    [TowardAisleX, Center.z - 0.95],
-    [Center.x, Bounds.min.z - 0.78],
-    [Center.x, Bounds.max.z + 0.78],
-    [TowardAisleX, Center.z + 1.75],
-    [TowardAisleX, Center.z - 1.75],
-    [AwayAisleX, Center.z]
+    [TowardAisleX, Center.z + 0.38],
+    [TowardAisleX, Center.z - 0.38],
+    [TowardAisleX, Center.z + 0.74],
+    [TowardAisleX, Center.z - 0.74],
+    [Center.x, Bounds.min.z - SideZGap],
+    [Center.x, Bounds.max.z + SideZGap]
   ];
 
-  for (let Offset = 2.4; Offset <= 6.0; Offset += 1.2) {
-    Candidates.push([TowardAisleX, Center.z + Offset], [TowardAisleX, Center.z - Offset]);
-  }
-
   return Candidates.map(([X, Z]) => [
-    THREE.MathUtils.clamp(X, -15.6, 15.6),
-    THREE.MathUtils.clamp(Z, Chunk.BottomZ + 0.9, Chunk.TopZ - 0.9)
+    THREE.MathUtils.clamp(X, -15.75, 15.75),
+    THREE.MathUtils.clamp(Z, Chunk.BottomZ + 0.72, Chunk.TopZ - 0.72)
   ]);
 }
 
@@ -64,36 +60,40 @@ function FarEnough(X, Z, Occupied, MinimumSpacing) {
   return true;
 }
 
+function SafeShapePlacement(Game, Chunk, RequestedX, RequestedZ) {
+  if (!Game?.Placement?.ShapeCastPlacement) return { X: RequestedX, Z: RequestedZ };
+  const Placement = Game.Placement.ShapeCastPlacement(Chunk, "FurniturePriceSignR72", RequestedX, RequestedZ, 0, false);
+  if (!Placement) return null;
+  if (Math.hypot(Placement.X - RequestedX, Placement.Z - RequestedZ) > 0.52) return null;
+  return { X: Placement.X, Z: Placement.Z };
+}
+
 export function FindSpacedSignPlacement(Game, Chunk, Model, Occupied, Options = {}) {
-  const MinimumSpacing = Options.MinimumSpacing ?? 1.45;
+  const MinimumSpacing = Options.MinimumSpacing ?? 0.92;
   const Bounds = ModelBounds(Model);
   if (Bounds.isEmpty()) return null;
   const Candidates = CandidatePositions(Bounds, Chunk);
 
   for (const [RequestedX, RequestedZ] of Candidates) {
-    let X = RequestedX;
-    let Z = RequestedZ;
-    if (Game?.Placement?.ShapeCastPlacement) {
-      const Placement = Game.Placement.ShapeCastPlacement(Chunk, "FurniturePriceSignR72", RequestedX, RequestedZ, 0, false);
-      if (!Placement) continue;
-      if (Math.hypot(Placement.X - RequestedX, Placement.Z - RequestedZ) > 1.30) continue;
-      X = Placement.X;
-      Z = Placement.Z;
-    }
-    if (!FarEnough(X, Z, Occupied, MinimumSpacing)) continue;
-    return { X, Z };
+    const Placement = SafeShapePlacement(Game, Chunk, RequestedX, RequestedZ);
+    if (!Placement) continue;
+    if (!FarEnough(Placement.X, Placement.Z, Occupied, MinimumSpacing)) continue;
+    return Placement;
+  }
+
+  // Every sellable display still gets a nearby tag. If the aisle is crowded,
+  // prefer a close safe position over sending the tag metres down the aisle.
+  for (const [RequestedX, RequestedZ] of Candidates) {
+    const Placement = SafeShapePlacement(Game, Chunk, RequestedX, RequestedZ);
+    if (Placement) return Placement;
   }
 
   const Center = Bounds.getCenter(new THREE.Vector3());
-  const AisleX = Center.x < 0 ? Math.min(-1.4, Bounds.max.x + 0.72) : Math.max(1.4, Bounds.min.x - 0.72);
-  for (let Step = 0; Step < 12; Step += 1) {
-    const Direction = Step % 2 === 0 ? 1 : -1;
-    const Ring = Math.floor(Step / 2) + 1;
-    const Z = THREE.MathUtils.clamp(Center.z + Direction * Ring * 1.55, Chunk.BottomZ + 0.9, Chunk.TopZ - 0.9);
-    if (FarEnough(AisleX, Z, Occupied, MinimumSpacing)) return { X: AisleX, Z };
-  }
-
-  return { X: AisleX, Z: THREE.MathUtils.clamp(Center.z, Chunk.BottomZ + 0.9, Chunk.TopZ - 0.9) };
+  const X = Center.x < 0 ? Bounds.max.x + 0.61 : Bounds.min.x - 0.61;
+  return {
+    X: THREE.MathUtils.clamp(X, -15.75, 15.75),
+    Z: THREE.MathUtils.clamp(Center.z, Chunk.BottomZ + 0.72, Chunk.TopZ - 0.72)
+  };
 }
 
 export function RecordSignPosition(Occupied, Position) {
@@ -106,4 +106,4 @@ export function FaceTowardAisle(Object, X, Z) {
   Object.lookAt(new THREE.Vector3(TargetX, Object.position.y, TargetZ));
 }
 
-window.__STORE_DISPLAY_LAYOUT_UTILITY_BUILD__ = "V0.17.0-R75";
+window.__STORE_DISPLAY_LAYOUT_UTILITY_BUILD__ = "V0.20.1-R80";
