@@ -6,7 +6,7 @@ if (!Game?.Scene || !Game?.CollisionBoxes || !Game?.ActiveChunks || !Game?.Prepa
 }
 
 const DepartmentTextures = new Map();
-const SignCollisionEntries = new WeakMap();
+const SignCollisionEntries = new Map();
 const TempCenter = new THREE.Vector3();
 const TempSize = new THREE.Vector3();
 const ClaimedToiletEntries = new Set();
