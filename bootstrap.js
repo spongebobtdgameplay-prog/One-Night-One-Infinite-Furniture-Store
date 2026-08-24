@@ -1,5 +1,5 @@
-const Cache = "20260823-50";
-const Version = "0.12.14";
+const Cache = "20260823-51";
+const Version = "0.12.15";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -28,11 +28,11 @@ try {
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
   await OptionalImport("./menu-visuals.js", "Main menu illustration");
   await import(`./collision-utility.js?v=${Cache}`);
-  await import(`./rigid-capsule-utility-r15.js?v=${Cache}`);
 
   await import("./player-controller.js?v=20260823-33");
   await import("./player-system-r24.js?v=20260823-33");
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
+  await import(`./animation-motion-authority-r16.js?v=${Cache}`);
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
   await OptionalImport("./first-person-walk-bob-r33.js", "First-person walk motion");
   await import(`./game.js?v=${Cache}`);
@@ -45,7 +45,7 @@ try {
   await OptionalImport("./collision-cleanup.js", "Collision cleanup");
   await OptionalImport("./sign-fix.js", "Section sign upgrade");
   await OptionalImport("./price-signs.js", "Price signs");
-  await import(`./part-nerve-runtime-r14.js?v=${Cache}`);
+  await import(`./post-animation-nerve-runtime-r16.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
   console.error("Core store boot failed.", Error);
