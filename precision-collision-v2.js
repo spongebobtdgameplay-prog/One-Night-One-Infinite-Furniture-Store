@@ -115,7 +115,7 @@ function CandidateEntries(Model) {
   if (LegacyCollisionModels.has(Model?.name)) return [];
   const ChunkId = Model.userData?.ChunkId;
   if (!ChunkId || !Model.name) return [];
-  return Game.CollisionBoxes.filter(Entry => Entry.ChunkId === ChunkId && Entry.Type === Model.name && !Entry.PreciseGeometry);
+  return Game.CollisionBoxes.filter(Entry => Entry.ChunkId === ChunkId && Entry.Type === Model.name && !Entry.PreciseGeometry && Entry.RedundantPreciseSibling !== true);
 }
 
 function Bind(Model) {
@@ -152,6 +152,8 @@ function Bind(Model) {
   Best.PreciseTriangles = Geometry.Triangles;
   Best.GeometryBounds = Geometry.Bounds;
   Best.PreciseGeometry = true;
+  Best.RedundantPreciseSibling = false;
+  Best.LegacyCollisionDisabled = false;
   Best.TestPlayerCollision = (Position, Radius = Player?.GetPlayerRadius?.() || 0.28) => CircleHitsGeometry(Position.x, Position.z, Radius, Geometry);
   Processed.add(Model);
 }
@@ -181,9 +183,9 @@ function ProcessQueue(Deadline) {
   const Start = performance.now();
   let ProcessedThisTurn = 0;
   while (Queue.length) {
-    if (ProcessedThisTurn >= 2) break;
-    if (Deadline?.timeRemaining && Deadline.timeRemaining() < 2) break;
-    if (!Deadline && performance.now() - Start > 4) break;
+    if (ProcessedThisTurn >= 1) break;
+    if (Deadline?.timeRemaining && Deadline.timeRemaining() < 4) break;
+    if (!Deadline && performance.now() - Start > 2) break;
     const Model = Queue.shift();
     if (!Model) break;
     if (Model.parent && !Processed.has(Model)) Bind(Model);
@@ -195,10 +197,10 @@ function ProcessQueue(Deadline) {
 function ScheduleWork() {
   if (WorkScheduled || !Queue.length) return;
   WorkScheduled = true;
-  if ("requestIdleCallback" in window) requestIdleCallback(ProcessQueue, { timeout: 180 });
-  else setTimeout(() => ProcessQueue(null), 24);
+  if ("requestIdleCallback" in window) requestIdleCallback(ProcessQueue, { timeout: 420 });
+  else setTimeout(() => ProcessQueue(null), 32);
 }
 
-setInterval(EnqueueActiveModels, 350);
+setInterval(EnqueueActiveModels, 500);
 setTimeout(EnqueueActiveModels, 0);
-window.__STORE_PRECISION_COLLISION_BUILD__ = "V0.13.1-R71";
+window.__STORE_PRECISION_COLLISION_BUILD__ = "V0.14.0-R72";
