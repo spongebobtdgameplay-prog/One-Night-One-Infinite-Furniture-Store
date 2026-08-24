@@ -1,5 +1,5 @@
-const Cache = "20260824-63";
-const Version = "0.12.27";
+const Cache = "20260824-64";
+const Version = "0.12.28";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -46,9 +46,8 @@ try {
   await OptionalImport("./collision-cleanup.js", "Collision cleanup");
   await OptionalImport("./sign-fix.js", "Section sign upgrade");
   await OptionalImport("./price-signs.js", "Price signs");
-  await import(`./post-animation-nerve-runtime-r17.js?v=${Cache}`);
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
-  await import(`./movement-authority-r25.js?v=${Cache}`);
+  await import(`./movement-authority-r26.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   CoreReady = true;
 } catch (Error) {
