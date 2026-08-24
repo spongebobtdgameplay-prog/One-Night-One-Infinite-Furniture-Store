@@ -1,5 +1,5 @@
-const Cache = "20260824-88";
-const Version = "0.22.0";
+const Cache = "20260824-89";
+const Version = "0.22.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -70,7 +70,7 @@ try {
   await import(`./precise-collision-authority-r27.js?v=${Cache}`);
   await import(`./world-polish-r72.js?v=${Cache}`);
   await OptionalImport("./generator-integrity-r77.js", "Exact generated-object placement");
-  await OptionalImport("./store-visual-redesign-r73.js", "3D department signage and showroom decorations");
+  await OptionalImport("./store-visual-stable-r83.js", "Stable 3D showroom dressing");
   await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
   await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
