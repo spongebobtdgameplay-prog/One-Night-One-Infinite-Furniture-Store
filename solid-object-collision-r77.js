@@ -90,7 +90,7 @@ function MeshBoxes(Root, Limit = 18) {
   return Boxes;
 }
 
-function InstanceBoxes(Object, Limit = 60) {
+function InstanceBoxes(Object, Limit = 80) {
   const Boxes = [];
   if (!Object?.isInstancedMesh || !Object.geometry) return Boxes;
   Object.geometry.computeBoundingBox?.();
@@ -113,16 +113,22 @@ function ObjectKind(Object) {
   if (Name === "DepartmentHeaderR73") return "DepartmentSign";
   if (Name.startsWith("FurnitureItemSignR74-")) return "FurnitureSign";
   if (Name.startsWith("OnlineChunkDecorationR76-")) return "FloorDecoration";
+  if (Name.startsWith("OnlineSurfaceDecorationR76-")) return "SurfaceDecoration";
   if (Name.startsWith("OnlineWallDecorationR76-")) return "WallDecoration";
+  if (Name.startsWith("OnlineDisplayRugR75-")) return "FloorSurface";
   if (Name === "Houseplant_3") return "Plant";
   if (Name === "WarehouseBoxes" && Object.isInstancedMesh) return "WarehouseBoxes";
+  if (Name === "Ceiling") return "Ceiling";
+  if (Name === "LightHousing") return "CeilingFixture";
+  if (Name === "PartitionCap" || Name === "PartitionBase") return "PartitionTrim";
+  if (Name === "BaseboardLeft" || Name === "BaseboardRight") return "Baseboard";
   return "";
 }
 
 function ObjectSignature(Object) {
   Object.updateWorldMatrix(true, true);
   const Elements = Object.matrixWorld.elements;
-  return `${Elements[12].toFixed(3)}:${Elements[13].toFixed(3)}:${Elements[14].toFixed(3)}:${Object.children?.length || 0}:${Object.visible ? 1 : 0}`;
+  return `${Elements[0].toFixed(3)}:${Elements[2].toFixed(3)}:${Elements[5].toFixed(3)}:${Elements[8].toFixed(3)}:${Elements[10].toFixed(3)}:${Elements[12].toFixed(3)}:${Elements[13].toFixed(3)}:${Elements[14].toFixed(3)}:${Object.children?.length || 0}:${Object.visible ? 1 : 0}`;
 }
 
 function Install(Object, Chunk, Kind) {
@@ -134,6 +140,7 @@ function Install(Object, Chunk, Kind) {
   let Boxes;
   if (Kind === "WarehouseBoxes") Boxes = InstanceBoxes(Object, 80);
   else if (Kind === "FurnitureSign" || Kind === "DepartmentSign") Boxes = MeshBoxes(Object, 16);
+  else if (Kind === "SurfaceDecoration") Boxes = MeshBoxes(Object, 8);
   else Boxes = MeshBoxes(Object, 10);
 
   const Entries = [];
@@ -142,12 +149,6 @@ function Install(Object, Chunk, Kind) {
   }
   Managed.set(Object, { Chunk, Entries, Signature });
   Object.userData.SolidCollisionR77 = true;
-}
-
-function FindChunkById(Id) {
-  for (const Chunk of Game.ActiveChunks.values()) if (Chunk?.Id === Id) return Chunk;
-  for (const Chunk of Game.PreparedChunks.values()) if (Chunk?.Id === Id) return Chunk;
-  return null;
 }
 
 function ScanChunk(Chunk) {
