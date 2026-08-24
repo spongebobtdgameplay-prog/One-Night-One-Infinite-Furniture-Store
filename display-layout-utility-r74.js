@@ -108,7 +108,7 @@ export function FindSpacedSignPlacement(Game, Chunk, Model, Occupied, Options = 
     let X = RequestedX;
     let Z = RequestedZ;
     if (Game?.Placement?.ShapeCastPlacement) {
-      const Placement = Game.Placement.ShapeCastPlacement(Chunk, "FurniturePriceSignR72", RequestedX, RequestedZ, 0, true);
+      const Placement = Game.Placement.ShapeCastPlacement(Chunk, "FurniturePriceSignR72", RequestedX, RequestedZ, 0, false);
       if (!Placement) continue;
       if (Math.hypot(Placement.X - RequestedX, Placement.Z - RequestedZ) > 1.30) continue;
       X = Placement.X;
@@ -140,4 +140,4 @@ export function FaceTowardAisle(Object, X, Z) {
   Object.lookAt(new THREE.Vector3(TargetX, Object.position.y, TargetZ));
 }
 
-window.__STORE_DISPLAY_LAYOUT_UTILITY_BUILD__ = "V0.16.0-R74";
+window.__STORE_DISPLAY_LAYOUT_UTILITY_BUILD__ = "V0.17.0-R75";
