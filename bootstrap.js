@@ -1,5 +1,5 @@
-const Cache = "20260823-52";
-const Version = "0.12.16";
+const Cache = "20260823-53";
+const Version = "0.12.17";
 const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
@@ -31,6 +31,7 @@ try {
   await import(`./surface-contact-utility-r17.js?v=${Cache}`);
 
   await import("./player-controller.js?v=20260823-33");
+  await import(`./visible-pointer-pre-r18.js?v=${Cache}`);
   await import("./player-system-r24.js?v=20260823-33");
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await import(`./animation-motion-authority-r17.js?v=${Cache}`);
@@ -39,6 +40,7 @@ try {
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
+  await import(`./visible-mouse-look-r18.js?v=${Cache}`);
 
   await OptionalImport("./task-visual-fix.js", "Task visual fix");
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
