@@ -4,6 +4,7 @@ const Game = window.__STORE_GAME__;
 if (!Game?.Camera || !Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.Renderer) throw new Error("Game must load before render distance lighting.");
 
 const ProcessedObjects = new WeakSet();
+const ProcessedRoots = new WeakSet();
 const WarmGlow = 0xffe2ad;
 const BrokenGlow = 0xa49372;
 const HousingColor = 0x7f8986;
@@ -17,9 +18,12 @@ function Brightness(Color) {
 function StabilizeGlow(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
-  Object.renderOrder = 1;
+  Object.frustumCulled = true;
   Object.geometry?.computeBoundingSphere?.();
+  Object.userData.LightGlowR94 = true;
+  Object.userData.DistanceCullR94 = 68;
+  Object.scale.x *= 1.045;
+  Object.scale.y *= 1.07;
 
   if (Object.material) {
     Object.material = Object.material.clone();
@@ -30,9 +34,6 @@ function StabilizeGlow(Object) {
     Object.material.depthTest = true;
     Object.material.transparent = false;
     Object.material.opacity = 1;
-    Object.material.polygonOffset = true;
-    Object.material.polygonOffsetFactor = -1;
-    Object.material.polygonOffsetUnits = -1;
     Object.material.needsUpdate = true;
   }
 }
@@ -40,7 +41,11 @@ function StabilizeGlow(Object) {
 function StabilizeHousing(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
+  Object.frustumCulled = true;
   Object.geometry?.computeBoundingSphere?.();
+  Object.userData.LightHousingR94 = true;
+  Object.userData.DistanceCullR94 = 105;
+  Object.scale.y *= 1.045;
   if (!Object.material) return;
   Object.material = Object.material.clone();
   Object.material.color?.setHex(HousingColor);
@@ -51,30 +56,28 @@ function StabilizeHousing(Object) {
 
 function StabilizePointLight(Object) {
   if (!Object?.isPointLight || ProcessedObjects.has(Object)) return;
-  if (!Number.isFinite(Object.userData?.BaseIntensity)) return;
   ProcessedObjects.add(Object);
-  Object.distance = Math.max(Object.distance || 0, 20);
+  const Base = Number.isFinite(Object.userData?.BaseIntensity) ? Object.userData.BaseIntensity : Object.intensity || 1.5;
+  Object.userData.BaseIntensity = Base;
+  Object.userData.RuntimeBaseIntensityR94 = Base;
+  Object.userData.PointLightR94 = true;
+  Object.distance = THREE.MathUtils.clamp(Object.distance || 13, 9, 13.5);
   Object.decay = 2;
-  Object.intensity = Math.max(Object.intensity || 0, Object.userData.BaseIntensity || 1.75);
+  Object.intensity = Base;
 }
 
 function StabilizeHorizon(Object) {
   if (!Object?.isInstancedMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
+  Object.frustumCulled = true;
+  Object.geometry?.computeBoundingSphere?.();
+  Object.userData.DistanceCullR94 = 125;
   if (!Object.material) return;
-
   Object.material = Object.material.clone();
   if (/HorizonLightGlow/i.test(String(Object.name || ""))) {
     Object.material.color?.setHex(WarmGlow);
     Object.material.toneMapped = false;
     Object.material.depthWrite = false;
-    Object.material.depthTest = true;
-    Object.material.transparent = false;
-    Object.material.opacity = 1;
-    Object.material.polygonOffset = true;
-    Object.material.polygonOffsetFactor = -1;
-    Object.material.polygonOffsetUnits = -1;
   } else if (/HorizonLightHousing/i.test(String(Object.name || ""))) {
     Object.material.color?.setHex(HousingColor);
   }
@@ -82,7 +85,9 @@ function StabilizeHorizon(Object) {
 }
 
 function ProcessRoot(Root) {
-  Root?.traverse?.(Object => {
+  if (!Root?.traverse || ProcessedRoots.has(Root)) return;
+  ProcessedRoots.add(Root);
+  Root.traverse(Object => {
     if (Object.name === "LightGlow") StabilizeGlow(Object);
     else if (Object.name === "LightHousing") StabilizeHousing(Object);
     else if (Object.isPointLight) StabilizePointLight(Object);
@@ -93,30 +98,30 @@ function ProcessRoot(Root) {
 function ConfigureProjection() {
   if (ProjectionConfigured) return;
   ProjectionConfigured = true;
-  Game.Camera.far = 520;
+  Game.Camera.far = Math.min(Game.Camera.far || 280, 280);
   Game.Camera.updateProjectionMatrix();
-  Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
+  Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.0));
 }
 
 function ConfigureAtmosphere() {
   if (Game.Scene.background?.isColor) Game.Scene.background.setHex(0x24261f);
   if (Game.Scene.fog?.isFogExp2) {
     Game.Scene.fog.color.setHex(0x24261f);
-    Game.Scene.fog.density = 0.0027;
+    Game.Scene.fog.density = Math.max(Game.Scene.fog.density || 0, 0.0032);
   }
 }
 
-function ProcessAll() {
+function DiscoverNewRoots() {
   ConfigureProjection();
   ConfigureAtmosphere();
   ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
+  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk?.Group);
+  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk?.Group);
 }
 
-ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
+DiscoverNewRoots();
+const Interval = setInterval(DiscoverNewRoots, 1800);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll };
-window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.19.0-R78";
+window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll: DiscoverNewRoots, DiscoverNewRoots };
+window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.30.0-R94";
