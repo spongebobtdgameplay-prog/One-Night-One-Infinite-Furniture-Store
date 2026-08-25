@@ -14,10 +14,14 @@ const RetailNames = new Set([
 ]);
 
 function SellableCount(Chunk) {
+  const AuthorityCount = window.__STORE_COMPACT_PRICE_TAGS_R83__?.CountSellable?.(Chunk);
+  if (Number.isFinite(AuthorityCount)) return AuthorityCount;
   let Count = 0;
   for (const Model of Chunk.Models || []) if (Model?.parent && FurnitureNames.has(Model.name)) Count += 1;
   for (const Object of Chunk.Group?.children || []) {
-    if (Object?.parent === Chunk.Group && Object.userData?.RetailImportedR79 && RetailNames.has(Object.name)) Count += 1;
+    if (Object?.parent !== Chunk.Group) continue;
+    if (Object.userData?.RetailSellableR84) Count += 1;
+    else if (Object.userData?.RetailImportedR79 && RetailNames.has(Object.name)) Count += 1;
   }
   return Count;
 }
@@ -93,6 +97,7 @@ function CoreReady(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
   const Stable = UpdateStability(Chunk);
   const ShelfStocked = window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ?? Boolean(Chunk.Group.userData?.ShelfStockR83);
+  const SaleDisplaysReady = window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk) ?? false;
   return Boolean(
     Stable.StableFor >= 950 &&
     Chunk.Group.userData?.WorldPolishR72 &&
@@ -101,6 +106,7 @@ function CoreReady(Chunk) {
     Chunk.Group.userData?.RetailZonesR82 &&
     Chunk.Group.userData?.RetailOrganizationR83 &&
     ShelfStocked &&
+    SaleDisplaysReady &&
     Chunk.Group.userData?.PriceTagsR83 &&
     PartitionsFinished(Chunk) &&
     RearFinished(Chunk) &&
@@ -121,10 +127,12 @@ async function RunWorldPasses(Chunk) {
   const Zones = window.__STORE_RETAIL_ZONES_R82__;
   const Organize = window.__STORE_RETAIL_ORGANIZATION_R83__;
   const ShelfStock = window.__STORE_SHELF_STOCK_R83__;
+  const SaleDisplays = window.__STORE_RETAIL_SALE_DISPLAYS_R84__;
 
   if (Visual?.ProcessChunk) await Visual.ProcessChunk(Chunk);
   if (Retail?.ProcessChunk) await Retail.ProcessChunk(Chunk);
   if (Zones?.ProcessChunk) await Zones.ProcessChunk(Chunk);
+  if (SaleDisplays?.ProcessChunk) await SaleDisplays.ProcessChunk(Chunk);
   if (Organize?.ProcessChunk) await Organize.ProcessChunk(Chunk);
   if (ShelfStock?.ProcessChunk) await ShelfStock.ProcessChunk(Chunk);
   Finish?.ProcessChunk?.(Chunk);
@@ -141,17 +149,17 @@ export async function FinalizeChunk(Chunk) {
   try {
     const Started = performance.now();
     let Pass = 0;
-    while (!CoreReady(Chunk) && performance.now() - Started < 7200) {
+    while (!CoreReady(Chunk) && performance.now() - Started < 9000) {
       if (Pass % 2 === 0) await RunWorldPasses(Chunk);
       UpdateStability(Chunk);
-      await Delay(Pass < 6 ? 90 : 150);
+      await Delay(Pass < 7 ? 90 : 150);
       Pass += 1;
     }
 
     await RunWorldPasses(Chunk);
-    await Delay(120);
+    await Delay(140);
     UpdateStability(Chunk);
-    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final dressing pass.`);
+    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R84 dressing pass.`);
 
     Chunk.Group.userData.PresentationReadyR83 = true;
     Chunk.Group.userData.PresentationReadyR82 = true;
@@ -193,4 +201,4 @@ const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.22.1-R83";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.23.0-R84";
