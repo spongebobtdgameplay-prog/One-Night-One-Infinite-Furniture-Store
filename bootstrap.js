@@ -1,5 +1,5 @@
-const Cache = "20260824-96";
-const Version = "0.24.1";
+const Cache = "20260825-97";
+const Version = "0.25.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -45,6 +45,9 @@ function ShowBootError(Error) {
 let CoreReady = false;
 
 try {
+  await import(`./multiplayer.js?v=${Cache}`);
+  await window.__STORE_MULTIPLAYER__.WaitForAccount();
+
   await import("./loading-prewarm-r38.js?v=20260823-33");
   await OptionalImport("./three-text-utility-r73.js", "3D text utility");
   await import(`./idle-budget-r72.js?v=${Cache}`);
@@ -62,6 +65,8 @@ try {
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
+
+  await window.__STORE_MULTIPLAYER__.AttachGame();
 
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -105,6 +110,7 @@ if (ReadyButton && CoreReady) {
   ReadyButton.disabled = false;
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
+  window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
 window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}`;
