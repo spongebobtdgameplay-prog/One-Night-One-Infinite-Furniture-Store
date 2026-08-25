@@ -13,8 +13,9 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.2.0";
-const ROOM_CAPACITY = 8;
+const SERVER_VERSION = "0.3.0";
+const ROOM_MIN_PLAYERS = 2;
+const ROOM_MAX_PLAYERS = 6;
 const WORLD_SEED = 1000;
 const STORE_START_SECONDS = 23 * 60 * 60 + 57 * 60;
 const STORE_TIME_RATE = 14;
@@ -22,7 +23,6 @@ const SESSION_DAYS = 30;
 const MOVEMENT_MIN_INTERVAL_MS = 35;
 const MOVEMENT_MAX_SPEED = 8.25;
 const MOVEMENT_BASE_ALLOWANCE = 0.42;
-const PUBLIC_ROOM_PREFIX = "PUBLIC-";
 const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 if (!DATABASE_URL) {
@@ -44,8 +44,7 @@ const CLIENT_ORIGINS = new Set([...DEFAULT_ORIGINS, ...ConfiguredOrigins]);
 
 function OriginAllowed(Origin) {
   if (!Origin) return true;
-  if (CLIENT_ORIGINS.has(Origin)) return true;
-  return Origin === "https://spongebobtdgameplay-prog.github.io";
+  return CLIENT_ORIGINS.has(Origin);
 }
 
 function ShouldUseSSL() {
@@ -64,9 +63,7 @@ const Database = new Pool({
   allowExitOnIdle: false
 });
 
-Database.on("error", Error => {
-  console.error("Postgres pool error", Error);
-});
+Database.on("error", Error => console.error("Postgres pool error", Error));
 
 async function InitializeDatabase() {
   await Database.query(`
@@ -80,7 +77,6 @@ async function InitializeDatabase() {
       last_login_at TIMESTAMPTZ
     )
   `);
-
   await Database.query(`
     CREATE TABLE IF NOT EXISTS sessions (
       id UUID PRIMARY KEY,
@@ -92,14 +88,8 @@ async function InitializeDatabase() {
       user_agent VARCHAR(256)
     )
   `);
-
-  await Database.query(`
-    CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)
-  `);
-  await Database.query(`
-    CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at)
-  `);
-
+  await Database.query(`CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)`);
+  await Database.query(`CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at)`);
   await Database.query(`
     CREATE TABLE IF NOT EXISTS player_profiles (
       user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
@@ -110,7 +100,6 @@ async function InitializeDatabase() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-
   await Database.query("DELETE FROM sessions WHERE expires_at <= NOW()");
 }
 
@@ -132,7 +121,8 @@ function ValidateUsername(Value) {
 function ValidatePassword(Value) {
   const Password = String(Value || "");
   if (Password.length < 8) return "PASSWORD_TOO_SHORT";
-  if (Password.length > 128) return "PASSWORD_TOO_LONG";
+  if (Password.length > 20) return "PASSWORD_TOO_LONG";
+  if (!/^[\x20-\x7E]+$/.test(Password)) return "PASSWORD_ASCII_ONLY";
   return "";
 }
 
@@ -145,11 +135,7 @@ function NewSessionToken() {
 }
 
 function PublicAccount(Row) {
-  return {
-    id: Row.id,
-    username: Row.username,
-    createdAt: Row.created_at
-  };
+  return { id: Row.id, username: Row.username, createdAt: Row.created_at };
 }
 
 async function CreateSession(UserId, UserAgent = "") {
@@ -158,13 +144,11 @@ async function CreateSession(UserId, UserAgent = "") {
   const SessionId = crypto.randomUUID();
   const ExpiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   await Database.query(
-    `INSERT INTO sessions (id, user_id, token_hash, expires_at, user_agent)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO sessions (id, user_id, token_hash, expires_at, user_agent) VALUES ($1, $2, $3, $4, $5)`,
     [SessionId, UserId, TokenHash, ExpiresAt, String(UserAgent || "").slice(0, 256)]
   );
   await Database.query(
-    `DELETE FROM sessions
-     WHERE user_id = $1 AND id NOT IN (
+    `DELETE FROM sessions WHERE user_id = $1 AND id NOT IN (
        SELECT id FROM sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 8
      )`,
     [UserId]
@@ -174,14 +158,11 @@ async function CreateSession(UserId, UserAgent = "") {
 
 async function AccountFromToken(Token, Touch = true) {
   if (!Token || String(Token).length < 20) return null;
-  const TokenHash = SessionTokenHash(Token);
   const Result = await Database.query(
     `SELECT u.id, u.username, u.created_at, s.id AS session_id, s.last_seen_at, s.expires_at
-     FROM sessions s
-     JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = $1 AND s.expires_at > NOW() AND u.disabled = FALSE
-     LIMIT 1`,
-    [TokenHash]
+     FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = $1 AND s.expires_at > NOW() AND u.disabled = FALSE LIMIT 1`,
+    [SessionTokenHash(Token)]
   );
   const Row = Result.rows[0];
   if (!Row) return null;
@@ -199,8 +180,7 @@ async function AccountFromToken(Token, Touch = true) {
 
 function BearerToken(Request) {
   const Header = String(Request.headers.authorization || "");
-  if (!Header.startsWith("Bearer ")) return "";
-  return Header.slice(7).trim();
+  return Header.startsWith("Bearer ") ? Header.slice(7).trim() : "";
 }
 
 async function RequireAccount(Request, Response, Next) {
@@ -239,11 +219,7 @@ const AuthLimiter = rateLimit({
 });
 
 App.get("/", (_Request, Response) => {
-  Response.json({
-    service: "The Infinity Store multiplayer server",
-    status: "online",
-    version: SERVER_VERSION
-  });
+  Response.json({ service: "The Infinity Store multiplayer server", status: "online", version: SERVER_VERSION });
 });
 
 App.get("/health", async (_Request, Response) => {
@@ -265,10 +241,12 @@ App.get("/health", async (_Request, Response) => {
 App.post("/api/auth/register", AuthLimiter, async (Request, Response) => {
   const Username = NormalizeUsername(Request.body?.username);
   const Password = String(Request.body?.password || "");
+  const ConfirmPassword = String(Request.body?.confirmPassword || "");
   const UsernameError = ValidateUsername(Username);
   const PasswordError = ValidatePassword(Password);
   if (UsernameError) return Response.status(400).json({ ok: false, error: UsernameError });
   if (PasswordError) return Response.status(400).json({ ok: false, error: PasswordError });
+  if (Password !== ConfirmPassword) return Response.status(400).json({ ok: false, error: "PASSWORDS_DO_NOT_MATCH" });
 
   try {
     const UserId = crypto.randomUUID();
@@ -283,8 +261,7 @@ App.post("/api/auth/register", AuthLimiter, async (Request, Response) => {
     try {
       await Client.query("BEGIN");
       await Client.query(
-        `INSERT INTO users (id, username, username_key, password_hash, last_login_at)
-         VALUES ($1, $2, $3, $4, NOW())`,
+        `INSERT INTO users (id, username, username_key, password_hash, last_login_at) VALUES ($1, $2, $3, $4, NOW())`,
         [UserId, Username, UsernameKey(Username), PasswordHash]
       );
       await Client.query("INSERT INTO player_profiles (user_id) VALUES ($1)", [UserId]);
@@ -295,7 +272,6 @@ App.post("/api/auth/register", AuthLimiter, async (Request, Response) => {
     } finally {
       Client.release();
     }
-
     const Session = await CreateSession(UserId, Request.headers["user-agent"]);
     return Response.status(201).json({
       ok: true,
@@ -314,26 +290,20 @@ App.post("/api/auth/login", AuthLimiter, async (Request, Response) => {
   const Username = NormalizeUsername(Request.body?.username);
   const Password = String(Request.body?.password || "");
   if (!Username || !Password) return Response.status(400).json({ ok: false, error: "MISSING_CREDENTIALS" });
+  const PasswordError = ValidatePassword(Password);
+  if (PasswordError) return Response.status(400).json({ ok: false, error: PasswordError });
 
   try {
     const Result = await Database.query(
-      `SELECT id, username, username_key, password_hash, created_at, disabled
-       FROM users WHERE username_key = $1 LIMIT 1`,
+      `SELECT id, username, username_key, password_hash, created_at, disabled FROM users WHERE username_key = $1 LIMIT 1`,
       [UsernameKey(Username)]
     );
     const Row = Result.rows[0];
     if (!Row || Row.disabled) return Response.status(401).json({ ok: false, error: "INVALID_LOGIN" });
-    const Valid = await argon2.verify(Row.password_hash, Password);
-    if (!Valid) return Response.status(401).json({ ok: false, error: "INVALID_LOGIN" });
-
+    if (!await argon2.verify(Row.password_hash, Password)) return Response.status(401).json({ ok: false, error: "INVALID_LOGIN" });
     await Database.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [Row.id]);
     const Session = await CreateSession(Row.id, Request.headers["user-agent"]);
-    return Response.json({
-      ok: true,
-      token: Session.Token,
-      expiresAt: Session.ExpiresAt,
-      account: PublicAccount(Row)
-    });
+    return Response.json({ ok: true, token: Session.Token, expiresAt: Session.ExpiresAt, account: PublicAccount(Row) });
   } catch (Error) {
     console.error("Login failed", Error);
     return Response.status(500).json({ ok: false, error: "LOGIN_FAILED" });
@@ -348,11 +318,7 @@ App.get("/api/auth/me", RequireAccount, async (Request, Response) => {
     );
     return Response.json({
       ok: true,
-      account: {
-        id: Request.account.id,
-        username: Request.account.username,
-        createdAt: Request.account.createdAt
-      },
+      account: { id: Request.account.id, username: Request.account.username, createdAt: Request.account.createdAt },
       profile: ProfileResult.rows[0] || { games_played: 0, tasks_completed: 0, best_aisle: 0, settings: {} }
     });
   } catch (Error) {
@@ -387,60 +353,60 @@ const IO = new SocketIOServer(HttpServer, {
   pingTimeout: 15_000,
   maxHttpBufferSize: 64 * 1024,
   perMessageDeflate: false,
-  connectionStateRecovery: {
-    maxDisconnectionDuration: 120_000,
-    skipMiddlewares: false
-  }
+  connectionStateRecovery: { maxDisconnectionDuration: 120_000, skipMiddlewares: false }
 });
 
 const Rooms = new Map();
 const SocketPlayers = new Map();
 
-function CleanRoomCode(Value) {
-  return String(Value || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 16);
+function ClampInteger(Value, Min, Max, Fallback) {
+  const Parsed = Math.floor(Number(Value));
+  return Number.isFinite(Parsed) ? Math.min(Max, Math.max(Min, Parsed)) : Fallback;
 }
 
-function GenerateRoomCode(Prefix = "") {
+function CleanRoomCode(Value) {
+  return String(Value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+}
+
+function GenerateRoomCode() {
   for (let Attempt = 0; Attempt < 100; Attempt += 1) {
-    let Code = Prefix;
+    let Code = "";
     for (let Index = 0; Index < 6; Index += 1) Code += ROOM_CODE_ALPHABET[crypto.randomInt(0, ROOM_CODE_ALPHABET.length)];
     if (!Rooms.has(Code)) return Code;
   }
-  return `${Prefix}${Date.now().toString(36).toUpperCase().slice(-8)}`;
+  return Date.now().toString(36).toUpperCase().slice(-8);
 }
 
-function CreateRoom(HostAccount, IsPublic = false) {
-  const Code = GenerateRoomCode(IsPublic ? PUBLIC_ROOM_PREFIX : "");
+function CreateRoom(HostAccount, Options = {}) {
   const Room = {
-    code: Code,
-    public: Boolean(IsPublic),
+    code: GenerateRoomCode(),
+    public: Options.public !== false,
+    allowLateJoin: Options.allowLateJoin !== false,
     hostUserId: HostAccount.id,
     seed: WORLD_SEED,
-    maxPlayers: ROOM_CAPACITY,
+    maxPlayers: ClampInteger(Options.maxPlayers, ROOM_MIN_PLAYERS, ROOM_MAX_PLAYERS, 4),
     createdAt: Date.now(),
+    started: false,
+    startedAt: null,
     players: new Map(),
     completedTasks: new Set()
   };
-  Rooms.set(Code, Room);
+  Rooms.set(Room.code, Room);
   return Room;
 }
 
 function RoomStoreSeconds(Room, Now = Date.now()) {
-  const Elapsed = Math.max(0, Now - Room.createdAt) / 1000;
+  if (!Room.started || !Room.startedAt) return STORE_START_SECONDS;
+  const Elapsed = Math.max(0, Now - Room.startedAt) / 1000;
   return (STORE_START_SECONDS + Elapsed * STORE_TIME_RATE) % (24 * 60 * 60);
 }
 
 function PublicMovement(Movement) {
   return {
-    x: Movement.x,
-    y: Movement.y,
-    z: Movement.z,
-    yaw: Movement.yaw,
-    pitch: Movement.pitch,
-    animation: Movement.animation,
-    sprinting: Movement.sprinting,
-    sequence: Movement.sequence,
-    serverTime: Movement.serverTime
+    x: Movement.x, y: Movement.y, z: Movement.z,
+    yaw: Movement.yaw, pitch: Movement.pitch,
+    animation: Movement.animation, sprinting: Movement.sprinting,
+    sequence: Movement.sequence, serverTime: Movement.serverTime
   };
 }
 
@@ -458,10 +424,14 @@ function PublicRoom(Room) {
   return {
     code: Room.code,
     public: Room.public,
+    allowLateJoin: Room.allowLateJoin,
     hostUserId: Room.hostUserId,
     seed: Room.seed,
     maxPlayers: Room.maxPlayers,
     playerCount: Room.players.size,
+    minPlayersToStart: ROOM_MIN_PLAYERS,
+    started: Room.started,
+    startedAt: Room.startedAt,
     storeSeconds: RoomStoreSeconds(Room),
     completedTasks: [...Room.completedTasks]
   };
@@ -469,15 +439,10 @@ function PublicRoom(Room) {
 
 function DefaultMovement() {
   return {
-    x: 0,
-    y: 1.68,
-    z: 8,
-    yaw: Math.PI,
-    pitch: 0,
-    animation: "idle",
-    sprinting: false,
-    sequence: 0,
-    serverTime: Date.now()
+    x: 0, y: 1.68, z: 8,
+    yaw: Math.PI, pitch: 0,
+    animation: "idle", sprinting: false,
+    sequence: 0, serverTime: Date.now()
   };
 }
 
@@ -498,9 +463,18 @@ function PlayerRecord(Socket, Room) {
 function ReassignHost(Room) {
   if (!Room || Room.players.size === 0) return;
   if ([...Room.players.values()].some(Player => Player.userId === Room.hostUserId)) return;
-  const Next = [...Room.players.values()].sort((Left, Right) => Left.joinedAt - Right.joinedAt)[0];
+  const Next = [...Room.players.values()].sort((A, B) => A.joinedAt - B.joinedAt)[0];
   Room.hostUserId = Next.userId;
   IO.to(Room.code).emit("room:host", { hostUserId: Room.hostUserId });
+}
+
+function EmitRoomSync(Room) {
+  if (!Room) return;
+  IO.to(Room.code).emit("room:sync", {
+    room: PublicRoom(Room),
+    players: [...Room.players.values()].map(PublicPlayer),
+    serverTime: Date.now()
+  });
 }
 
 function LeaveCurrentRoom(Socket, Emit = true) {
@@ -512,14 +486,25 @@ function LeaveCurrentRoom(Socket, Emit = true) {
     Room.players.delete(Socket.id);
     if (Emit) Socket.to(RoomCode).emit("player:left", { id: Socket.id, userId: Player.userId });
     if (Room.players.size === 0) Rooms.delete(RoomCode);
-    else ReassignHost(Room);
+    else {
+      ReassignHost(Room);
+      EmitRoomSync(Room);
+    }
   }
   Socket.leave(RoomCode);
   SocketPlayers.delete(Socket.id);
 }
 
+function RoomJoinError(Room) {
+  if (!Room) return "ROOM_NOT_FOUND";
+  if (Room.players.size >= Room.maxPlayers) return "ROOM_FULL";
+  if (Room.started && !Room.allowLateJoin) return "LATE_JOIN_DISABLED";
+  return "";
+}
+
 function JoinRoom(Socket, Room) {
-  if (!Room) return { ok: false, error: "ROOM_NOT_FOUND" };
+  const JoinError = RoomJoinError(Room);
+  if (JoinError) return { ok: false, error: JoinError };
   const Existing = SocketPlayers.get(Socket.id);
   if (Existing?.roomCode === Room.code) {
     return {
@@ -529,7 +514,6 @@ function JoinRoom(Socket, Room) {
       players: [...Room.players.values()].filter(Player => Player.socketId !== Socket.id).map(PublicPlayer)
     };
   }
-  if (Room.players.size >= Room.maxPlayers) return { ok: false, error: "ROOM_FULL" };
   if (Existing) LeaveCurrentRoom(Socket);
 
   const Player = PlayerRecord(Socket, Room);
@@ -537,11 +521,7 @@ function JoinRoom(Socket, Room) {
   SocketPlayers.set(Socket.id, Player);
   Socket.join(Room.code);
   Socket.to(Room.code).emit("player:joined", PublicPlayer(Player));
-
-  Database.query(
-    `UPDATE player_profiles SET games_played = games_played + 1, updated_at = NOW() WHERE user_id = $1`,
-    [Player.userId]
-  ).catch(() => {});
+  EmitRoomSync(Room);
 
   return {
     ok: true,
@@ -553,15 +533,19 @@ function JoinRoom(Socket, Room) {
 
 function QuickJoinRoom(Socket) {
   const Candidate = [...Rooms.values()]
-    .filter(Room => Room.public && Room.players.size < Room.maxPlayers)
-    .sort((Left, Right) => Right.players.size - Left.players.size || Left.createdAt - Right.createdAt)[0];
-  const Room = Candidate || CreateRoom(Socket.data.account, true);
-  return JoinRoom(Socket, Room);
+    .filter(Room => Room.public && !RoomJoinError(Room))
+    .sort((A, B) => Number(A.started) - Number(B.started) || B.players.size - A.players.size || A.createdAt - B.createdAt)[0];
+  if (!Candidate) return { ok: false, error: "NO_PUBLIC_SERVERS" };
+  return JoinRoom(Socket, Candidate);
 }
 
 function CleanFinite(Value, Fallback = 0) {
   const NumberValue = Number(Value);
   return Number.isFinite(NumberValue) ? NumberValue : Fallback;
+}
+
+function Clamp(Value, Min, Max) {
+  return Math.min(Max, Math.max(Min, Value));
 }
 
 function NormalizeAngle(Value) {
@@ -572,10 +556,10 @@ function CleanMovement(Payload = {}) {
   const Animation = ["idle", "walk", "sprint"].includes(Payload.animation) ? Payload.animation : "idle";
   return {
     x: CleanFinite(Payload.x),
-    y: THREElessClamp(CleanFinite(Payload.y, 1.68), 0.25, 3.6),
+    y: Clamp(CleanFinite(Payload.y, 1.68), 0.25, 3.6),
     z: CleanFinite(Payload.z, 8),
     yaw: NormalizeAngle(CleanFinite(Payload.yaw)),
-    pitch: THREElessClamp(CleanFinite(Payload.pitch), -1.45, 1.45),
+    pitch: Clamp(CleanFinite(Payload.pitch), -1.45, 1.45),
     animation: Animation,
     sprinting: Boolean(Payload.sprinting) && Animation === "sprint",
     sequence: Math.max(0, Math.floor(CleanFinite(Payload.sequence))),
@@ -583,20 +567,13 @@ function CleanMovement(Payload = {}) {
   };
 }
 
-function THREElessClamp(Value, Min, Max) {
-  return Math.min(Max, Math.max(Min, Value));
-}
-
 function MovementValid(Player, Next, Now) {
   if (Math.abs(Next.x) > 16.75) return false;
   if (Math.abs(Next.z) > 1_000_000) return false;
   if (Player.movement.sequence === 0) return true;
   const DeltaSeconds = Math.max(0.001, (Now - Player.lastAcceptedMovementAt) / 1000);
-  const DX = Next.x - Player.movement.x;
-  const DZ = Next.z - Player.movement.z;
-  const Distance = Math.hypot(DX, DZ);
-  const Allowed = MOVEMENT_BASE_ALLOWANCE + MOVEMENT_MAX_SPEED * DeltaSeconds;
-  return Distance <= Allowed;
+  const Distance = Math.hypot(Next.x - Player.movement.x, Next.z - Player.movement.z);
+  return Distance <= MOVEMENT_BASE_ALLOWANCE + MOVEMENT_MAX_SPEED * DeltaSeconds;
 }
 
 function ValidTaskId(Value) {
@@ -629,12 +606,14 @@ IO.on("connection", Socket => {
     recovered: Socket.recovered
   });
 
-  Socket.on("room:quickJoin", (_Payload = {}, Ack = () => {}) => {
-    Ack(QuickJoinRoom(Socket));
-  });
+  Socket.on("room:quickJoin", (_Payload = {}, Ack = () => {}) => Ack(QuickJoinRoom(Socket)));
 
   Socket.on("room:create", (Payload = {}, Ack = () => {}) => {
-    const Room = CreateRoom(Account, Boolean(Payload.public));
+    const Room = CreateRoom(Account, {
+      maxPlayers: Payload.maxPlayers,
+      allowLateJoin: Boolean(Payload.allowLateJoin),
+      public: Payload.public !== false
+    });
     Ack(JoinRoom(Socket, Room));
   });
 
@@ -644,6 +623,42 @@ IO.on("connection", Socket => {
     return Ack(JoinRoom(Socket, Rooms.get(Code)));
   });
 
+  Socket.on("room:updateSettings", (Payload = {}, Ack = () => {}) => {
+    const Player = SocketPlayers.get(Socket.id);
+    const Room = Player ? Rooms.get(Player.roomCode) : null;
+    if (!Player || !Room) return Ack({ ok: false, error: "NOT_IN_ROOM" });
+    if (Room.hostUserId !== Account.id) return Ack({ ok: false, error: "HOST_ONLY" });
+    if (Room.started) return Ack({ ok: false, error: "GAME_ALREADY_STARTED" });
+    const NextMax = ClampInteger(Payload.maxPlayers, ROOM_MIN_PLAYERS, ROOM_MAX_PLAYERS, Room.maxPlayers);
+    if (NextMax < Room.players.size) return Ack({ ok: false, error: "MAX_BELOW_PLAYER_COUNT" });
+    Room.maxPlayers = NextMax;
+    Room.allowLateJoin = Boolean(Payload.allowLateJoin);
+    Room.public = Boolean(Payload.public);
+    EmitRoomSync(Room);
+    return Ack({ ok: true, room: PublicRoom(Room) });
+  });
+
+  Socket.on("room:start", (_Payload = {}, Ack = () => {}) => {
+    const Player = SocketPlayers.get(Socket.id);
+    const Room = Player ? Rooms.get(Player.roomCode) : null;
+    if (!Player || !Room) return Ack({ ok: false, error: "NOT_IN_ROOM" });
+    if (Room.hostUserId !== Account.id) return Ack({ ok: false, error: "HOST_ONLY" });
+    if (Room.started) return Ack({ ok: true, alreadyStarted: true, room: PublicRoom(Room) });
+    if (Room.players.size < ROOM_MIN_PLAYERS) return Ack({ ok: false, error: "NEED_MORE_PLAYERS", required: ROOM_MIN_PLAYERS });
+    Room.started = true;
+    Room.startedAt = Date.now();
+    for (const Member of Room.players.values()) {
+      Database.query(
+        `UPDATE player_profiles SET games_played = games_played + 1, updated_at = NOW() WHERE user_id = $1`,
+        [Member.userId]
+      ).catch(() => {});
+    }
+    const Public = PublicRoom(Room);
+    IO.to(Room.code).emit("room:started", { room: Public, serverTime: Date.now() });
+    EmitRoomSync(Room);
+    return Ack({ ok: true, room: Public });
+  });
+
   Socket.on("room:leave", (_Payload = {}, Ack = () => {}) => {
     LeaveCurrentRoom(Socket);
     Ack({ ok: true });
@@ -651,21 +666,17 @@ IO.on("connection", Socket => {
 
   Socket.on("movement:update", Payload => {
     const Player = SocketPlayers.get(Socket.id);
-    if (!Player?.roomCode) return;
-    const Room = Rooms.get(Player.roomCode);
-    if (!Room) return;
-
+    const Room = Player ? Rooms.get(Player.roomCode) : null;
+    if (!Player || !Room?.started) return;
     const Now = Date.now();
     if (Now - Player.lastMovementPacketAt < MOVEMENT_MIN_INTERVAL_MS) return;
     Player.lastMovementPacketAt = Now;
-
     const Next = CleanMovement(Payload);
     if (Next.sequence <= Player.movement.sequence && Player.movement.sequence !== 0) return;
     if (!MovementValid(Player, Next, Now)) {
       Socket.emit("movement:correction", PublicMovement(Player.movement));
       return;
     }
-
     Player.movement = Next;
     Player.lastAcceptedMovementAt = Now;
     Socket.to(Room.code).volatile.emit("movement:snapshot", {
@@ -679,10 +690,10 @@ IO.on("connection", Socket => {
     const Player = SocketPlayers.get(Socket.id);
     const Room = Player ? Rooms.get(Player.roomCode) : null;
     if (!Player || !Room) return Ack({ ok: false, error: "NOT_IN_ROOM" });
+    if (!Room.started) return Ack({ ok: false, error: "GAME_NOT_STARTED" });
     const TaskId = ValidTaskId(Payload.taskId);
     if (!TaskId) return Ack({ ok: false, error: "INVALID_TASK" });
     if (Room.completedTasks.has(TaskId)) return Ack({ ok: true, alreadyCompleted: true });
-
     Room.completedTasks.add(TaskId);
     IO.to(Room.code).emit("task:completed", {
       taskId: TaskId,
@@ -698,6 +709,9 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("profile:aisle", Payload => {
+    const Player = SocketPlayers.get(Socket.id);
+    const Room = Player ? Rooms.get(Player.roomCode) : null;
+    if (!Room?.started) return;
     const Aisle = Math.max(0, Math.min(1_000_000, Math.floor(CleanFinite(Payload?.aisle))));
     if (!Aisle) return;
     Database.query(
@@ -710,27 +724,24 @@ IO.on("connection", Socket => {
     Ack({ clientTime: CleanFinite(ClientTime), serverTime: Date.now() });
   });
 
-  Socket.on("disconnect", () => {
-    LeaveCurrentRoom(Socket);
-  });
+  Socket.on("disconnect", () => LeaveCurrentRoom(Socket));
 });
 
 App.get("/api/rooms", RequireAccount, (_Request, Response) => {
-  const PublicRooms = [...Rooms.values()]
-    .filter(Room => Room.public && Room.players.size < Room.maxPlayers)
-    .map(Room => ({ code: Room.code, players: Room.players.size, maxPlayers: Room.maxPlayers }));
-  Response.json({ ok: true, rooms: PublicRooms });
+  const RoomsList = [...Rooms.values()]
+    .filter(Room => Room.public && !RoomJoinError(Room))
+    .map(Room => ({
+      code: Room.code,
+      players: Room.players.size,
+      maxPlayers: Room.maxPlayers,
+      started: Room.started,
+      allowLateJoin: Room.allowLateJoin
+    }));
+  Response.json({ ok: true, count: RoomsList.length, rooms: RoomsList });
 });
 
 const SyncInterval = setInterval(() => {
-  const Now = Date.now();
-  for (const Room of Rooms.values()) {
-    IO.to(Room.code).emit("room:sync", {
-      room: PublicRoom(Room),
-      players: [...Room.players.values()].map(PublicPlayer),
-      serverTime: Now
-    });
-  }
+  for (const Room of Rooms.values()) EmitRoomSync(Room);
 }, 2000);
 SyncInterval.unref?.();
 
