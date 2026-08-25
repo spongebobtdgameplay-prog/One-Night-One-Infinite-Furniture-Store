@@ -105,6 +105,7 @@ function CoreReady(Chunk) {
     Chunk.Group.userData?.RetailShowroomR79 &&
     Chunk.Group.userData?.RetailZonesR82 &&
     Chunk.Group.userData?.RetailOrganizationR83 &&
+    Chunk.Group.userData?.CoreFixR86 &&
     ShelfStocked &&
     SaleDisplaysReady &&
     Chunk.Group.userData?.PriceTagsR83 &&
@@ -128,6 +129,7 @@ async function RunWorldPasses(Chunk) {
   const Organize = window.__STORE_RETAIL_ORGANIZATION_R83__;
   const ShelfStock = window.__STORE_SHELF_STOCK_R83__;
   const SaleDisplays = window.__STORE_RETAIL_SALE_DISPLAYS_R84__;
+  const CoreFix = window.__STORE_CORE_FIX_R86__;
 
   if (Visual?.ProcessChunk) await Visual.ProcessChunk(Chunk);
   if (Retail?.ProcessChunk) await Retail.ProcessChunk(Chunk);
@@ -141,6 +143,7 @@ async function RunWorldPasses(Chunk) {
   RemoveTerminalBeacons(Chunk);
   window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
   window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessAll?.();
+  CoreFix?.ProcessChunk?.(Chunk);
 }
 
 export async function FinalizeChunk(Chunk) {
@@ -159,13 +162,14 @@ export async function FinalizeChunk(Chunk) {
     await RunWorldPasses(Chunk);
     await Delay(140);
     UpdateStability(Chunk);
-    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R84 dressing pass.`);
+    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R86 fix pass.`);
 
     Chunk.Group.userData.PresentationReadyR83 = true;
     Chunk.Group.userData.PresentationReadyR82 = true;
     Chunk.Group.userData.PresentationReadyAt = performance.now();
     window.__STORE_SOLID_OBJECT_COLLISION_R83__?.ProcessChunk?.(Chunk, true);
     window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
+    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
   } finally {
     Finalizing.delete(Chunk);
   }
@@ -201,4 +205,4 @@ const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.23.0-R84";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.24.0-R86";
