@@ -6,8 +6,8 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-100";
-const Version = "0.27.0";
+const Cache = "20260825-101";
+const Version = "0.28.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -72,7 +72,8 @@ try {
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
-  await OptionalImport("./multiplayer-ui-r91.js", "Account, profile, server browser and multiplayer lobby UI");
+  await OptionalImport("./session-outdated-r93.js", "Stale-session refresh guard");
+  await OptionalImport("./multiplayer-ui-r93.js", "Stable account, server browser and multiplayer lobby UI");
   await OptionalImport("./multiplayer-authority-r89.js", "Started-game multiplayer task, clock and correction authority");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -104,6 +105,7 @@ try {
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
+  await OptionalImport("./creepy-hud-r93.js", "Creepy in-game HUD presentation");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
   CoreReady = true;
 } catch (Error) {
@@ -119,4 +121,4 @@ if (ReadyButton && CoreReady) {
 }
 
 window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}`;
-window.__STORE_MULTIPLAYER_UI_R91__?.Render?.();
+window.__STORE_MULTIPLAYER_UI_R93__?.Render?.();
