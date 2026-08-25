@@ -17,7 +17,7 @@ function Brightness(Color) {
 function StabilizeGlow(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
+  Object.frustumCulled = true;
   Object.renderOrder = 1;
   Object.geometry?.computeBoundingSphere?.();
 
@@ -40,6 +40,7 @@ function StabilizeGlow(Object) {
 function StabilizeHousing(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
+  Object.frustumCulled = true;
   Object.geometry?.computeBoundingSphere?.();
   if (!Object.material) return;
   Object.material = Object.material.clone();
@@ -53,7 +54,7 @@ function StabilizePointLight(Object) {
   if (!Object?.isPointLight || ProcessedObjects.has(Object)) return;
   if (!Number.isFinite(Object.userData?.BaseIntensity)) return;
   ProcessedObjects.add(Object);
-  Object.distance = Math.max(Object.distance || 0, 20);
+  Object.distance = THREE.MathUtils.clamp(Object.distance || 16, 10, 18);
   Object.decay = 2;
   Object.intensity = Math.max(Object.intensity || 0, Object.userData.BaseIntensity || 1.75);
 }
@@ -61,7 +62,8 @@ function StabilizePointLight(Object) {
 function StabilizeHorizon(Object) {
   if (!Object?.isInstancedMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
+  Object.frustumCulled = true;
+  Object.geometry?.computeBoundingSphere?.();
   if (!Object.material) return;
 
   Object.material = Object.material.clone();
@@ -93,7 +95,7 @@ function ProcessRoot(Root) {
 function ConfigureProjection() {
   if (ProjectionConfigured) return;
   ProjectionConfigured = true;
-  Game.Camera.far = 520;
+  Game.Camera.far = 220;
   Game.Camera.updateProjectionMatrix();
   Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
 }
@@ -102,21 +104,27 @@ function ConfigureAtmosphere() {
   if (Game.Scene.background?.isColor) Game.Scene.background.setHex(0x24261f);
   if (Game.Scene.fog?.isFogExp2) {
     Game.Scene.fog.color.setHex(0x24261f);
-    Game.Scene.fog.density = 0.0027;
+    Game.Scene.fog.density = 0.0034;
   }
+}
+
+function ProcessChunk(Chunk) {
+  if (!Chunk?.Group || Chunk.Cancelled) return;
+  ConfigureProjection();
+  ConfigureAtmosphere();
+  ProcessRoot(Chunk.Group);
 }
 
 function ProcessAll() {
   ConfigureProjection();
   ConfigureAtmosphere();
   ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
+  for (const Chunk of Game.PreparedChunks.values()) {
+    if (Chunk?.Group?.parent !== Game.Scene) ProcessChunk(Chunk);
+  }
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll };
-window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.19.0-R78";
+window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll, ProcessChunk };
+window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.25.1-PERF1";
