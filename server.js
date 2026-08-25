@@ -13,13 +13,14 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.3.0";
+const SERVER_VERSION = "0.3.1";
 const ROOM_MIN_PLAYERS = 2;
 const ROOM_MAX_PLAYERS = 6;
 const WORLD_SEED = 1000;
 const STORE_START_SECONDS = 23 * 60 * 60 + 57 * 60;
 const STORE_TIME_RATE = 14;
-const SESSION_DAYS = 30;
+const SESSION_DAYS = 180;
+const SESSION_TOUCH_MS = 5 * 60 * 1000;
 const MOVEMENT_MIN_INTERVAL_MS = 35;
 const MOVEMENT_MAX_SPEED = 8.25;
 const MOVEMENT_BASE_ALLOWANCE = 0.42;
@@ -166,15 +167,20 @@ async function AccountFromToken(Token, Touch = true) {
   );
   const Row = Result.rows[0];
   if (!Row) return null;
-  if (Touch && (!Row.last_seen_at || Date.now() - new Date(Row.last_seen_at).getTime() > 5 * 60 * 1000)) {
-    Database.query("UPDATE sessions SET last_seen_at = NOW() WHERE id = $1", [Row.session_id]).catch(() => {});
+  let ExpiresAt = Row.expires_at;
+  if (Touch && (!Row.last_seen_at || Date.now() - new Date(Row.last_seen_at).getTime() > SESSION_TOUCH_MS)) {
+    ExpiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+    await Database.query(
+      "UPDATE sessions SET last_seen_at = NOW(), expires_at = $2 WHERE id = $1",
+      [Row.session_id, ExpiresAt]
+    );
   }
   return {
     id: Row.id,
     username: Row.username,
     createdAt: Row.created_at,
     sessionId: Row.session_id,
-    expiresAt: Row.expires_at
+    expiresAt: ExpiresAt
   };
 }
 
