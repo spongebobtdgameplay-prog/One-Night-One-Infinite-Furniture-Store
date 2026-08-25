@@ -13,8 +13,11 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.2.0";
-const ROOM_CAPACITY = 8;
+const SERVER_VERSION = "0.3.0";
+const NETWORK_PROTOCOL = 1;
+const MIN_PLAYERS = 2;
+const MAX_PLAYERS = 6;
+const DEFAULT_MAX_PLAYERS = 4;
 const WORLD_SEED = 1000;
 const STORE_START_SECONDS = 23 * 60 * 60 + 57 * 60;
 const STORE_TIME_RATE = 14;
@@ -22,8 +25,8 @@ const SESSION_DAYS = 30;
 const MOVEMENT_MIN_INTERVAL_MS = 35;
 const MOVEMENT_MAX_SPEED = 8.25;
 const MOVEMENT_BASE_ALLOWANCE = 0.42;
-const PUBLIC_ROOM_PREFIX = "PUBLIC-";
-const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ROOM_CODE_LENGTH = 6;
+const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL is required. Add the Render Postgres Internal Database URL to the web service environment.");
@@ -44,8 +47,7 @@ const CLIENT_ORIGINS = new Set([...DEFAULT_ORIGINS, ...ConfiguredOrigins]);
 
 function OriginAllowed(Origin) {
   if (!Origin) return true;
-  if (CLIENT_ORIGINS.has(Origin)) return true;
-  return Origin === "https://spongebobtdgameplay-prog.github.io";
+  return CLIENT_ORIGINS.has(Origin);
 }
 
 function ShouldUseSSL() {
@@ -93,12 +95,8 @@ async function InitializeDatabase() {
     )
   `);
 
-  await Database.query(`
-    CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)
-  `);
-  await Database.query(`
-    CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at)
-  `);
+  await Database.query(`CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id)`);
+  await Database.query(`CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at)`);
 
   await Database.query(`
     CREATE TABLE IF NOT EXISTS player_profiles (
@@ -132,7 +130,8 @@ function ValidateUsername(Value) {
 function ValidatePassword(Value) {
   const Password = String(Value || "");
   if (Password.length < 8) return "PASSWORD_TOO_SHORT";
-  if (Password.length > 128) return "PASSWORD_TOO_LONG";
+  if (Password.length > 20) return "PASSWORD_TOO_LONG";
+  if (!/^[\x20-\x7E]+$/.test(Password)) return "PASSWORD_CHARACTERS";
   return "";
 }
 
@@ -215,6 +214,22 @@ async function RequireAccount(Request, Response, Next) {
   }
 }
 
+function Clamp(Value, Min, Max) {
+  return Math.min(Max, Math.max(Min, Number(Value) || 0));
+}
+
+function CleanProfileSettings(Value) {
+  if (!Value || typeof Value !== "object" || Array.isArray(Value)) return {};
+  const Result = {};
+  if (Number.isFinite(Number(Value.Sensitivity))) Result.Sensitivity = Clamp(Value.Sensitivity, 0.35, 2);
+  if (Number.isFinite(Number(Value.TrackpadSmoothing))) Result.TrackpadSmoothing = Clamp(Value.TrackpadSmoothing, 0, 100);
+  if (Number.isFinite(Number(Value.Fov))) Result.Fov = Clamp(Value.Fov, 58, 100);
+  if (["performance", "balanced", "high"].includes(Value.Graphics)) Result.Graphics = Value.Graphics;
+  if (Number.isFinite(Number(Value.AmbientVolume))) Result.AmbientVolume = Clamp(Value.AmbientVolume, 0, 1);
+  if (typeof Value.ShowFps === "boolean") Result.ShowFps = Value.ShowFps;
+  return Result;
+}
+
 const App = express();
 App.set("trust proxy", 1);
 App.disable("x-powered-by");
@@ -242,24 +257,19 @@ App.get("/", (_Request, Response) => {
   Response.json({
     service: "The Infinity Store multiplayer server",
     status: "online",
-    version: SERVER_VERSION
+    version: SERVER_VERSION,
+    protocol: NETWORK_PROTOCOL
   });
 });
 
-App.get("/health", async (_Request, Response) => {
-  try {
-    await Database.query("SELECT 1");
-    Response.status(200).json({
-      ok: true,
-      version: SERVER_VERSION,
-      uptime: Math.floor(process.uptime()),
-      database: true,
-      sockets: IO.engine.clientsCount,
-      rooms: Rooms.size
-    });
-  } catch {
-    Response.status(503).json({ ok: false, version: SERVER_VERSION, database: false });
-  }
+App.get("/api/client-info", (_Request, Response) => {
+  Response.json({
+    ok: true,
+    serverVersion: SERVER_VERSION,
+    protocol: NETWORK_PROTOCOL,
+    minPlayers: MIN_PLAYERS,
+    maxPlayers: MAX_PLAYERS
+  });
 });
 
 App.post("/api/auth/register", AuthLimiter, async (Request, Response) => {
@@ -381,8 +391,8 @@ const IO = new SocketIOServer(HttpServer, {
     methods: ["GET", "POST"],
     credentials: false
   },
-  transports: ["websocket", "polling"],
-  allowUpgrades: true,
+  transports: ["websocket"],
+  allowUpgrades: false,
   pingInterval: 20_000,
   pingTimeout: 15_000,
   maxHttpBufferSize: 64 * 1024,
@@ -396,28 +406,68 @@ const IO = new SocketIOServer(HttpServer, {
 const Rooms = new Map();
 const SocketPlayers = new Map();
 
+App.get("/health", async (_Request, Response) => {
+  try {
+    await Database.query("SELECT 1");
+    Response.status(200).json({
+      ok: true,
+      version: SERVER_VERSION,
+      protocol: NETWORK_PROTOCOL,
+      uptime: Math.floor(process.uptime()),
+      database: true,
+      sockets: IO.engine.clientsCount,
+      rooms: Rooms.size
+    });
+  } catch {
+    Response.status(503).json({
+      ok: false,
+      version: SERVER_VERSION,
+      protocol: NETWORK_PROTOCOL,
+      database: false
+    });
+  }
+});
+
 function CleanRoomCode(Value) {
-  return String(Value || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 16);
+  return String(Value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, ROOM_CODE_LENGTH);
 }
 
-function GenerateRoomCode(Prefix = "") {
+function GenerateRoomCode() {
   for (let Attempt = 0; Attempt < 100; Attempt += 1) {
-    let Code = Prefix;
-    for (let Index = 0; Index < 6; Index += 1) Code += ROOM_CODE_ALPHABET[crypto.randomInt(0, ROOM_CODE_ALPHABET.length)];
+    let Code = "";
+    for (let Index = 0; Index < ROOM_CODE_LENGTH; Index += 1) {
+      Code += ROOM_CODE_ALPHABET[crypto.randomInt(0, ROOM_CODE_ALPHABET.length)];
+    }
     if (!Rooms.has(Code)) return Code;
   }
-  return `${Prefix}${Date.now().toString(36).toUpperCase().slice(-8)}`;
+  return crypto.randomBytes(8).toString("hex").toUpperCase().slice(0, ROOM_CODE_LENGTH);
 }
 
-function CreateRoom(HostAccount, IsPublic = false) {
-  const Code = GenerateRoomCode(IsPublic ? PUBLIC_ROOM_PREFIX : "");
+function CleanRoomSettings(Value = {}, Existing = null) {
+  const RequestedMax = Math.floor(Number(Value.maxPlayers));
+  const MaxPlayers = Number.isFinite(RequestedMax)
+    ? Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, RequestedMax))
+    : Existing?.maxPlayers || DEFAULT_MAX_PLAYERS;
+  return {
+    maxPlayers: MaxPlayers,
+    allowLateJoin: Value.allowLateJoin === undefined ? (Existing?.allowLateJoin ?? false) : Boolean(Value.allowLateJoin),
+    allowRandomJoin: Value.allowRandomJoin === undefined ? (Existing?.allowRandomJoin ?? true) : Boolean(Value.allowRandomJoin)
+  };
+}
+
+function CreateRoom(HostAccount, Settings = {}) {
+  const Clean = CleanRoomSettings(Settings);
+  const Code = GenerateRoomCode();
   const Room = {
     code: Code,
-    public: Boolean(IsPublic),
     hostUserId: HostAccount.id,
     seed: WORLD_SEED,
-    maxPlayers: ROOM_CAPACITY,
+    maxPlayers: Clean.maxPlayers,
+    allowLateJoin: Clean.allowLateJoin,
+    allowRandomJoin: Clean.allowRandomJoin,
     createdAt: Date.now(),
+    started: false,
+    startedAt: 0,
     players: new Map(),
     completedTasks: new Set()
   };
@@ -426,7 +476,8 @@ function CreateRoom(HostAccount, IsPublic = false) {
 }
 
 function RoomStoreSeconds(Room, Now = Date.now()) {
-  const Elapsed = Math.max(0, Now - Room.createdAt) / 1000;
+  const Anchor = Room.startedAt || Room.createdAt;
+  const Elapsed = Math.max(0, Now - Anchor) / 1000;
   return (STORE_START_SECONDS + Elapsed * STORE_TIME_RATE) % (24 * 60 * 60);
 }
 
@@ -457,14 +508,31 @@ function PublicPlayer(Player) {
 function PublicRoom(Room) {
   return {
     code: Room.code,
-    public: Room.public,
     hostUserId: Room.hostUserId,
     seed: Room.seed,
+    minPlayers: MIN_PLAYERS,
     maxPlayers: Room.maxPlayers,
     playerCount: Room.players.size,
+    allowLateJoin: Room.allowLateJoin,
+    allowRandomJoin: Room.allowRandomJoin,
+    started: Room.started,
+    startedAt: Room.startedAt || null,
     storeSeconds: RoomStoreSeconds(Room),
     completedTasks: [...Room.completedTasks]
   };
+}
+
+function RoomPayload(Room) {
+  return {
+    room: PublicRoom(Room),
+    players: [...Room.players.values()].map(PublicPlayer),
+    serverTime: Date.now()
+  };
+}
+
+function EmitRoomState(Room) {
+  if (!Room || !Rooms.has(Room.code)) return;
+  IO.to(Room.code).emit("room:state", RoomPayload(Room));
 }
 
 function DefaultMovement() {
@@ -491,16 +559,29 @@ function PlayerRecord(Socket, Room) {
     joinedAt: Date.now(),
     movement: DefaultMovement(),
     lastMovementPacketAt: 0,
-    lastAcceptedMovementAt: 0
+    lastAcceptedMovementAt: 0,
+    countedGame: false
   };
 }
 
+function CountGameForPlayer(Player) {
+  if (!Player || Player.countedGame) return;
+  Player.countedGame = true;
+  Database.query(
+    `UPDATE player_profiles
+     SET games_played = games_played + 1, updated_at = NOW()
+     WHERE user_id = $1`,
+    [Player.userId]
+  ).catch(() => {});
+}
+
 function ReassignHost(Room) {
-  if (!Room || Room.players.size === 0) return;
-  if ([...Room.players.values()].some(Player => Player.userId === Room.hostUserId)) return;
+  if (!Room || Room.players.size === 0) return false;
+  if ([...Room.players.values()].some(Player => Player.userId === Room.hostUserId)) return false;
   const Next = [...Room.players.values()].sort((Left, Right) => Left.joinedAt - Right.joinedAt)[0];
   Room.hostUserId = Next.userId;
   IO.to(Room.code).emit("room:host", { hostUserId: Room.hostUserId });
+  return true;
 }
 
 function LeaveCurrentRoom(Socket, Emit = true) {
@@ -508,55 +589,132 @@ function LeaveCurrentRoom(Socket, Emit = true) {
   if (!Player?.roomCode) return;
   const Room = Rooms.get(Player.roomCode);
   const RoomCode = Player.roomCode;
+
   if (Room) {
     Room.players.delete(Socket.id);
     if (Emit) Socket.to(RoomCode).emit("player:left", { id: Socket.id, userId: Player.userId });
-    if (Room.players.size === 0) Rooms.delete(RoomCode);
-    else ReassignHost(Room);
+    if (Room.players.size === 0) {
+      Rooms.delete(RoomCode);
+    } else {
+      ReassignHost(Room);
+      EmitRoomState(Room);
+    }
   }
+
   Socket.leave(RoomCode);
   SocketPlayers.delete(Socket.id);
 }
 
-function JoinRoom(Socket, Room) {
-  if (!Room) return { ok: false, error: "ROOM_NOT_FOUND" };
+function CanJoinRoom(Room, RandomJoin = false) {
+  if (!Room) return "ROOM_NOT_FOUND";
+  if (Room.players.size >= Room.maxPlayers) return "ROOM_FULL";
+  if (Room.started && !Room.allowLateJoin) return "LATE_JOIN_DISABLED";
+  if (RandomJoin && !Room.allowRandomJoin) return "RANDOM_JOIN_DISABLED";
+  return "";
+}
+
+function JoinRoom(Socket, Room, Options = {}) {
+  const RandomJoin = Boolean(Options.randomJoin);
   const Existing = SocketPlayers.get(Socket.id);
-  if (Existing?.roomCode === Room.code) {
+
+  if (Existing?.roomCode === Room?.code) {
     return {
       ok: true,
       room: PublicRoom(Room),
       player: PublicPlayer(Existing),
-      players: [...Room.players.values()].filter(Player => Player.socketId !== Socket.id).map(PublicPlayer)
+      players: [...Room.players.values()].map(PublicPlayer)
     };
   }
-  if (Room.players.size >= Room.maxPlayers) return { ok: false, error: "ROOM_FULL" };
+
+  const Error = CanJoinRoom(Room, RandomJoin);
+  if (Error) return { ok: false, error: Error };
+
+  if (Room && [...Room.players.values()].some(Player => Player.userId === Socket.data.account.id)) {
+    return { ok: false, error: "ACCOUNT_ALREADY_IN_ROOM" };
+  }
+
   if (Existing) LeaveCurrentRoom(Socket);
 
   const Player = PlayerRecord(Socket, Room);
   Room.players.set(Socket.id, Player);
   SocketPlayers.set(Socket.id, Player);
   Socket.join(Room.code);
-  Socket.to(Room.code).emit("player:joined", PublicPlayer(Player));
+  if (Room.started) CountGameForPlayer(Player);
 
-  Database.query(
-    `UPDATE player_profiles SET games_played = games_played + 1, updated_at = NOW() WHERE user_id = $1`,
-    [Player.userId]
-  ).catch(() => {});
+  Socket.to(Room.code).emit("player:joined", PublicPlayer(Player));
+  EmitRoomState(Room);
 
   return {
     ok: true,
     room: PublicRoom(Room),
     player: PublicPlayer(Player),
-    players: [...Room.players.values()].filter(Other => Other.socketId !== Socket.id).map(PublicPlayer)
+    players: [...Room.players.values()].map(PublicPlayer)
   };
+}
+
+function CreateOrReuseRoom(Socket, Settings = {}) {
+  const ExistingPlayer = SocketPlayers.get(Socket.id);
+  const ExistingRoom = ExistingPlayer ? Rooms.get(ExistingPlayer.roomCode) : null;
+
+  if (ExistingRoom && !ExistingRoom.started && ExistingRoom.hostUserId === Socket.data.account.id) {
+    return {
+      ok: true,
+      room: PublicRoom(ExistingRoom),
+      player: PublicPlayer(ExistingPlayer),
+      players: [...ExistingRoom.players.values()].map(PublicPlayer),
+      reused: true
+    };
+  }
+
+  if (ExistingPlayer) LeaveCurrentRoom(Socket);
+  return JoinRoom(Socket, CreateRoom(Socket.data.account, Settings));
 }
 
 function QuickJoinRoom(Socket) {
   const Candidate = [...Rooms.values()]
-    .filter(Room => Room.public && Room.players.size < Room.maxPlayers)
-    .sort((Left, Right) => Right.players.size - Left.players.size || Left.createdAt - Right.createdAt)[0];
-  const Room = Candidate || CreateRoom(Socket.data.account, true);
-  return JoinRoom(Socket, Room);
+    .filter(Room => Room.allowRandomJoin)
+    .filter(Room => Room.players.size < Room.maxPlayers)
+    .filter(Room => !Room.started || Room.allowLateJoin)
+    .sort((Left, Right) => {
+      if (Left.started !== Right.started) return Left.started ? 1 : -1;
+      return Right.players.size - Left.players.size || Left.createdAt - Right.createdAt;
+    })[0];
+
+  if (!Candidate) return { ok: false, error: "NO_AVAILABLE_ROOM" };
+  return JoinRoom(Socket, Candidate, { randomJoin: true });
+}
+
+function UpdateRoomSettings(Socket, Value = {}) {
+  const Player = SocketPlayers.get(Socket.id);
+  const Room = Player ? Rooms.get(Player.roomCode) : null;
+  if (!Player || !Room) return { ok: false, error: "NOT_IN_ROOM" };
+  if (Room.hostUserId !== Player.userId) return { ok: false, error: "HOST_ONLY" };
+  if (Room.started) return { ok: false, error: "GAME_ALREADY_STARTED" };
+
+  const Clean = CleanRoomSettings(Value, Room);
+  if (Clean.maxPlayers < Room.players.size) return { ok: false, error: "MAX_PLAYERS_TOO_LOW" };
+  Room.maxPlayers = Clean.maxPlayers;
+  Room.allowLateJoin = Clean.allowLateJoin;
+  Room.allowRandomJoin = Clean.allowRandomJoin;
+  EmitRoomState(Room);
+  return { ok: true, room: PublicRoom(Room) };
+}
+
+function StartRoom(Socket) {
+  const Player = SocketPlayers.get(Socket.id);
+  const Room = Player ? Rooms.get(Player.roomCode) : null;
+  if (!Player || !Room) return { ok: false, error: "NOT_IN_ROOM" };
+  if (Room.hostUserId !== Player.userId) return { ok: false, error: "HOST_ONLY" };
+  if (Room.started) return { ok: true, room: PublicRoom(Room), alreadyStarted: true };
+  if (Room.players.size < MIN_PLAYERS) return { ok: false, error: "NOT_ENOUGH_PLAYERS" };
+
+  Room.started = true;
+  Room.startedAt = Date.now();
+  for (const Member of Room.players.values()) CountGameForPlayer(Member);
+  const Payload = RoomPayload(Room);
+  IO.to(Room.code).emit("room:started", Payload);
+  EmitRoomState(Room);
+  return { ok: true, room: PublicRoom(Room) };
 }
 
 function CleanFinite(Value, Fallback = 0) {
@@ -572,19 +730,15 @@ function CleanMovement(Payload = {}) {
   const Animation = ["idle", "walk", "sprint"].includes(Payload.animation) ? Payload.animation : "idle";
   return {
     x: CleanFinite(Payload.x),
-    y: THREElessClamp(CleanFinite(Payload.y, 1.68), 0.25, 3.6),
+    y: Clamp(CleanFinite(Payload.y, 1.68), 0.25, 3.6),
     z: CleanFinite(Payload.z, 8),
     yaw: NormalizeAngle(CleanFinite(Payload.yaw)),
-    pitch: THREElessClamp(CleanFinite(Payload.pitch), -1.45, 1.45),
+    pitch: Clamp(CleanFinite(Payload.pitch), -1.45, 1.45),
     animation: Animation,
     sprinting: Boolean(Payload.sprinting) && Animation === "sprint",
     sequence: Math.max(0, Math.floor(CleanFinite(Payload.sequence))),
     serverTime: Date.now()
   };
-}
-
-function THREElessClamp(Value, Min, Max) {
-  return Math.min(Max, Math.max(Min, Value));
 }
 
 function MovementValid(Player, Next, Now) {
@@ -606,6 +760,8 @@ function ValidTaskId(Value) {
 
 IO.use(async (Socket, Next) => {
   try {
+    const Protocol = Number(Socket.handshake.auth?.protocol);
+    if (Protocol !== NETWORK_PROTOCOL) return Next(new Error("SESSION_OUTDATED"));
     const Token = String(Socket.handshake.auth?.token || "");
     const Account = await AccountFromToken(Token);
     if (!Account) return Next(new Error("AUTH_REQUIRED"));
@@ -620,11 +776,13 @@ IO.use(async (Socket, Next) => {
 
 IO.on("connection", Socket => {
   const Account = Socket.data.account;
+
   Socket.emit("server:ready", {
     id: Socket.id,
     userId: Account.id,
     name: Account.username,
     version: SERVER_VERSION,
+    protocol: NETWORK_PROTOCOL,
     transport: Socket.conn.transport.name,
     recovered: Socket.recovered
   });
@@ -634,13 +792,12 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("room:create", (Payload = {}, Ack = () => {}) => {
-    const Room = CreateRoom(Account, Boolean(Payload.public));
-    Ack(JoinRoom(Socket, Room));
+    Ack(CreateOrReuseRoom(Socket, Payload));
   });
 
   Socket.on("room:join", (Payload = {}, Ack = () => {}) => {
     const Code = CleanRoomCode(Payload.code);
-    if (!Code) return Ack({ ok: false, error: "ROOM_CODE_REQUIRED" });
+    if (Code.length !== ROOM_CODE_LENGTH) return Ack({ ok: false, error: "ROOM_CODE_REQUIRED" });
     return Ack(JoinRoom(Socket, Rooms.get(Code)));
   });
 
@@ -649,11 +806,19 @@ IO.on("connection", Socket => {
     Ack({ ok: true });
   });
 
+  Socket.on("room:updateSettings", (Payload = {}, Ack = () => {}) => {
+    Ack(UpdateRoomSettings(Socket, Payload));
+  });
+
+  Socket.on("room:start", (_Payload = {}, Ack = () => {}) => {
+    Ack(StartRoom(Socket));
+  });
+
   Socket.on("movement:update", Payload => {
     const Player = SocketPlayers.get(Socket.id);
     if (!Player?.roomCode) return;
     const Room = Rooms.get(Player.roomCode);
-    if (!Room) return;
+    if (!Room?.started) return;
 
     const Now = Date.now();
     if (Now - Player.lastMovementPacketAt < MOVEMENT_MIN_INTERVAL_MS) return;
@@ -678,7 +843,7 @@ IO.on("connection", Socket => {
   Socket.on("task:complete", (Payload = {}, Ack = () => {}) => {
     const Player = SocketPlayers.get(Socket.id);
     const Room = Player ? Rooms.get(Player.roomCode) : null;
-    if (!Player || !Room) return Ack({ ok: false, error: "NOT_IN_ROOM" });
+    if (!Player || !Room?.started) return Ack({ ok: false, error: "NOT_IN_ACTIVE_ROOM" });
     const TaskId = ValidTaskId(Payload.taskId);
     if (!TaskId) return Ack({ ok: false, error: "INVALID_TASK" });
     if (Room.completedTasks.has(TaskId)) return Ack({ ok: true, alreadyCompleted: true });
@@ -691,7 +856,9 @@ IO.on("connection", Socket => {
       serverTime: Date.now()
     });
     Database.query(
-      `UPDATE player_profiles SET tasks_completed = tasks_completed + 1, updated_at = NOW() WHERE user_id = $1`,
+      `UPDATE player_profiles
+       SET tasks_completed = tasks_completed + 1, updated_at = NOW()
+       WHERE user_id = $1`,
       [Player.userId]
     ).catch(() => {});
     return Ack({ ok: true });
@@ -701,9 +868,27 @@ IO.on("connection", Socket => {
     const Aisle = Math.max(0, Math.min(1_000_000, Math.floor(CleanFinite(Payload?.aisle))));
     if (!Aisle) return;
     Database.query(
-      `UPDATE player_profiles SET best_aisle = GREATEST(best_aisle, $2), updated_at = NOW() WHERE user_id = $1`,
+      `UPDATE player_profiles
+       SET best_aisle = GREATEST(best_aisle, $2), updated_at = NOW()
+       WHERE user_id = $1`,
       [Account.id, Aisle]
     ).catch(() => {});
+  });
+
+  Socket.on("profile:updateSettings", async (Payload = {}, Ack = () => {}) => {
+    const Settings = CleanProfileSettings(Payload.settings);
+    try {
+      await Database.query(
+        `UPDATE player_profiles
+         SET settings = $2::jsonb, updated_at = NOW()
+         WHERE user_id = $1`,
+        [Account.id, JSON.stringify(Settings)]
+      );
+      return Ack({ ok: true, settings: Settings });
+    } catch (Error) {
+      console.error("Settings update failed", Error);
+      return Ack({ ok: false, error: "SETTINGS_UPDATE_FAILED" });
+    }
   });
 
   Socket.on("ping:client", (ClientTime, Ack = () => {}) => {
@@ -716,23 +901,18 @@ IO.on("connection", Socket => {
 });
 
 App.get("/api/rooms", RequireAccount, (_Request, Response) => {
-  const PublicRooms = [...Rooms.values()]
-    .filter(Room => Room.public && Room.players.size < Room.maxPlayers)
-    .map(Room => ({ code: Room.code, players: Room.players.size, maxPlayers: Room.maxPlayers }));
-  Response.json({ ok: true, rooms: PublicRooms });
+  const AvailableRooms = [...Rooms.values()]
+    .filter(Room => Room.allowRandomJoin)
+    .filter(Room => Room.players.size < Room.maxPlayers)
+    .filter(Room => !Room.started || Room.allowLateJoin)
+    .map(Room => ({
+      code: Room.code,
+      players: Room.players.size,
+      maxPlayers: Room.maxPlayers,
+      started: Room.started
+    }));
+  Response.json({ ok: true, rooms: AvailableRooms });
 });
-
-const SyncInterval = setInterval(() => {
-  const Now = Date.now();
-  for (const Room of Rooms.values()) {
-    IO.to(Room.code).emit("room:sync", {
-      room: PublicRoom(Room),
-      players: [...Room.players.values()].map(PublicPlayer),
-      serverTime: Now
-    });
-  }
-}, 2000);
-SyncInterval.unref?.();
 
 const SessionCleanupInterval = setInterval(() => {
   Database.query("DELETE FROM sessions WHERE expires_at <= NOW()").catch(() => {});
@@ -742,16 +922,17 @@ SessionCleanupInterval.unref?.();
 await InitializeDatabase();
 
 HttpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`The Infinity Store server v${SERVER_VERSION} listening on port ${PORT} (${NODE_ENV})`);
+  console.log(`The Infinity Store server v${SERVER_VERSION} protocol ${NETWORK_PROTOCOL} listening on port ${PORT} (${NODE_ENV})`);
 });
 
 async function Shutdown(Signal) {
   console.log(`${Signal} received; shutting down.`);
-  clearInterval(SyncInterval);
   clearInterval(SessionCleanupInterval);
   IO.close();
   HttpServer.close(async () => {
-    try { await Database.end(); } catch {}
+    try {
+      await Database.end();
+    } catch {}
     process.exit(0);
   });
   setTimeout(() => process.exit(1), 10_000).unref();
