@@ -1,5 +1,5 @@
-const Cache = "20260824-96";
-const Version = "0.24.1";
+const Cache = "20260824-97";
+const Version = "0.25.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -63,6 +63,8 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
+  await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
+  await OptionalImport("./multiplayer-ui-r88.js", "Account and multiplayer room UI");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
