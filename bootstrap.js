@@ -1,4 +1,4 @@
-const Cache = "20260825-114";
+const Cache = "20260825-115";
 const Version = "0.25.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -23,10 +23,8 @@ for (const LinkData of FaviconLinks) {
 }
 
 const BuildVersion = document.getElementById("BuildVersion");
-if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • TRACE 1`;
+if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • HOTFIX 1`;
 window.__STORE_VERSION__ = Version;
-
-await import(`./runtime-profiler-r114.js?v=${Cache}`);
 
 async function OptionalImport(Path, Label) {
   try {
@@ -98,14 +96,13 @@ try {
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await import(`./animation-motion-authority-r18.js?v=${Cache}`);
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
+  await import(`./prestart-render-gate-r115.js?v=${Cache}`);
   await import(`./game.js?v=${Cache}`);
-  await import(`./menu-render-idle-r113.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
   await OptionalImportWithoutAttributeObservation("./multiplayer-ui-r88.js", "Account and multiplayer room UI");
-  window.__STORE_MENU_RENDER_IDLE_R113__?.SyncFpsCounter?.();
   await OptionalImport("./multiplayer-authority-r89.js", "Shared multiplayer task, clock and correction authority");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -150,4 +147,4 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.cursor = "";
 }
 
-window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-TRACE1`;
+window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-HOTFIX1`;
