@@ -4,16 +4,16 @@ const Game = window.__STORE_GAME__;
 if (!Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before visible material correction.");
 
 const Processed = new WeakMap();
+const RootStamps = new WeakMap();
+const SceneChildren = new WeakSet();
 const ExactReplacements = new Map([
-  [0x171a18, 0x687268],
-  [0x232722, 0x667266],
-  [0x171b1a, 0x626b68],
-  [0x292a26, 0x746f63],
-  [0x242628, 0x7f8986],
-  [0x2f2c28, 0x71695f],
-  [0x323a3b, 0x667472],
-  [0x282d30, 0x68757a]
+  [0x171a18, 0x687268], [0x232722, 0x667266], [0x171b1a, 0x626b68], [0x292a26, 0x746f63],
+  [0x242628, 0x7f8986], [0x2f2c28, 0x71695f], [0x323a3b, 0x667472], [0x282d30, 0x68757a]
 ]);
+
+function UiOpen() {
+  return Boolean(window.__STORE_UI_MODAL_OPEN_R96__ || window.__STORE_UI_MODAL_OPEN_R95__);
+}
 
 function SrgbHex(Material) {
   if (!Material?.color?.isColor) return null;
@@ -92,10 +92,8 @@ function CorrectMaterial(Object, Material) {
 }
 
 function ProcessMesh(Object) {
-  if (!Object?.isMesh) return;
+  if (!Object?.isMesh || !Object.material) return;
   const Current = Object.material;
-  if (!Current) return;
-
   const Root = FindModelRoot(Object);
   const RootName = Root?.name || "";
   const Imported = HasImportedRetailAncestor(Object) ? "R79" : "";
@@ -114,21 +112,47 @@ function ProcessMesh(Object) {
   Processed.set(Object, UpdatedSignature);
 }
 
-function ProcessRoot(Root) {
-  Root?.traverse?.(Object => {
+function RootStamp(Root) {
+  return Root ? `${Root.children?.length || 0}:${Root.userData?.PriceTagsR83 ? 1 : 0}:${Root.userData?.ShelfStockR83 ? 1 : 0}` : "";
+}
+
+function ProcessRoot(Root, Force = false) {
+  if (!Root?.traverse) return;
+  const Stamp = RootStamp(Root);
+  if (!Force && RootStamps.get(Root) === Stamp) return;
+  RootStamps.set(Root, Stamp);
+  Root.traverse(Object => {
     if (Object?.isMesh) ProcessMesh(Object);
   });
 }
 
-function ProcessAll() {
-  ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
+function ProcessChunk(Chunk, Force = false) {
+  if (!Chunk?.Group || Chunk.Cancelled) return;
+  ProcessRoot(Chunk.Group, Force);
 }
 
-ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
+function ProcessSceneChildren() {
+  for (const Child of Game.Scene.children) {
+    if (!Child || SceneChildren.has(Child)) continue;
+    SceneChildren.add(Child);
+    const IsChunk = [...Game.ActiveChunks.values(), ...Game.PreparedChunks.values()].some(Chunk => Chunk?.Group === Child);
+    if (!IsChunk) ProcessRoot(Child, true);
+  }
+}
+
+function ProcessAll(Force = false) {
+  if (UiOpen() && !Force) return;
+  ProcessSceneChildren();
+  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk, Force);
+  for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk, Force);
+}
+
+ProcessAll(true);
+const Interval = setInterval(() => ProcessAll(false), 2600);
+addEventListener("store-ui-performance-state", Event => {
+  if (!Event.detail?.open) setTimeout(() => ProcessAll(false), 0);
+});
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll };
-window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.20.0-R79";
+window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll, ProcessChunk };
+window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.30.2-R96";
