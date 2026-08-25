@@ -1,4 +1,4 @@
-const Cache = "20260825-112";
+const Cache = "20260825-113";
 const Version = "0.25.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -23,7 +23,7 @@ for (const LinkData of FaviconLinks) {
 }
 
 const BuildVersion = document.getElementById("BuildVersion");
-if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • PERF 2`;
+if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • PERF 3`;
 window.__STORE_VERSION__ = Version;
 
 async function OptionalImport(Path, Label) {
@@ -87,7 +87,7 @@ try {
   await import(`./idle-budget-r72.js?v=${Cache}`);
   await import(`./single-menu-pre-r24.js?v=${Cache}`);
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
-  await OptionalImport("./performance-manager.js", "Settings and performance manager");
+  await OptionalImportWithoutInterval("./performance-manager.js", "Settings and performance manager", 450, "ApplyPerformance");
   await import(`./collision-utility.js?v=${Cache}`);
   await import(`./surface-contact-utility-r17.js?v=${Cache}`);
 
@@ -97,11 +97,13 @@ try {
   await import(`./animation-motion-authority-r18.js?v=${Cache}`);
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
   await import(`./game.js?v=${Cache}`);
+  await import(`./menu-render-idle-r113.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
   await OptionalImportWithoutAttributeObservation("./multiplayer-ui-r88.js", "Account and multiplayer room UI");
+  window.__STORE_MENU_RENDER_IDLE_R113__?.SyncFpsCounter?.();
   await OptionalImport("./multiplayer-authority-r89.js", "Shared multiplayer task, clock and correction authority");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -146,4 +148,4 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.cursor = "";
 }
 
-window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-PERF2`;
+window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-PERF3`;
