@@ -68,9 +68,12 @@ function DistanceLimit(Object) {
 function SetCandidateVisible(Object, Visible) {
   if (!Object) return;
   if (Object.isPointLight) {
-    const Base = Number(Object.userData.RuntimeBaseIntensityR94 ?? Object.userData.BaseIntensity ?? 1.5);
-    Object.intensity = Visible ? Base : 0;
-    Object.visible = Visible;
+    const DynamicBase = Number.isFinite(Object.userData?.BaseIntensity)
+      ? Number(Object.userData.BaseIntensity)
+      : Number(Object.userData.RuntimeBaseIntensityR94 ?? Object.intensity ?? 1.5);
+    Object.userData.RuntimeBaseIntensityR94 = DynamicBase;
+    Object.intensity = Visible ? DynamicBase : 0;
+    Object.visible = Visible && DynamicBase > 0.0001;
     return;
   }
   Object.visible = Visible;
