@@ -6,8 +6,8 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-105";
-const Version = "0.30.2";
+const Cache = "20260825-106";
+const Version = "0.30.3";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -43,6 +43,20 @@ async function OptionalImport(Path, Label) {
   }
 }
 
+async function OptionalImportWithoutInterval(Path, Label, BlockedDelay, BlockedHandlerName) {
+  const NativeSetInterval = window.setInterval;
+  window.setInterval = function StoreBootIntervalFilter(Handler, Delay, ...Args) {
+    const Name = typeof Handler === "function" ? Handler.name : "";
+    if (Number(Delay) === Number(BlockedDelay) && Name === BlockedHandlerName) return 0;
+    return NativeSetInterval(Handler, Delay, ...Args);
+  };
+  try {
+    return await OptionalImport(Path, Label);
+  } finally {
+    window.setInterval = NativeSetInterval;
+  }
+}
+
 function ShowBootError(Error) {
   const Panel = document.getElementById("ErrorPanel");
   const Text = document.getElementById("ErrorText");
@@ -71,6 +85,8 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
+  // Protect the DOM/main menu before the heavy showroom modules begin loading.
+  await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
   await OptionalImport("./runtime-performance-buffer-r94.js", "Incremental distance and frame performance buffer");
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
   await OptionalImport("./player-nameplate-r94.js", "Compact account player nameplates");
@@ -86,7 +102,7 @@ try {
   await OptionalImport("./generator-integrity-r77.js", "Exact generated-object placement");
   await OptionalImport("./store-visual-stable-r83.js", "Stable 3D showroom dressing");
   await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
-  await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
+  await OptionalImport("./visible-materials-r77.js", "Incremental material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Culled bounded-distance store lighting");
   await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
   await OptionalImport("./store-finish-r80.js", "Rear closure and merchandising walls");
@@ -94,13 +110,13 @@ try {
   await OptionalImport("./retail-sale-displays-r84.js", "Rug-backed couches and organized sale islands");
   await OptionalImport("./retail-organization-r83.js", "Organized cart and bag bays");
   await OptionalImport("./shelf-stock-r83.js", "Stocked showroom shelves");
-  await OptionalImport("./price-tag-authority-r83.js", "Single-version compact item prices");
+  await OptionalImport("./price-tag-authority-r83.js", "Cached compact item prices");
   await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
   await OptionalImport("./solid-object-collision-r83.js", "Finalized static object collision");
   await OptionalImport("./surface-step-animation-r87.js", "Procedural carpet edge step-over animation");
-  await OptionalImport("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets");
+  await OptionalImportWithoutInterval("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets", 2200, "ProcessAll");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
-  await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
+  await OptionalImport("./presentation-ready-r83.js", "Cooperative off-screen chunk presentation gate");
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
 
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
@@ -111,7 +127,7 @@ try {
   await OptionalImport("./furniture-carry-r94.js", "Cached furniture carrying and weight authority");
   await OptionalImport("./furniture-designer-mimic-r94.js", "Event-driven Mason requests, check-ins and mimic encounters");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
-  await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
+  window.__STORE_UI_PERFORMANCE_R96__?.SyncUiState?.();
   window.__STORE_PERFORMANCE_BUFFER_R94__?.ScanNewRoots?.(true);
   window.__STORE_FURNITURE_CARRY_R94__?.RefreshIndex?.(true);
   CoreReady = true;
