@@ -4,7 +4,7 @@ const Game = window.__STORE_GAME__;
 if (!Game?.Camera || !Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.Renderer) throw new Error("Game must load before render distance lighting.");
 
 const ProcessedObjects = new WeakSet();
-const ProcessedRoots = new WeakSet();
+const RootChildCounts = new WeakMap();
 const WarmGlow = 0xffe2ad;
 const BrokenGlow = 0xa49372;
 const HousingColor = 0x7f8986;
@@ -24,18 +24,16 @@ function StabilizeGlow(Object) {
   Object.userData.DistanceCullR94 = 68;
   Object.scale.x *= 1.045;
   Object.scale.y *= 1.07;
-
-  if (Object.material) {
-    Object.material = Object.material.clone();
-    const Broken = Brightness(Object.material.color) < 0.95;
-    Object.material.color?.setHex(Broken ? BrokenGlow : WarmGlow);
-    Object.material.toneMapped = false;
-    Object.material.depthWrite = false;
-    Object.material.depthTest = true;
-    Object.material.transparent = false;
-    Object.material.opacity = 1;
-    Object.material.needsUpdate = true;
-  }
+  if (!Object.material) return;
+  Object.material = Object.material.clone();
+  const Broken = Brightness(Object.material.color) < 0.95;
+  Object.material.color?.setHex(Broken ? BrokenGlow : WarmGlow);
+  Object.material.toneMapped = false;
+  Object.material.depthWrite = false;
+  Object.material.depthTest = true;
+  Object.material.transparent = false;
+  Object.material.opacity = 1;
+  Object.material.needsUpdate = true;
 }
 
 function StabilizeHousing(Object) {
@@ -78,15 +76,15 @@ function StabilizeHorizon(Object) {
     Object.material.color?.setHex(WarmGlow);
     Object.material.toneMapped = false;
     Object.material.depthWrite = false;
-  } else if (/HorizonLightHousing/i.test(String(Object.name || ""))) {
-    Object.material.color?.setHex(HousingColor);
-  }
+  } else if (/HorizonLightHousing/i.test(String(Object.name || ""))) Object.material.color?.setHex(HousingColor);
   Object.material.needsUpdate = true;
 }
 
 function ProcessRoot(Root) {
-  if (!Root?.traverse || ProcessedRoots.has(Root)) return;
-  ProcessedRoots.add(Root);
+  if (!Root?.traverse) return;
+  const ChildCount = Root.children?.length || 0;
+  if (RootChildCounts.get(Root) === ChildCount) return;
+  RootChildCounts.set(Root, ChildCount);
   Root.traverse(Object => {
     if (Object.name === "LightGlow") StabilizeGlow(Object);
     else if (Object.name === "LightHousing") StabilizeHousing(Object);
@@ -117,6 +115,7 @@ function DiscoverNewRoots() {
   ProcessRoot(Game.Scene);
   for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk?.Group);
   for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk?.Group);
+  window.__STORE_PERFORMANCE_BUFFER_R94__?.ScanNewRoots?.();
 }
 
 DiscoverNewRoots();
