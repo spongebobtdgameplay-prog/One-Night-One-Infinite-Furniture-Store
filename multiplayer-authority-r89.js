@@ -7,9 +7,11 @@ const GameClock = document.getElementById("GameClock");
 const AppliedRemoteTasks = new Set();
 const SubmittedLocalTasks = new Set();
 const STORE_TIME_RATE = 14;
+const ROOM_TICK_MS = 180;
 let RoomClockSeconds = null;
 let RoomClockCapturedAt = performance.now();
 let LastRoomCode = "";
+let RoomTickTimer = 0;
 
 function FormatClock(Seconds) {
   const Day = 24 * 60 * 60;
@@ -53,11 +55,7 @@ function RefreshRoomClock() {
 
 function ApplySharedTasks() {
   const Room = Multiplayer.GetState().room;
-  if (!Room) {
-    AppliedRemoteTasks.clear();
-    SubmittedLocalTasks.clear();
-    return;
-  }
+  if (!Room) return;
   const Completed = new Set((Room.completedTasks || []).map(String));
   const Socket = Multiplayer.GetSocket?.();
 
@@ -105,20 +103,40 @@ function ApplyServerCorrection(Snapshot) {
   }
 }
 
-addEventListener("store-room-change", RefreshRoomClock);
-addEventListener("store-movement-correction", Event => ApplyServerCorrection(Event.detail));
+function StopRoomTick() {
+  if (!RoomTickTimer) return;
+  clearTimeout(RoomTickTimer);
+  RoomTickTimer = 0;
+}
 
-function Frame() {
+function RoomTick() {
+  RoomTickTimer = 0;
   const Room = Multiplayer.GetState().room;
-  if (Room && RoomClockSeconds !== null && GameClock) {
+  if (!Room) return;
+  if (RoomClockSeconds !== null && GameClock) {
     const Elapsed = Math.max(0, performance.now() - RoomClockCapturedAt) / 1000;
     GameClock.textContent = FormatClock(RoomClockSeconds + Elapsed * STORE_TIME_RATE);
   }
   ApplySharedTasks();
-  requestAnimationFrame(Frame);
+  RoomTickTimer = setTimeout(RoomTick, ROOM_TICK_MS);
 }
 
-RefreshRoomClock();
-requestAnimationFrame(Frame);
-window.__STORE_MULTIPLAYER_AUTHORITY_R89__ = { ApplySharedTasks, ApplyServerCorrection, RefreshRoomClock };
-window.__STORE_MULTIPLAYER_AUTHORITY_BUILD__ = "V0.25.1-R89";
+function RestartRoomTick() {
+  StopRoomTick();
+  RefreshRoomClock();
+  if (!Multiplayer.GetState().room) {
+    AppliedRemoteTasks.clear();
+    SubmittedLocalTasks.clear();
+    return;
+  }
+  ApplySharedTasks();
+  RoomTickTimer = setTimeout(RoomTick, ROOM_TICK_MS);
+}
+
+addEventListener("store-room-change", RestartRoomTick);
+addEventListener("store-movement-correction", Event => ApplyServerCorrection(Event.detail));
+addEventListener("pagehide", StopRoomTick, { once: true });
+
+RestartRoomTick();
+window.__STORE_MULTIPLAYER_AUTHORITY_R89__ = { ApplySharedTasks, ApplyServerCorrection, RefreshRoomClock, RestartRoomTick };
+window.__STORE_MULTIPLAYER_AUTHORITY_BUILD__ = "V0.25.1-R89-PERF3";
