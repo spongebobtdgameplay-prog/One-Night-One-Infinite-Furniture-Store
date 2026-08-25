@@ -120,15 +120,19 @@ function ProcessRoot(Root) {
   });
 }
 
+function ProcessChunk(Chunk) {
+  if (!Chunk?.Group || Chunk.Cancelled) return;
+  ProcessRoot(Chunk.Group);
+}
+
 function ProcessAll() {
   ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
+  for (const Chunk of Game.PreparedChunks.values()) {
+    if (Chunk?.Group?.parent !== Game.Scene) ProcessChunk(Chunk);
+  }
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll };
-window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.20.0-R79";
+window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll, ProcessChunk };
+window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.25.1-PERF1";
