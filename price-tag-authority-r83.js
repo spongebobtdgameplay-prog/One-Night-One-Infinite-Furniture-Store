@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CreateCompactPricePlacard3D, FaceCompactPricePlacardTowardAisle } from "./price-tag-utility-r81.js?v=20260824-91";
-import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-91";
-import { FriendlyItemName } from "./display-layout-utility-r74.js?v=20260824-91";
+import { CreateCompactPricePlacard3D, FaceCompactPricePlacardTowardAisle } from "./price-tag-utility-r81.js?v=20260824-92";
+import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-92";
+import { FriendlyItemName } from "./display-layout-utility-r74.js?v=20260824-92";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("The Infinity Store must load before price tags.");
@@ -200,4 +200,4 @@ const Interval = setInterval(Discover, 1000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.23.0-R84";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.23.1-R85";
