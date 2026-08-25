@@ -6,7 +6,7 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-106";
+const Cache = "20260825-107";
 const Version = "0.30.3";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -85,7 +85,6 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
-  // Protect the DOM/main menu before the heavy showroom modules begin loading.
   await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
   await OptionalImport("./runtime-performance-buffer-r94.js", "Incremental distance and frame performance buffer");
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
