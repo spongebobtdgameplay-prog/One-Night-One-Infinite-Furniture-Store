@@ -85,13 +85,13 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
-  await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
+  await OptionalImport("./ui-performance-r95.js", "R98 UI idle and low-latency authority");
   await OptionalImport("./runtime-performance-buffer-r94.js", "Incremental distance and frame performance buffer");
   await OptionalImport("./multiplayer-client-r98.js", "Single-connection event-driven multiplayer client");
   await OptionalImport("./player-nameplate-r94.js", "Compact account player nameplates");
   await OptionalImport("./session-outdated-r93.js", "Stale-session refresh guard");
   await OptionalImport("./multiplayer-ui-r98.js", "Zero-poll event-driven multiplayer lobby UI");
-  await OptionalImport("./multiplayer-authority-r89.js", "Started-game multiplayer task, clock and correction authority");
+  await OptionalImport("./multiplayer-authority-r98.js", "Event-driven multiplayer task, clock and correction authority");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
@@ -126,7 +126,7 @@ try {
   await OptionalImport("./furniture-carry-r94.js", "Cached furniture carrying and weight authority");
   await OptionalImport("./furniture-designer-mimic-r94.js", "Event-driven Mason requests, check-ins and mimic encounters");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
-  window.__STORE_UI_PERFORMANCE_R96__?.SyncUiState?.();
+  window.__STORE_UI_PERFORMANCE_R98__?.SyncUiState?.();
   window.__STORE_PERFORMANCE_BUFFER_R94__?.ScanNewRoots?.(true);
   window.__STORE_FURNITURE_CARRY_R94__?.RefreshIndex?.(true);
   CoreReady = true;
