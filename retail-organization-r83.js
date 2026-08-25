@@ -62,15 +62,12 @@ function OrganizeCarts(Chunk) {
   Carts.sort((A, B) => String(A.name).localeCompare(String(B.name)));
   const Side = Carts.reduce((Sum, Object) => Sum + Object.position.x, 0) < 0 ? -1 : 1;
   const Facing = Side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
-  const OuterX = Side * 14.65;
-  const InnerX = Side * 13.72;
-  const Z = Chunk.CenterZ;
-  const Slots = [
-    [OuterX, Z - 1.55], [OuterX, Z - 0.78], [OuterX, Z], [OuterX, Z + 0.78], [OuterX, Z + 1.55],
-    [InnerX, Z - 0.92], [InnerX, Z + 0.92]
-  ];
-  for (let Index = 0; Index < Math.min(Carts.length, Slots.length); Index += 1) {
-    Move(Carts[Index], Slots[Index][0], Slots[Index][1], Facing);
+  const X = Side * 14.35;
+  const CenterZ = Chunk.CenterZ;
+  const StartZ = CenterZ - (Math.min(Carts.length, 7) - 1) * 0.48;
+
+  for (let Index = 0; Index < Math.min(Carts.length, 7); Index += 1) {
+    Move(Carts[Index], X, StartZ + Index * 0.96, Facing);
     RefreshCollision(Chunk, Carts[Index]);
   }
 }
@@ -85,7 +82,7 @@ function OrganizeBagsAndBaskets(Chunk) {
   const Z = Chunk.CenterZ;
 
   Shelves.sort((A, B) => String(A.name).localeCompare(String(B.name)));
-  const ShelfSlots = [[Side * 14.70, Z - 1.25], [Side * 14.70, Z + 1.25]];
+  const ShelfSlots = [[Side * 14.55, Z - 1.05], [Side * 14.55, Z + 1.05]];
   for (let Index = 0; Index < Math.min(Shelves.length, ShelfSlots.length); Index += 1) {
     Move(Shelves[Index], ShelfSlots[Index][0], ShelfSlots[Index][1], Facing);
     RefreshCollision(Chunk, Shelves[Index]);
@@ -93,12 +90,26 @@ function OrganizeBagsAndBaskets(Chunk) {
 
   Baskets.sort((A, B) => String(A.name).localeCompare(String(B.name)));
   const BasketSlots = [
-    [Side * 13.45, Z - 1.05], [Side * 13.45, Z - 0.35],
-    [Side * 13.45, Z + 0.35], [Side * 13.45, Z + 1.05]
+    [Side * 13.38, Z - 1.32], [Side * 13.38, Z - 0.44],
+    [Side * 13.38, Z + 0.44], [Side * 13.38, Z + 1.32]
   ];
   for (let Index = 0; Index < Math.min(Baskets.length, BasketSlots.length); Index += 1) {
     Move(Baskets[Index], BasketSlots[Index][0], BasketSlots[Index][1], Facing);
     RefreshCollision(Chunk, Baskets[Index]);
+  }
+}
+
+function CenterRetailZoneHeaders(Chunk) {
+  const CartHeader = Chunk.Group?.getObjectByName?.("RetailZoneHeaderR82-CART-RETURN");
+  const BagHeader = Chunk.Group?.getObjectByName?.("RetailZoneHeaderR82-BAGS-+-BASKETS");
+  for (const Header of [CartHeader, BagHeader]) {
+    if (!Header) continue;
+    const Side = Header.position.x < 0 ? -1 : 1;
+    Header.position.x = Side * 16.08;
+    Header.position.y = 2.30;
+    Header.position.z = Chunk.CenterZ;
+    Header.scale.setScalar(0.88);
+    Header.updateWorldMatrix(true, true);
   }
 }
 
@@ -110,6 +121,7 @@ export async function ProcessChunk(Chunk) {
   try {
     OrganizeCarts(Chunk);
     OrganizeBagsAndBaskets(Chunk);
+    CenterRetailZoneHeaders(Chunk);
     Chunk.Group.userData.RetailOrganizationR83 = true;
   } finally {
     Processing.delete(Chunk);
@@ -126,4 +138,4 @@ const Interval = setInterval(Discover, 1100);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ORGANIZATION_R83__ = { ProcessChunk, Discover };
-window.__STORE_RETAIL_ORGANIZATION_BUILD__ = "V0.22.0-R83";
+window.__STORE_RETAIL_ORGANIZATION_BUILD__ = "V0.23.1-R85";
