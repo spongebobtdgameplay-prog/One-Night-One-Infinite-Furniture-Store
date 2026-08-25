@@ -1,13 +1,13 @@
 import * as THREE from "three";
-import { CreateDepartmentSign3D } from "./sign-utility-r73.js?v=20260824-88";
-import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-88";
-import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-88";
+import { CreateDepartmentSign3D } from "./sign-utility-r73.js?v=20260824-92";
+import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-92";
+import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-92";
 import {
   CreateOnlineSurfaceDecoration,
   CreateOnlineWallDecoration,
   OnlineDecorationKeys,
   PreloadOnlineDecorations
-} from "./online-decoration-library-r75.js?v=20260824-88";
+} from "./online-decoration-library-r75.js?v=20260824-92";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) throw new Error("Store game must load before stable visual dressing.");
@@ -43,13 +43,16 @@ async function ReplaceDepartmentSign(Chunk) {
   if (Existing) return Existing;
   const Sign = await CreateDepartmentSign3D(Chunk.Theme, {
     Name: "DepartmentHeaderR73",
-    Width: 6.55,
-    Height: 1.06,
-    Depth: 0.20
+    Width: 5.30,
+    Height: 0.84,
+    Depth: 0.17,
+    HangerLength: 0.70
   });
   Sign.userData.ChunkId = Chunk.Id;
   Sign.userData.DecorationNoCollision = false;
-  Sign.position.set(0, 2.84, Chunk.TopZ - 2.72);
+  Sign.position.set(0, 2.54, Chunk.TopZ - 2.52);
+  Sign.rotation.set(0, 0, 0);
+  Sign.updateWorldMatrix(true, true);
   Chunk.Group.add(Sign);
   return Sign;
 }
@@ -190,4 +193,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
 window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.22.0-R83";
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.23.1-R85";
