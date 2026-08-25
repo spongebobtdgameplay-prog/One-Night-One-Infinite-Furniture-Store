@@ -19,7 +19,7 @@ const GRID_CELL = 0.58;
 const MIN_TRIANGLE_AREA = 0.0007;
 const MIN_HORIZONTAL_AMOUNT = 0.08;
 const RugPattern = /CouchDisplayRugR84-|OnlineDisplayRugR75-|LargeShowroomRugR82/i;
-const LegacyPattern = /GeneratedSolid|GeometryPrecise|ExactCollisionR86|ExactCollisionR87|PreciseCollision|FurnitureCollision|RetailSellableCollision/i;
+const LegacyPattern = /GeneratedSolid|GeometryPrecise|ExactCollisionR86|PreciseCollision|FurnitureCollision|RetailSellableCollision/i;
 const StructurePattern = /Wall|Partition|Boundary|RearStore|Ceiling|Door/i;
 const TempV0 = new THREE.Vector3();
 const TempV1 = new THREE.Vector3();
@@ -27,6 +27,7 @@ const TempV2 = new THREE.Vector3();
 const TempInv = new THREE.Matrix4();
 const TempPoint = new THREE.Vector3();
 const TempClosest = new THREE.Vector3();
+const TempCross = new THREE.Vector3();
 
 function IsRugObject(Object) {
   if (!Object) return false;
@@ -62,7 +63,7 @@ function IsLowWalkableEntry(Entry) {
 }
 
 function IsLegacyManagedEntry(Entry) {
-  if (!Entry) return false;
+  if (!Entry || Entry.CoreFixR87 === true || Entry.CoreFixR86 === true) return false;
   const Object = Entry.CollisionObject || Entry.SourceModel || Entry.Model;
   if (IsManagedRoot(Object)) return true;
   return LegacyPattern.test(String(Entry.Type || ""));
@@ -191,10 +192,6 @@ function CircleHitsTriangle(PX, PZ, Radius, A, B, C) {
     PointToSegmentDistanceSquared(PX, PZ, C.x, C.z, A.x, A.z) <= RadiusSquared;
 }
 
-function TriangleGridKey(X, Z) {
-  return `${Math.floor(X / GRID_CELL)},${Math.floor(Z / GRID_CELL)}`;
-}
-
 function BuildExactFootprint(Model) {
   Model.updateWorldMatrix(true, true);
   const Triangles = [];
@@ -225,7 +222,7 @@ function BuildExactFootprint(Model) {
       TempPoint.subVectors(TempV1, TempV0);
       TempClosest.subVectors(TempV2, TempV0);
       const NormalY = Math.abs(TempPoint.x * TempClosest.z - TempPoint.z * TempClosest.x);
-      const NormalLength = Math.max(1e-6, TempPoint.clone().cross(TempClosest).length());
+      const NormalLength = Math.max(1e-6, TempCross.copy(TempPoint).cross(TempClosest).length());
       if (NormalY / NormalLength < MIN_HORIZONTAL_AMOUNT) continue;
 
       const A = { x: TempV0.x, z: TempV0.z };
@@ -369,14 +366,12 @@ export function ProcessChunk(Chunk) {
   RemoveDecorativeWindows(Chunk);
   PurgeGhostAndLegacyEntries(Chunk);
   RegisterWalkableRugs(Chunk);
-
   const Roots = CollectManagedRoots(Chunk);
   for (const Root of Roots) {
     FixDarkMaterials(Root);
     InstallExactCollision(Chunk, Root);
   }
   FixRetailZoneColors(Chunk);
-
   Chunk.Group.userData.CoreFixR87 = true;
   Chunk.Group.userData.CoreFixR86 = true;
 }
@@ -395,7 +390,7 @@ export function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 1600);
+const Interval = setInterval(ProcessAll, 2200);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
