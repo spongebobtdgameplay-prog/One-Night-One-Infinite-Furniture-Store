@@ -5,8 +5,10 @@ import { io } from "https://cdn.socket.io/4.8.1/socket.io.esm.min.js";
 
 const SERVER_URL = "https://the-infinity-store-vh88.onrender.com";
 const PLAYER_MODEL_URL = "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb";
-const TOKEN_KEY = "InfinityStoreSessionV1";
-const ROOM_KEY = "InfinityStoreRoomV1";
+const ACCOUNTS_KEY = "InfinityStoreSavedAccountsV2";
+const ACTIVE_ACCOUNT_KEY = "InfinityStoreActiveAccountV2";
+const LEGACY_TOKEN_KEY = "InfinityStoreSessionV1";
+const ROOM_KEY = "InfinityStoreRoomV2";
 const PLAYER_HEIGHT = 1.76;
 const SEND_INTERVAL_MS = 50;
 const INTERPOLATION_DELAY_MS = 115;
@@ -22,13 +24,13 @@ const SharedCompletedTasks = new Set();
 const PendingCompletedTasks = new Set();
 const TempDirection = new THREE.Vector3();
 const TempPosition = new THREE.Vector3();
+const TempPositionB = new THREE.Vector3();
 const LastSentPosition = new THREE.Vector3();
 const LastAisleReport = { Value: 0 };
 
 let Socket = null;
 let Account = null;
 let Profile = null;
-let SessionToken = localStorage.getItem(TOKEN_KEY) || "";
 let CurrentRoom = null;
 let DesiredRoomCode = localStorage.getItem(ROOM_KEY) || "";
 let Sequence = 0;
@@ -38,6 +40,58 @@ let HasLastSentPosition = false;
 let RemoteAssetPromise = null;
 let LastFrameAt = performance.now();
 let Status = "offline";
+let SessionToken = "";
+
+function LoadSavedAccounts() {
+  try {
+    const Parsed = JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || "[]");
+    if (!Array.isArray(Parsed)) return [];
+    return Parsed.filter(Item => Item && typeof Item.userId === "string" && typeof Item.username === "string" && typeof Item.token === "string");
+  } catch {
+    return [];
+  }
+}
+
+function WriteSavedAccounts(Accounts) {
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(Accounts.slice(0, 8)));
+}
+
+function PublicSavedAccounts() {
+  return LoadSavedAccounts()
+    .sort((A, B) => Number(B.lastUsedAt || 0) - Number(A.lastUsedAt || 0))
+    .map(Item => ({ userId: Item.userId, username: Item.username, lastUsedAt: Item.lastUsedAt || 0 }));
+}
+
+function SavedAccountById(UserId) {
+  return LoadSavedAccounts().find(Item => Item.userId === UserId) || null;
+}
+
+function SaveAccountSession(AccountData, Token) {
+  if (!AccountData?.id || !Token) return;
+  const Accounts = LoadSavedAccounts().filter(Item => Item.userId !== AccountData.id);
+  Accounts.unshift({
+    userId: AccountData.id,
+    username: AccountData.username,
+    token: String(Token),
+    lastUsedAt: Date.now()
+  });
+  WriteSavedAccounts(Accounts);
+  localStorage.setItem(ACTIVE_ACCOUNT_KEY, AccountData.id);
+}
+
+function RemoveSavedAccount(UserId) {
+  if (!UserId) return;
+  WriteSavedAccounts(LoadSavedAccounts().filter(Item => Item.userId !== UserId));
+  if (localStorage.getItem(ACTIVE_ACCOUNT_KEY) === UserId) localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
+}
+
+function InitialSessionToken() {
+  const ActiveId = localStorage.getItem(ACTIVE_ACCOUNT_KEY) || "";
+  const Active = SavedAccountById(ActiveId);
+  if (Active?.token) return Active.token;
+  return localStorage.getItem(LEGACY_TOKEN_KEY) || "";
+}
+SessionToken = InitialSessionToken();
 
 function Dispatch(Name, Detail = {}) {
   window.dispatchEvent(new CustomEvent(Name, { detail: Detail }));
@@ -57,14 +111,9 @@ function GetState() {
     account: Account,
     profile: Profile,
     room: CurrentRoom,
+    savedAccounts: PublicSavedAccounts(),
     remotePlayers: RemotePlayers.size
   };
-}
-
-function StoreSession(Token) {
-  SessionToken = String(Token || "");
-  if (SessionToken) localStorage.setItem(TOKEN_KEY, SessionToken);
-  else localStorage.removeItem(TOKEN_KEY);
 }
 
 async function Api(Path, Options = {}) {
@@ -72,7 +121,8 @@ async function Api(Path, Options = {}) {
   const Timeout = setTimeout(() => Controller.abort(), Options.timeout || 15_000);
   try {
     const Headers = { "Content-Type": "application/json", ...(Options.headers || {}) };
-    if (Options.auth !== false && SessionToken) Headers.Authorization = `Bearer ${SessionToken}`;
+    const Token = Options.token === undefined ? SessionToken : String(Options.token || "");
+    if (Options.auth !== false && Token) Headers.Authorization = `Bearer ${Token}`;
     const Response = await fetch(`${SERVER_URL}${Path}`, {
       method: Options.method || "GET",
       headers: Headers,
@@ -80,8 +130,9 @@ async function Api(Path, Options = {}) {
       signal: Controller.signal,
       cache: "no-store"
     });
-    let Data = null;
-    try { Data = await Response.json(); } catch { Data = { ok: false, error: "INVALID_SERVER_RESPONSE" }; }
+    let Data;
+    try { Data = await Response.json(); }
+    catch { Data = { ok: false, error: "INVALID_SERVER_RESPONSE" }; }
     if (!Response.ok && !Data?.error) Data.error = `HTTP_${Response.status}`;
     return Data;
   } catch (Error) {
@@ -92,22 +143,25 @@ async function Api(Path, Options = {}) {
   }
 }
 
-async function Register(Username, Password) {
+async function Register(Username, Password, ConfirmPassword) {
   SetStatus("authenticating");
   const Result = await Api("/api/auth/register", {
     method: "POST",
     auth: false,
-    body: { username: Username, password: Password }
+    body: { username: Username, password: Password, confirmPassword: ConfirmPassword }
   });
   if (!Result?.ok) {
     SetStatus(Account ? "online" : "offline");
     return Result;
   }
-  StoreSession(Result.token);
+  SessionToken = Result.token;
   Account = Result.account;
   Profile = null;
-  Dispatch("store-account-change", GetState());
+  SaveAccountSession(Account, SessionToken);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
+  await RefreshAccount();
   await ConnectSocket();
+  Dispatch("store-account-change", GetState());
   return Result;
 }
 
@@ -122,12 +176,14 @@ async function Login(Username, Password) {
     SetStatus(Account ? "online" : "offline");
     return Result;
   }
-  StoreSession(Result.token);
+  SessionToken = Result.token;
   Account = Result.account;
   Profile = null;
-  Dispatch("store-account-change", GetState());
+  SaveAccountSession(Account, SessionToken);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
   await RefreshAccount();
   await ConnectSocket();
+  Dispatch("store-account-change", GetState());
   return Result;
 }
 
@@ -136,7 +192,8 @@ async function RefreshAccount() {
   const Result = await Api("/api/auth/me");
   if (!Result?.ok) {
     if (Result?.error === "AUTH_REQUIRED") {
-      StoreSession("");
+      if (Account?.id) RemoveSavedAccount(Account.id);
+      SessionToken = "";
       Account = null;
       Profile = null;
       DisconnectSocket();
@@ -146,6 +203,8 @@ async function RefreshAccount() {
   }
   Account = Result.account;
   Profile = Result.profile;
+  SaveAccountSession(Account, SessionToken);
+  localStorage.removeItem(LEGACY_TOKEN_KEY);
   Dispatch("store-account-change", GetState());
   return Result;
 }
@@ -165,19 +224,56 @@ async function RestoreSession() {
   return Result;
 }
 
+async function SwitchAccount(UserId) {
+  const Saved = SavedAccountById(String(UserId || ""));
+  if (!Saved) return { ok: false, error: "SAVED_ACCOUNT_NOT_FOUND" };
+  if (Account?.id === Saved.userId && SessionToken === Saved.token) return { ok: true, account: Account, profile: Profile };
+
+  if (CurrentRoom) await LeaveRoom();
+  DisconnectSocket();
+  SessionToken = Saved.token;
+  Account = null;
+  Profile = null;
+  SetStatus("authenticating");
+  const Result = await Api("/api/auth/me", { token: Saved.token });
+  if (!Result?.ok) {
+    RemoveSavedAccount(Saved.userId);
+    SessionToken = "";
+    SetStatus("offline");
+    Dispatch("store-account-change", GetState());
+    return { ok: false, error: "SAVED_SESSION_EXPIRED" };
+  }
+  Account = Result.account;
+  Profile = Result.profile;
+  SaveAccountSession(Account, Saved.token);
+  await ConnectSocket();
+  Dispatch("store-account-change", GetState());
+  return { ok: true, account: Account, profile: Profile };
+}
+
 async function Logout() {
+  const PreviousId = Account?.id || localStorage.getItem(ACTIVE_ACCOUNT_KEY) || "";
+  if (CurrentRoom) await LeaveRoom();
   if (SessionToken) await Api("/api/auth/logout", { method: "POST", body: {} });
-  LeaveRoom().catch(() => {});
-  StoreSession("");
+  RemoveSavedAccount(PreviousId);
+  SessionToken = "";
   Account = null;
   Profile = null;
   DesiredRoomCode = "";
   localStorage.removeItem(ROOM_KEY);
+  localStorage.removeItem(ACTIVE_ACCOUNT_KEY);
   DisconnectSocket();
   RemoveAllRemotePlayers();
   SetStatus("offline");
   Dispatch("store-account-change", GetState());
   Dispatch("store-room-change", GetState());
+  return { ok: true };
+}
+
+function ForgetSavedAccount(UserId) {
+  if (Account?.id === UserId) return { ok: false, error: "ACTIVE_ACCOUNT" };
+  RemoveSavedAccount(UserId);
+  Dispatch("store-account-change", GetState());
   return { ok: true };
 }
 
@@ -220,20 +316,19 @@ async function ConnectSocket() {
     SetStatus("online");
     if (DesiredRoomCode) {
       const Result = await JoinRoom(DesiredRoomCode, false);
-      if (!Result?.ok && Result?.error === "ROOM_NOT_FOUND") {
+      if (!Result?.ok && ["ROOM_NOT_FOUND", "LATE_JOIN_DISABLED", "ROOM_FULL"].includes(Result?.error)) {
         DesiredRoomCode = "";
         localStorage.removeItem(ROOM_KEY);
       }
     }
   });
 
-  Socket.on("disconnect", () => {
-    SetStatus("reconnecting");
-  });
+  Socket.on("disconnect", () => SetStatus("reconnecting"));
 
   Socket.on("connect_error", Error => {
     if (/AUTH_REQUIRED/i.test(String(Error?.message || ""))) {
-      StoreSession("");
+      if (Account?.id) RemoveSavedAccount(Account.id);
+      SessionToken = "";
       Account = null;
       Profile = null;
       Dispatch("store-account-change", GetState());
@@ -241,9 +336,7 @@ async function ConnectSocket() {
     } else SetStatus("reconnecting");
   });
 
-  Socket.on("server:ready", Data => {
-    Dispatch("store-server-ready", Data || {});
-  });
+  Socket.on("server:ready", Data => Dispatch("store-server-ready", Data || {}));
 
   Socket.on("player:joined", Data => {
     if (!Data?.id || Data.id === Socket.id) return;
@@ -272,18 +365,27 @@ async function ConnectSocket() {
     Dispatch("store-room-change", GetState());
   });
 
+  Socket.on("room:started", Payload => {
+    if (Payload?.room) CurrentRoom = Payload.room;
+    Dispatch("store-room-change", GetState());
+    Dispatch("store-multiplayer-start", { room: CurrentRoom });
+  });
+
   Socket.on("task:completed", Payload => {
     if (Payload?.taskId) ApplyCompletedTask(Payload.taskId);
   });
 
   Socket.on("movement:correction", Snapshot => {
-    if (!Snapshot || !CurrentRoom) return;
+    if (!Snapshot || !CurrentRoom?.started) return;
     Dispatch("store-movement-correction", Snapshot);
   });
 
   await new Promise(Resolve => {
     if (Socket.connected) return Resolve();
+    let Finished = false;
     const Done = () => {
+      if (Finished) return;
+      Finished = true;
       Socket?.off("connect", Done);
       Socket?.off("connect_error", Done);
       Resolve();
@@ -305,6 +407,7 @@ function ApplyJoinResult(Result) {
   for (const Remote of Result.players || []) EnsureRemotePlayer(Remote);
   ApplyCompletedTasks(Result.room.completedTasks || []);
   Dispatch("store-room-change", GetState());
+  if (Result.room.started) queueMicrotask(() => Dispatch("store-multiplayer-start", { room: Result.room, lateJoin: true }));
   return Result;
 }
 
@@ -316,12 +419,16 @@ async function QuickJoin() {
   return ApplyJoinResult(await SocketAck("room:quickJoin", {}));
 }
 
-async function CreateRoom(IsPublic = false) {
+async function CreateRoom(Options = {}) {
   if (!Socket?.connected) {
     const Connected = await ConnectSocket();
     if (!Connected.ok) return Connected;
   }
-  return ApplyJoinResult(await SocketAck("room:create", { public: Boolean(IsPublic) }));
+  return ApplyJoinResult(await SocketAck("room:create", {
+    maxPlayers: Number(Options.maxPlayers) || 4,
+    allowLateJoin: Boolean(Options.allowLateJoin),
+    public: Options.public !== false
+  }));
 }
 
 async function JoinRoom(Code, Remember = true) {
@@ -334,14 +441,43 @@ async function JoinRoom(Code, Remember = true) {
   return Result;
 }
 
+async function UpdateRoomSettings(Options = {}) {
+  const Result = await SocketAck("room:updateSettings", {
+    maxPlayers: Number(Options.maxPlayers),
+    allowLateJoin: Boolean(Options.allowLateJoin),
+    public: Boolean(Options.public)
+  });
+  if (Result?.ok && Result.room) {
+    CurrentRoom = Result.room;
+    Dispatch("store-room-change", GetState());
+  }
+  return Result;
+}
+
+async function StartRoom() {
+  const Result = await SocketAck("room:start", {});
+  if (Result?.ok && Result.room) {
+    CurrentRoom = Result.room;
+    Dispatch("store-room-change", GetState());
+  }
+  return Result;
+}
+
 async function LeaveRoom() {
   const Result = Socket?.connected ? await SocketAck("room:leave", {}) : { ok: true };
   CurrentRoom = null;
   DesiredRoomCode = "";
   localStorage.removeItem(ROOM_KEY);
   RemoveAllRemotePlayers();
+  SharedCompletedTasks.clear();
+  PendingCompletedTasks.clear();
   Dispatch("store-room-change", GetState());
   return Result;
+}
+
+async function ListPublicRooms() {
+  if (!Account) return { ok: false, error: "AUTH_REQUIRED", count: 0, rooms: [] };
+  return await Api("/api/rooms");
 }
 
 async function PingServer() {
@@ -351,8 +487,7 @@ async function PingServer() {
   const Received = Date.now();
   if (!Result?.serverTime) return;
   const Midpoint = (Sent + Received) * 0.5;
-  const Sample = Number(Result.serverTime) - Midpoint;
-  ServerClockOffset = THREE.MathUtils.lerp(ServerClockOffset, Sample, 0.25);
+  ServerClockOffset = THREE.MathUtils.lerp(ServerClockOffset, Number(Result.serverTime) - Midpoint, 0.25);
 }
 
 function ServerNow() {
@@ -442,11 +577,7 @@ async function BuildRemoteAvatar(Record) {
     Record.Model = Model;
     Record.Mixer = new THREE.AnimationMixer(Model);
     Record.Actions = new Map();
-    const Definitions = {
-      idle: [/idle/i],
-      walk: [/walk/i, /jog/i],
-      sprint: [/run/i, /sprint/i]
-    };
+    const Definitions = { idle: [/idle/i], walk: [/walk/i, /jog/i], sprint: [/run/i, /sprint/i] };
     for (const [Name, Patterns] of Object.entries(Definitions)) {
       const Clip = PickClip(Asset.clips, Patterns);
       if (!Clip) continue;
@@ -485,6 +616,7 @@ function EnsureRemotePlayer(Data) {
     RemotePlayers.set(Data.id, Record);
     BuildRemoteAvatar(Record);
   }
+  if (Data.name) Record.name = Data.name;
   if (Data.movement) PushRemoteSnapshot(Data.id, { id: Data.id, userId: Data.userId, ...Data.movement });
   Dispatch("store-network-change", GetState());
   return Record;
@@ -536,9 +668,7 @@ function ReconcileRemotePlayers(Players) {
   for (const Data of Players || []) {
     if (!Data?.id || Data.id === Socket?.id) continue;
     Seen.add(Data.id);
-    const Record = EnsureRemotePlayer(Data);
-    if (Data.movement) PushRemoteSnapshot(Data.id, { id: Data.id, userId: Data.userId, ...Data.movement });
-    if (Record && Data.name) Record.name = Data.name;
+    EnsureRemotePlayer(Data);
   }
   for (const Id of [...RemotePlayers.keys()]) if (!Seen.has(Id)) RemoveRemotePlayer(Id);
 }
@@ -570,7 +700,6 @@ function UpdateRemotePlayer(Record, Delta) {
   Record.Mixer?.update?.(Delta);
   const TargetTime = ServerNow() - INTERPOLATION_DELAY_MS;
   const Snapshots = Record.Snapshots;
-
   while (Snapshots.length >= 3 && Snapshots[1].serverTime <= TargetTime) Snapshots.shift();
   const A = Snapshots[0];
   const B = Snapshots[1];
@@ -578,11 +707,11 @@ function UpdateRemotePlayer(Record, Delta) {
     ApplyRemoteTransform(Record, A);
     return;
   }
-
   const Span = Math.max(1, B.serverTime - A.serverTime);
   const Alpha = THREE.MathUtils.clamp((TargetTime - A.serverTime) / Span, 0, 1);
-  TempPosition.set(A.x, 0, A.z).lerp(new THREE.Vector3(B.x, 0, B.z), Alpha);
-  Record.Pivot.position.copy(TempPosition);
+  TempPosition.set(A.x, 0, A.z);
+  TempPositionB.set(B.x, 0, B.z);
+  Record.Pivot.position.copy(TempPosition.lerp(TempPositionB, Alpha));
   Record.Pivot.rotation.y = LerpAngle(A.yaw, B.yaw, Alpha);
   SetRemoteAnimation(Record, Alpha < 0.5 ? A.animation : B.animation);
 }
@@ -603,14 +732,11 @@ function LocalPitch() {
 }
 
 function SendMovement(Now) {
-  if (!Socket?.connected || !CurrentRoom || Now - LastSendAt < SEND_INTERVAL_MS) return;
+  if (!Socket?.connected || !CurrentRoom?.started || Now - LastSendAt < SEND_INTERVAL_MS) return;
   LastSendAt = Now;
   const Position = Game.Camera.position;
   let Moving = false;
-  if (HasLastSentPosition) {
-    const Distance = Math.hypot(Position.x - LastSentPosition.x, Position.z - LastSentPosition.z);
-    Moving = Distance > 0.008;
-  }
+  if (HasLastSentPosition) Moving = Math.hypot(Position.x - LastSentPosition.x, Position.z - LastSentPosition.z) > 0.008;
   LastSentPosition.copy(Position);
   HasLastSentPosition = true;
   const Sprinting = Boolean(Player.IsSprinting?.());
@@ -656,7 +782,7 @@ function ApplyCompletedTasks(Ids) {
 }
 
 function DetectLocalTaskCompletions() {
-  if (!Socket?.connected || !CurrentRoom || !Game.Tasks) return;
+  if (!Socket?.connected || !CurrentRoom?.started || !Game.Tasks) return;
   for (const Task of Game.Tasks.values()) {
     if (!Task?.Completed || SharedCompletedTasks.has(Task.Id)) continue;
     SharedCompletedTasks.add(Task.Id);
@@ -668,7 +794,7 @@ function DetectLocalTaskCompletions() {
 }
 
 function ReportAisleProgress() {
-  if (!Socket?.connected || !CurrentRoom || !Game.ChunkIndexForZ) return;
+  if (!Socket?.connected || !CurrentRoom?.started || !Game.ChunkIndexForZ) return;
   const Aisle = Math.max(0, Game.ChunkIndexForZ(Game.Camera.position.z) + 1);
   if (Aisle <= LastAisleReport.Value) return;
   LastAisleReport.Value = Aisle;
@@ -695,14 +821,19 @@ window.__STORE_MULTIPLAYER_R88__ = {
   Register,
   Login,
   Logout,
+  SwitchAccount,
+  ForgetSavedAccount,
   RestoreSession,
   RefreshAccount,
   ConnectSocket,
+  ListPublicRooms,
   QuickJoin,
   CreateRoom,
   JoinRoom,
+  UpdateRoomSettings,
+  StartRoom,
   LeaveRoom,
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.0-R88";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.26.0-R90";
