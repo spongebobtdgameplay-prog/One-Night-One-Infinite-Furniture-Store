@@ -23,7 +23,7 @@ for (const LinkData of FaviconLinks) {
 }
 
 const BuildVersion = document.getElementById("BuildVersion");
-if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
+if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • PERF 1`;
 window.__STORE_VERSION__ = Version;
 
 async function OptionalImport(Path, Label) {
@@ -46,6 +46,27 @@ async function OptionalImportWithoutInterval(Path, Label, BlockedDelay, BlockedH
     return await OptionalImport(Path, Label);
   } finally {
     window.setInterval = NativeSetInterval;
+  }
+}
+
+async function OptionalImportWithoutAttributeObservation(Path, Label) {
+  const NativeMutationObserver = window.MutationObserver;
+  if (!NativeMutationObserver) return OptionalImport(Path, Label);
+  window.MutationObserver = class StoreLeanMutationObserver extends NativeMutationObserver {
+    observe(Target, Options = {}) {
+      const LeanOptions = { ...Options };
+      if (LeanOptions.subtree && LeanOptions.childList && LeanOptions.attributes) {
+        LeanOptions.attributes = false;
+        delete LeanOptions.attributeFilter;
+        delete LeanOptions.attributeOldValue;
+      }
+      return super.observe(Target, LeanOptions);
+    }
+  };
+  try {
+    return await OptionalImport(Path, Label);
+  } finally {
+    window.MutationObserver = NativeMutationObserver;
   }
 }
 
@@ -78,7 +99,7 @@ try {
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
-  await OptionalImport("./multiplayer-ui-r88.js", "Account and multiplayer room UI");
+  await OptionalImportWithoutAttributeObservation("./multiplayer-ui-r88.js", "Account and multiplayer room UI");
   await OptionalImport("./multiplayer-authority-r89.js", "Shared multiplayer task, clock and correction authority");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -124,4 +145,4 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.cursor = "";
 }
 
-window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}`;
+window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-PERF1`;
