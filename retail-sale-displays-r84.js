@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CreateOnlineRug } from "./online-decoration-library-r75.js?v=20260824-91";
+import { CreateOnlineRug } from "./online-decoration-library-r75.js?v=20260824-92";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before retail sale displays.");
@@ -13,45 +13,28 @@ const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-202
 
 const Assets = Object.freeze({
   CoffeeTable: {
-    Url: `${KayKitBase}table_low.gltf`,
-    Label: "COFFEE TABLE",
-    Price: "149.99",
-    Height: 0.48,
-    MaxWidth: 1.70,
-    MaxDepth: 1.15,
+    Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99",
+    Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15,
     Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0"
   },
   SideTable: {
-    Url: `${KayKitBase}table_small.gltf`,
-    Label: "SIDE TABLE",
-    Price: "89.99",
-    Height: 0.62,
-    MaxWidth: 0.95,
-    MaxDepth: 0.95,
+    Url: `${KayKitBase}table_small.gltf`, Label: "SIDE TABLE", Price: "89.99",
+    Height: 0.62, MaxWidth: 0.95, MaxDepth: 0.95,
     Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0"
   },
   DiningTable: {
-    Url: `${KayKitBase}table_medium_long.gltf`,
-    Label: "DINING TABLE",
-    Price: "329.99",
-    Height: 0.76,
-    MaxWidth: 2.30,
-    MaxDepth: 1.25,
+    Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99",
+    Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25,
     Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0"
   },
   BoxShelf: {
-    Url: `${KenneyBase}shelf-boxes.glb`,
-    Label: "FLAT-PACK BOXES",
-    Price: "129.99",
-    Height: 1.48,
-    MaxWidth: 1.55,
-    MaxDepth: 0.95,
+    Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99",
+    Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95,
     Source: "https://kenney.nl/assets/mini-market"
   }
 });
 
 const CouchNames = new Set(["Couch_Large1", "Couch_L"]);
-const TempVector = new THREE.Vector3();
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -147,18 +130,19 @@ function CanPlace(Chunk, Candidate, Occupied) {
   if (Candidate.min.z < Chunk.BottomZ + 0.62 || Candidate.max.z > Chunk.TopZ - 0.62) return false;
   for (const Box of Chunk.StructureBounds || []) if (OverlapXZ(Candidate, Box, 0.12)) return false;
   for (const Box of Chunk.ReservedBounds || []) if (OverlapXZ(Candidate, Box, 0.14)) return false;
-  for (const Box of Occupied) if (OverlapXZ(Candidate, Box, 0.22)) return false;
+  for (const Box of Occupied) if (OverlapXZ(Candidate, Box, 0.24)) return false;
   return true;
 }
 
 function CandidateSlots(Chunk, Seed = 0) {
   const Z = Chunk.CenterZ;
   const Slots = [
-    [-10.8, Z - 6.2], [10.8, Z + 6.2],
-    [-12.4, Z + 5.1], [12.4, Z - 5.1],
-    [-9.5, Z + 2.8], [9.5, Z - 2.8],
-    [-12.8, Z - 1.2], [12.8, Z + 1.2],
-    [-8.9, Z - 7.4], [8.9, Z + 7.4]
+    [-5.25, Z - 5.8], [5.25, Z + 5.8],
+    [-5.25, Z + 3.1], [5.25, Z - 3.1],
+    [-8.15, Z - 1.1], [8.15, Z + 1.1],
+    [-10.85, Z + 5.7], [10.85, Z - 5.7],
+    [-12.45, Z - 2.7], [12.45, Z + 2.7],
+    [-7.15, Z + 7.2], [7.15, Z - 7.2]
   ];
   const Shift = ((Seed % Slots.length) + Slots.length) % Slots.length;
   return [...Slots.slice(Shift), ...Slots.slice(0, Shift)];
@@ -195,19 +179,37 @@ async function PlaceSaleAsset(Chunk, Key, Name, Seed, RotationY, Occupied) {
 
 function SalePlans(Chunk) {
   const Theme = String(Chunk.Theme || "").toUpperCase();
-  const Plans = [];
-  if (Theme === "LIVING ROOM" || Theme === "SHOWROOM" || Theme === "CLEARANCE") {
-    Plans.push({ Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Chunk.Index % 2 ? Math.PI * 0.5 : 0 });
-    if (Math.abs(Chunk.Index) % 2 === 0) Plans.push({ Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 });
-  } else if (Theme === "BEDROOMS") {
-    Plans.push({ Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 });
-  } else if (Theme === "KITCHENS") {
-    Plans.push({ Key: "DiningTable", Name: "RetailDiningTableR84", RotationY: Chunk.Index % 2 ? Math.PI * 0.5 : 0 });
-  }
-  if (Theme === "STORAGE" || Theme === "WAREHOUSE" || Theme === "CLEARANCE" || Math.abs(Chunk.Index) % 5 === 4) {
-    Plans.push({ Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: Chunk.Index % 2 ? Math.PI * 0.5 : -Math.PI * 0.5 });
-  }
-  return Plans.slice(0, 2);
+  const Flip = Chunk.Index % 2 === 0 ? 0 : Math.PI * 0.5;
+
+  if (Theme === "LIVING ROOM") return [
+    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip },
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
+    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip + Math.PI * 0.5 }
+  ];
+  if (Theme === "SHOWROOM" || Theme === "CLEARANCE") return [
+    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip },
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
+    { Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: Math.PI * 0.5 }
+  ];
+  if (Theme === "BEDROOMS") return [
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: Math.PI },
+    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip }
+  ];
+  if (Theme === "KITCHENS") return [
+    { Key: "DiningTable", Name: "RetailDiningTableR84", RotationY: Flip },
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
+    { Key: "DiningTable", Name: "RetailDiningTableR84", RotationY: Flip + Math.PI * 0.5 }
+  ];
+  if (Theme === "STORAGE" || Theme === "WAREHOUSE") return [
+    { Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: Math.PI * 0.5 },
+    { Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: -Math.PI * 0.5 },
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 }
+  ];
+  return [
+    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
+    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip }
+  ];
 }
 
 function ExistingSaleItems(Chunk) {
@@ -218,36 +220,37 @@ async function EnsureSaleItems(Chunk) {
   if (!Chunk.Group.userData?.RetailShowroomR79) return false;
   const Plans = SalePlans(Chunk);
   const Existing = ExistingSaleItems(Chunk);
-  if (Existing.length >= Plans.length) {
+  if (Existing.length === Plans.length) {
     Chunk.Group.userData.RetailSaleItemsR84 = true;
     return true;
   }
 
-  for (const Object of Existing) {
-    const Index = Chunk.ReservedBounds.findIndex(Box => {
-      if (!Box?.min || !Box?.max) return false;
-      const ObjectBox = BoundsOf(Object);
-      const A = Box.getCenter(TempVector);
-      const B = ObjectBox.getCenter(new THREE.Vector3());
-      return A.distanceToSquared(B) < 0.02 * 0.02;
-    });
-    if (Index >= 0) Chunk.ReservedBounds.splice(Index, 1);
-    Object.parent?.remove(Object);
+  for (const Object of Existing) Object.parent?.remove(Object);
+  for (let Index = Chunk.ReservedBounds.length - 1; Index >= 0; Index -= 1) {
+    const Box = Chunk.ReservedBounds[Index];
+    if (Existing.some(Object => OverlapXZ(Box, BoundsOf(Object), -0.01))) Chunk.ReservedBounds.splice(Index, 1);
   }
 
-  const Occupied = OccupiedBounds(Chunk).filter(Box => !Existing.some(Object => OverlapXZ(Box, BoundsOf(Object), -0.01)));
+  const Occupied = OccupiedBounds(Chunk);
   let Added = 0;
   for (let Index = 0; Index < Plans.length; Index += 1) {
     const Plan = Plans[Index];
     try {
-      const Object = await PlaceSaleAsset(Chunk, Plan.Key, `${Plan.Name}-${Index}`, Math.abs(Chunk.Index) * 3 + Index * 2, Plan.RotationY, Occupied);
+      const Object = await PlaceSaleAsset(
+        Chunk,
+        Plan.Key,
+        `${Plan.Name}-${Index}`,
+        Math.abs(Chunk.Index) * 5 + Index * 3,
+        Plan.RotationY,
+        Occupied
+      );
       if (Object) Added += 1;
     } catch (Error) {
       console.warn(`Retail sale asset ${Plan.Key} unavailable`, Error);
     }
   }
-  Chunk.Group.userData.RetailSaleItemsR84 = Added >= Plans.length;
-  return Added >= Plans.length;
+  Chunk.Group.userData.RetailSaleItemsR84 = Added === Plans.length;
+  return Added === Plans.length;
 }
 
 function CouchSignature(Model) {
@@ -334,4 +337,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.23.0-R84";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.23.1-R85";
