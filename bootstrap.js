@@ -6,7 +6,7 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-101";
+const Cache = "20260825-102";
 const Version = "0.28.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
