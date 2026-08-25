@@ -1,4 +1,5 @@
 const Game = window.__STORE_GAME__;
+const Player = window.__STORE_PLAYER__;
 if (!Game?.Renderer) throw new Error("Game renderer must exist before UI performance authority.");
 
 const Style = document.createElement("style");
@@ -36,9 +37,11 @@ const WatchedIds = ["BootScreen", "NetworkOverlayR93", "RuntimeMainMenuR83", "Se
 const Observers = [];
 let UiModalOpen = false;
 let LastWorldRenderAt = -Infinity;
+let LastPlayerRenderAt = -Infinity;
 let FeedbackTimer = 0;
 const UI_WORLD_FRAME_MS = 250;
 const OriginalRender = Game.Renderer.render.bind(Game.Renderer);
+const OriginalPlayerRender = typeof Player?.Render === "function" ? Player.Render.bind(Player) : null;
 
 function IsElementOpen(Id, Element) {
   if (!Element) return false;
@@ -51,9 +54,7 @@ function IsElementOpen(Id, Element) {
 }
 
 function ComputeOpen() {
-  for (const Id of WatchedIds) {
-    if (IsElementOpen(Id, document.getElementById(Id))) return true;
-  }
+  for (const Id of WatchedIds) if (IsElementOpen(Id, document.getElementById(Id))) return true;
   return false;
 }
 
@@ -66,6 +67,7 @@ function SyncUiState() {
   document.documentElement.classList.toggle("StoreUiModalOpenR96", Next);
   if (!Next) {
     LastWorldRenderAt = -Infinity;
+    LastPlayerRenderAt = -Infinity;
     Feedback.classList.remove("Show");
   }
   window.dispatchEvent(new CustomEvent("store-ui-performance-state", { detail: { open: Next } }));
@@ -92,6 +94,15 @@ const FastUiRender = function FastUiRender(Scene, Camera) {
   return OriginalRender(Scene, Camera);
 };
 Game.Renderer.render = FastUiRender;
+
+const FastUiPlayerRender = OriginalPlayerRender ? function FastUiPlayerRender(Renderer, Scene, Camera) {
+  if (!UiModalOpen) return OriginalPlayerRender(Renderer, Scene, Camera);
+  const Now = performance.now();
+  if (Now - LastPlayerRenderAt < UI_WORLD_FRAME_MS) return;
+  LastPlayerRenderAt = Now;
+  return OriginalPlayerRender(Renderer, Scene, Camera);
+} : null;
+if (FastUiPlayerRender) Player.Render = FastUiPlayerRender;
 
 function ShowFeedback(Text, Duration = 1400) {
   clearTimeout(FeedbackTimer);
@@ -150,6 +161,7 @@ addEventListener("pagehide", () => {
   for (const Observer of Observers) Observer.disconnect();
   clearTimeout(FeedbackTimer);
   if (Game.Renderer.render === FastUiRender) Game.Renderer.render = OriginalRender;
+  if (FastUiPlayerRender && Player.Render === FastUiPlayerRender) Player.Render = OriginalPlayerRender;
 }, { once: true });
 
 window.__STORE_UI_PERFORMANCE_R95__ = {
@@ -159,4 +171,4 @@ window.__STORE_UI_PERFORMANCE_R95__ = {
   GetWorldUiFps: () => 4
 };
 window.__STORE_UI_PERFORMANCE_R96__ = window.__STORE_UI_PERFORMANCE_R95__;
-window.__STORE_UI_PERFORMANCE_BUILD__ = "V0.30.2-R96";
+window.__STORE_UI_PERFORMANCE_BUILD__ = "V0.30.3-R96";
