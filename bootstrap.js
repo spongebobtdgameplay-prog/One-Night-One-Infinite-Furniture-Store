@@ -6,8 +6,8 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-102";
-const Version = "0.28.0";
+const Cache = "20260825-103";
+const Version = "0.30.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -54,7 +54,7 @@ let CoreReady = false;
 
 try {
   await import("./loading-prewarm-r38.js?v=20260823-33");
-  await OptionalImport("./three-text-utility-r73.js", "3D text utility");
+  await OptionalImport("./three-text-utility-r73.js", "Optimized 3D text utility");
   await import(`./idle-budget-r72.js?v=${Cache}`);
   await import(`./single-menu-pre-r24.js?v=${Cache}`);
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
@@ -71,7 +71,9 @@ try {
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
+  await OptionalImport("./runtime-performance-buffer-r94.js", "Incremental distance and frame performance buffer");
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
+  await OptionalImport("./player-nameplate-r94.js", "Compact account player nameplates");
   await OptionalImport("./session-outdated-r93.js", "Stale-session refresh guard");
   await OptionalImport("./multiplayer-ui-r93.js", "Stable account, server browser and multiplayer lobby UI");
   await OptionalImport("./multiplayer-authority-r89.js", "Started-game multiplayer task, clock and correction authority");
@@ -85,7 +87,7 @@ try {
   await OptionalImport("./store-visual-stable-r83.js", "Stable 3D showroom dressing");
   await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
   await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
-  await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
+  await OptionalImport("./render-distance-lighting-r74.js", "Culled bounded-distance store lighting");
   await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
   await OptionalImport("./store-finish-r80.js", "Rear closure and merchandising walls");
   await OptionalImport("./retail-zones-r82.js", "Real cart, bag and large-rug retail zones");
@@ -95,7 +97,7 @@ try {
   await OptionalImport("./price-tag-authority-r83.js", "Single-version compact item prices");
   await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
   await OptionalImport("./solid-object-collision-r83.js", "Finalized static object collision");
-  await OptionalImport("./surface-step-animation-r87.js", "Dedicated carpet step animation utility");
+  await OptionalImport("./surface-step-animation-r87.js", "Procedural carpet edge step-over animation");
   await OptionalImport("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
   await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
@@ -105,8 +107,11 @@ try {
   await import(`./movement-authority-r30.js?v=${Cache}`);
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
-  await OptionalImport("./creepy-hud-r93.js", "Creepy in-game HUD presentation");
+  await OptionalImport("./creepy-hud-r93.js", "Lean creepy in-game HUD presentation");
+  await OptionalImport("./furniture-carry-r94.js", "Furniture carrying and weight movement authority");
+  await OptionalImport("./furniture-designer-mimic-r94.js", "Mason furniture requests, check-ins and mimic encounters");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
+  window.__STORE_PERFORMANCE_BUFFER_R94__?.ScanNewRoots?.();
   CoreReady = true;
 } catch (Error) {
   console.error("Core store boot failed.", Error);
