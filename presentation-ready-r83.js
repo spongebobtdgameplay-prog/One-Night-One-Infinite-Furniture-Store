@@ -13,6 +13,10 @@ const RetailNames = new Set([
   "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79"
 ]);
 
+function UiOpen() {
+  return Boolean(window.__STORE_UI_MODAL_OPEN_R96__ || window.__STORE_UI_MODAL_OPEN_R95__);
+}
+
 function SellableCount(Chunk) {
   const AuthorityCount = window.__STORE_COMPACT_PRICE_TAGS_R83__?.CountSellable?.(Chunk);
   if (Number.isFinite(AuthorityCount)) return AuthorityCount;
@@ -82,11 +86,10 @@ function RearFinished(Chunk) {
 function RemoveTerminalBeacons(Chunk) {
   for (const Task of Chunk.TaskRecords || []) {
     const Root = Task?.Object;
-    if (!Root?.traverse) continue;
+    if (!Root?.traverse || Root.userData.NoBeaconR83) continue;
     const Remove = [];
     Root.traverse(Object => {
-      if (!Object?.isMesh) return;
-      if (String(Object.geometry?.type || "") === "SphereGeometry") Remove.push(Object);
+      if (Object?.isMesh && String(Object.geometry?.type || "") === "SphereGeometry") Remove.push(Object);
     });
     for (const Object of Remove) Object.parent?.remove(Object);
     Root.userData.NoBeaconR83 = true;
@@ -99,25 +102,28 @@ function CoreReady(Chunk) {
   const ShelfStocked = window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ?? Boolean(Chunk.Group.userData?.ShelfStockR83);
   const SaleDisplaysReady = window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk) ?? false;
   return Boolean(
-    Stable.StableFor >= 950 &&
+    Stable.StableFor >= 800 &&
     Chunk.Group.userData?.WorldPolishR72 &&
     Chunk.Group.userData?.VisualRedesignR76 &&
     Chunk.Group.userData?.RetailShowroomR79 &&
     Chunk.Group.userData?.RetailZonesR82 &&
     Chunk.Group.userData?.RetailOrganizationR83 &&
     Chunk.Group.userData?.CoreFixR86 &&
-    ShelfStocked &&
-    SaleDisplaysReady &&
-    Chunk.Group.userData?.PriceTagsR83 &&
-    PartitionsFinished(Chunk) &&
-    RearFinished(Chunk) &&
-    CompactTagCount(Chunk) >= Stable.Count &&
-    !HasVisibleLegacyPriceSign(Chunk)
+    ShelfStocked && SaleDisplaysReady && Chunk.Group.userData?.PriceTagsR83 &&
+    PartitionsFinished(Chunk) && RearFinished(Chunk) &&
+    CompactTagCount(Chunk) >= Stable.Count && !HasVisibleLegacyPriceSign(Chunk)
   );
 }
 
 function Delay(Milliseconds) {
   return new Promise(Resolve => setTimeout(Resolve, Milliseconds));
+}
+
+function YieldMainThread() {
+  return new Promise(Resolve => {
+    if (typeof requestIdleCallback === "function") requestIdleCallback(() => Resolve(), { timeout: 40 });
+    else setTimeout(Resolve, 16);
+  });
 }
 
 async function RunWorldPasses(Chunk) {
@@ -132,17 +138,20 @@ async function RunWorldPasses(Chunk) {
   const CoreFix = window.__STORE_CORE_FIX_R86__;
 
   if (Visual?.ProcessChunk) await Visual.ProcessChunk(Chunk);
+  await YieldMainThread();
   if (Retail?.ProcessChunk) await Retail.ProcessChunk(Chunk);
   if (Zones?.ProcessChunk) await Zones.ProcessChunk(Chunk);
   if (SaleDisplays?.ProcessChunk) await SaleDisplays.ProcessChunk(Chunk);
+  await YieldMainThread();
   if (Organize?.ProcessChunk) await Organize.ProcessChunk(Chunk);
   if (ShelfStock?.ProcessChunk) await ShelfStock.ProcessChunk(Chunk);
   Finish?.ProcessChunk?.(Chunk);
   if (Chunk.Index === 0) await Finish?.EnsureRearClosure?.();
+  await YieldMainThread();
   await Tags?.RebuildChunk?.(Chunk);
   RemoveTerminalBeacons(Chunk);
   window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
-  window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessAll?.();
+  window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessChunk?.(Chunk);
   CoreFix?.ProcessChunk?.(Chunk);
 }
 
@@ -152,17 +161,18 @@ export async function FinalizeChunk(Chunk) {
   try {
     const Started = performance.now();
     let Pass = 0;
-    while (!CoreReady(Chunk) && performance.now() - Started < 9000) {
+    while (!CoreReady(Chunk) && performance.now() - Started < 7000) {
       if (Pass % 2 === 0) await RunWorldPasses(Chunk);
       UpdateStability(Chunk);
-      await Delay(Pass < 7 ? 90 : 150);
+      await Delay(Pass < 5 ? 100 : 170);
+      await YieldMainThread();
       Pass += 1;
     }
 
     await RunWorldPasses(Chunk);
-    await Delay(140);
+    await Delay(120);
     UpdateStability(Chunk);
-    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R86 fix pass.`);
+    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R96 pass.`);
 
     Chunk.Group.userData.PresentationReadyR83 = true;
     Chunk.Group.userData.PresentationReadyR82 = true;
@@ -170,6 +180,7 @@ export async function FinalizeChunk(Chunk) {
     window.__STORE_SOLID_OBJECT_COLLISION_R83__?.ProcessChunk?.(Chunk, true);
     window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
     window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
+    window.__STORE_FURNITURE_CARRY_R94__?.RefreshIndex?.(true);
   } finally {
     Finalizing.delete(Chunk);
   }
@@ -179,7 +190,10 @@ async function PrimeBootWorld() {
   const Chunks = [];
   for (const Chunk of Game.ActiveChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled) Chunks.push(Chunk);
   for (const Chunk of Game.PreparedChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled && !Chunks.includes(Chunk)) Chunks.push(Chunk);
-  await Promise.allSettled(Chunks.map(Chunk => FinalizeChunk(Chunk)));
+  for (const Chunk of Chunks) {
+    await FinalizeChunk(Chunk);
+    await YieldMainThread();
+  }
 }
 
 await PrimeBootWorld();
@@ -193,16 +207,21 @@ Game.PreparedChunks.get = function(Index) {
 };
 
 function Discover() {
+  if (UiOpen() || document.hidden) return;
   for (const Chunk of Game.PreparedChunks.values()) {
     if (Chunk?.Ready && !Chunk.Cancelled && !Chunk.Group?.userData?.PresentationReadyR83) {
       FinalizeChunk(Chunk).catch(Error => console.warn("Prepared chunk presentation failed", Error));
+      break;
     }
   }
 }
 
 Discover();
-const Interval = setInterval(Discover, 180);
+const Interval = setInterval(Discover, 650);
+addEventListener("store-ui-performance-state", Event => {
+  if (!Event.detail?.open) setTimeout(Discover, 0);
+});
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.24.0-R86";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.30.2-R96";
