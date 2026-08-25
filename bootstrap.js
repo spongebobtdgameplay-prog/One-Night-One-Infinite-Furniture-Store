@@ -1,4 +1,4 @@
-const Cache = "20260824-98";
+const Cache = "20260825-111";
 const Version = "0.25.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -32,6 +32,20 @@ async function OptionalImport(Path, Label) {
   } catch (Error) {
     console.warn(`${Label} unavailable; continuing without it.`, Error);
     return null;
+  }
+}
+
+async function OptionalImportWithoutInterval(Path, Label, BlockedDelay, BlockedHandlerName) {
+  const NativeSetInterval = window.setInterval;
+  window.setInterval = function StoreImportIntervalFilter(Handler, Delay, ...Args) {
+    const Name = typeof Handler === "function" ? Handler.name : "";
+    if (Number(Delay) === Number(BlockedDelay) && Name === BlockedHandlerName) return 0;
+    return NativeSetInterval(Handler, Delay, ...Args);
+  };
+  try {
+    return await OptionalImport(Path, Label);
+  } finally {
+    window.setInterval = NativeSetInterval;
   }
 }
 
@@ -83,11 +97,11 @@ try {
   await OptionalImport("./retail-sale-displays-r84.js", "Rug-backed couches and organized sale islands");
   await OptionalImport("./retail-organization-r83.js", "Organized cart and bag bays");
   await OptionalImport("./shelf-stock-r83.js", "Stocked showroom shelves");
-  await OptionalImport("./price-tag-authority-r83.js", "Single-version compact item prices");
+  await OptionalImportWithoutInterval("./price-tag-authority-r83.js", "Single-version compact item prices", 1000, "Discover");
   await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
   await OptionalImport("./solid-object-collision-r83.js", "Finalized static object collision");
   await OptionalImport("./surface-step-animation-r87.js", "Dedicated carpet step animation utility");
-  await OptionalImport("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets");
+  await OptionalImportWithoutInterval("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets", 480, "ProcessAll");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
   await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
