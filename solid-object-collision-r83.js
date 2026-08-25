@@ -109,11 +109,12 @@ function ObjectKind(Object) {
   if (Object?.userData?.RetailSellableR84) return "RetailFurniture";
   if (Name === "DepartmentHeaderR73") return "DepartmentSign";
   if (Name.startsWith("CompactPriceTagR83-")) return "FurnitureSign";
-  if (Name.startsWith("CouchDisplayRugR84-")) return "FloorSurface";
+  if (Name.startsWith("CouchDisplayRugR84-")) return "";
   if (Name.startsWith("OnlineChunkDecorationR76-")) return "FloorDecoration";
   if (Name.startsWith("OnlineSurfaceDecorationR76-")) return "SurfaceDecoration";
   if (Name.startsWith("OnlineWallDecorationR76-")) return "WallDecoration";
-  if (Name.startsWith("OnlineDisplayRugR75-") || Name === "LargeShowroomRugR82") return "FloorSurface";
+  if (Name.startsWith("OnlineDisplayRugR75-") || Name === "LargeShowroomRugR82") return "";
+  if (Object?.userData?.DecorationKind === "Rug" || Object?.userData?.DecorationKind === "LargeShowroomRug") return "";
   if (Name === "Houseplant_3") return "Plant";
   if (Name === "WarehouseBoxes" && Object.isInstancedMesh) return "WarehouseBoxes";
   if (Name === "Ceiling") return "Ceiling";
@@ -154,6 +155,7 @@ export function ProcessChunk(Chunk, Force = false) {
   Chunk.Group.traverse(Object => {
     const Kind = ObjectKind(Object);
     if (Kind) Install(Object, Chunk, Kind);
+    else if (Managed.has(Object)) RemoveManaged(Object);
   });
   if (Chunk.Group.userData?.PresentationReadyR83) Chunk.Group.userData.SolidCollisionFinalR83 = true;
 }
@@ -180,4 +182,4 @@ const Interval = setInterval(() => ProcessAll(false), 1100);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SOLID_OBJECT_COLLISION_R83__ = { ProcessAll, ProcessChunk };
-window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.23.0-R84";
+window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.24.0-R86";
