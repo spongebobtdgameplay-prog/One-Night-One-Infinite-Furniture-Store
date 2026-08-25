@@ -215,12 +215,9 @@ function Render() {
 function Finish(Mode) {
   if (!Gate || Gate.dataset.finishing === "1") return;
   Gate.dataset.finishing = "1";
-  Gate.classList.add("Leaving");
-  setTimeout(() => {
-    Gate.remove();
-    ResolveGate?.({ mode: Mode, account: ActiveAccount });
-    window.dispatchEvent(new CustomEvent("store-account-gate-complete", { detail: { mode: Mode, account: ActiveAccount } }));
-  }, 180);
+  Gate.remove();
+  ResolveGate?.({ mode: Mode, account: ActiveAccount });
+  window.dispatchEvent(new CustomEvent("store-account-gate-complete", { detail: { mode: Mode, account: ActiveAccount } }));
 }
 
 async function VerifySavedAccount(UserId) {
@@ -355,4 +352,4 @@ window.__STORE_ACCOUNT_GATE_R92__ = {
     Render();
   }
 };
-window.__STORE_ACCOUNT_GATE_BUILD__ = "V0.27.0-R92";
+window.__STORE_ACCOUNT_GATE_BUILD__ = "V0.30.1-R95";
