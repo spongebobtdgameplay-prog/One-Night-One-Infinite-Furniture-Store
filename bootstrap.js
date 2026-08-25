@@ -1,4 +1,4 @@
-const Cache = "20260825-111";
+const Cache = "20260825-112";
 const Version = "0.25.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -23,7 +23,7 @@ for (const LinkData of FaviconLinks) {
 }
 
 const BuildVersion = document.getElementById("BuildVersion");
-if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • PERF 1`;
+if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • PERF 2`;
 window.__STORE_VERSION__ = Version;
 
 async function OptionalImport(Path, Label) {
@@ -35,11 +35,13 @@ async function OptionalImport(Path, Label) {
   }
 }
 
-async function OptionalImportWithoutInterval(Path, Label, BlockedDelay, BlockedHandlerName) {
+async function OptionalImportWithoutInterval(Path, Label, BlockedDelay, BlockedHandlerName = "") {
   const NativeSetInterval = window.setInterval;
   window.setInterval = function StoreImportIntervalFilter(Handler, Delay, ...Args) {
     const Name = typeof Handler === "function" ? Handler.name : "";
-    if (Number(Delay) === Number(BlockedDelay) && Name === BlockedHandlerName) return 0;
+    const DelayMatches = Number(Delay) === Number(BlockedDelay);
+    const HandlerMatches = !BlockedHandlerName || Name === BlockedHandlerName;
+    if (DelayMatches && HandlerMatches) return 0;
     return NativeSetInterval(Handler, Delay, ...Args);
   };
   try {
@@ -104,12 +106,11 @@ try {
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
-  await OptionalImport("./precision-collision-v2.js", "Precise collision");
-  await import(`./precise-collision-authority-r27.js?v=${Cache}`);
+
   await import(`./world-polish-r72.js?v=${Cache}`);
   await OptionalImport("./generator-integrity-r77.js", "Exact generated-object placement");
   await OptionalImport("./store-visual-stable-r83.js", "Stable 3D showroom dressing");
-  await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
+  await OptionalImportWithoutInterval("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup", 800, "CleanAll");
   await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
   await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
@@ -119,8 +120,8 @@ try {
   await OptionalImport("./retail-organization-r83.js", "Organized cart and bag bays");
   await OptionalImport("./shelf-stock-r83.js", "Stocked showroom shelves");
   await OptionalImportWithoutInterval("./price-tag-authority-r83.js", "Single-version compact item prices", 1000, "Discover");
-  await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
-  await OptionalImport("./solid-object-collision-r83.js", "Finalized static object collision");
+  await OptionalImportWithoutInterval("./retail-zone-collision-r82.js", "Height-aware retail-zone collision", 260, "ProcessAll");
+  await OptionalImportWithoutInterval("./solid-object-collision-r83.js", "Finalized static object collision", 1100);
   await OptionalImport("./surface-step-animation-r87.js", "Dedicated carpet step animation utility");
   await OptionalImportWithoutInterval("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets", 480, "ProcessAll");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
@@ -145,4 +146,4 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.cursor = "";
 }
 
-window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-PERF1`;
+window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-PERF2`;
