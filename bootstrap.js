@@ -6,8 +6,8 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-107";
-const Version = "0.30.3";
+const Cache = "20260825-108";
+const Version = "0.30.4";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -88,6 +88,7 @@ try {
   await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
   await OptionalImport("./runtime-performance-buffer-r94.js", "Incremental distance and frame performance buffer");
   await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
+  await OptionalImport("./multiplayer-network-guard-r97.js", "Single-flight WebSocket multiplayer network guard");
   await OptionalImport("./player-nameplate-r94.js", "Compact account player nameplates");
   await OptionalImport("./session-outdated-r93.js", "Stale-session refresh guard");
   await OptionalImport("./multiplayer-ui-r93.js", "Stable account, server browser and multiplayer lobby UI");
