@@ -5,22 +5,20 @@ if (!Game?.Scene || !Game?.Camera || !Game?.Renderer || !Game?.ActiveChunks || !
   throw new Error("Game must load before runtime performance buffer.");
 }
 
-const RootChildCounts = new WeakMap();
 const Candidates = [];
 const CandidateSet = new WeakSet();
+const RootStamps = new WeakMap();
+const SceneChildren = new WeakSet();
 const TempWorld = new THREE.Vector3();
 const CameraPosition = Game.Camera.position;
 const TARGET_PIXEL_RATIO = Math.min(devicePixelRatio || 1, 1.0);
-const MIN_PIXEL_RATIO = 0.70;
-const CULL_BATCH = 34;
+const CULL_BATCH = 24;
 let CandidateCursor = 0;
-let LastCullAt = 0;
-let LastFrameAt = performance.now();
-let FrameAccumulator = 0;
-let FrameSamples = 0;
-let LastQualityChangeAt = -Infinity;
-let LastDiscoveryAt = -Infinity;
-let DiscoveryScheduled = false;
+let LastCompaction = performance.now();
+
+function IsUiOpen() {
+  return Boolean(window.__STORE_UI_MODAL_OPEN_R96__ || window.__STORE_UI_MODAL_OPEN_R95__);
+}
 
 function RegisterObject(Object) {
   if (!Object || CandidateSet.has(Object)) return;
@@ -34,53 +32,57 @@ function RegisterObject(Object) {
   }
 }
 
+function RootStamp(Root) {
+  return `${Root?.children?.length || 0}:${Root?.userData?.CoreFixR87 ? 1 : 0}:${Root?.userData?.PresentationReadyR83 ? 1 : 0}`;
+}
+
 function ScanRoot(Root, Force = false) {
   if (!Root?.traverse) return;
-  const ChildCount = Root.children?.length || 0;
-  if (!Force && RootChildCounts.get(Root) === ChildCount) return;
-  RootChildCounts.set(Root, ChildCount);
+  const Stamp = RootStamp(Root);
+  if (!Force && RootStamps.get(Root) === Stamp) return;
+  RootStamps.set(Root, Stamp);
   Root.traverse(RegisterObject);
 }
 
-function ScanNewRoots() {
-  ScanRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ScanRoot(Chunk?.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ScanRoot(Chunk?.Group);
-  LastDiscoveryAt = performance.now();
-  DiscoveryScheduled = false;
+function ScanSceneChildren() {
+  for (const Child of Game.Scene.children) {
+    if (!Child || SceneChildren.has(Child)) continue;
+    SceneChildren.add(Child);
+    ScanRoot(Child, true);
+  }
 }
 
-function ScheduleDiscovery() {
-  if (DiscoveryScheduled) return;
-  DiscoveryScheduled = true;
-  if ("requestIdleCallback" in window) requestIdleCallback(ScanNewRoots, { timeout: 900 });
-  else setTimeout(ScanNewRoots, 24);
+function ScanNewRoots(Force = false) {
+  if (IsUiOpen() && !Force) return;
+  ScanSceneChildren();
+  for (const Chunk of Game.ActiveChunks.values()) ScanRoot(Chunk?.Group, Force);
+  for (const Chunk of Game.PreparedChunks.values()) ScanRoot(Chunk?.Group, Force);
 }
 
 function DistanceLimit(Object) {
-  if (Object.isPointLight || Object.userData?.PointLightR94) return 38;
-  if (Object.userData?.LightGlowR94) return 62;
-  if (Object.userData?.LightHousingR94) return 96;
-  if (/Department|Hanging|Overhead/i.test(String(Object.parent?.name || ""))) return 78;
-  return Number(Object.userData?.DistanceCullR94) || 54;
+  if (Object.isPointLight || Object.userData?.PointLightR94) return 34;
+  if (Object.userData?.LightGlowR94) return 56;
+  if (Object.userData?.LightHousingR94) return 82;
+  if (/Department|Hanging|Overhead/i.test(String(Object.parent?.name || ""))) return 68;
+  return Number(Object.userData?.DistanceCullR94) || 48;
 }
 
 function SetCandidateVisible(Object, Visible) {
   if (!Object) return;
   if (Object.isPointLight) {
-    const DynamicBase = Number.isFinite(Object.userData?.BaseIntensity)
+    const Base = Number.isFinite(Object.userData?.BaseIntensity)
       ? Number(Object.userData.BaseIntensity)
-      : Number(Object.userData.RuntimeBaseIntensityR94 ?? Object.intensity ?? 1.5);
-    Object.userData.RuntimeBaseIntensityR94 = DynamicBase;
-    Object.intensity = Visible ? DynamicBase : 0;
-    Object.visible = Visible && DynamicBase > 0.0001;
+      : Number(Object.userData.RuntimeBaseIntensityR94 ?? 1.5);
+    Object.userData.RuntimeBaseIntensityR94 = Base;
+    Object.intensity = Visible ? Base : 0;
+    Object.visible = Visible && Base > 0.0001;
     return;
   }
   Object.visible = Visible;
 }
 
 function CullSlice() {
-  if (!Candidates.length) return;
+  if (IsUiOpen() || document.hidden || !Candidates.length) return;
   const Count = Math.min(CULL_BATCH, Candidates.length);
   for (let Offset = 0; Offset < Count; Offset += 1) {
     if (CandidateCursor >= Candidates.length) CandidateCursor = 0;
@@ -95,39 +97,35 @@ function CullSlice() {
   }
 }
 
-function AdaptPixelRatio(Now) {
-  if (FrameSamples < 75 || Now - LastQualityChangeAt < 3200) return;
-  const AverageMs = FrameAccumulator / FrameSamples;
-  FrameAccumulator = 0;
-  FrameSamples = 0;
-  const Current = Game.Renderer.getPixelRatio();
-  let Next = Current;
-  if (AverageMs > 22.5) Next = Math.max(MIN_PIXEL_RATIO, Current - 0.08);
-  else if (AverageMs < 17.0 && Current < TARGET_PIXEL_RATIO) Next = Math.min(TARGET_PIXEL_RATIO, Current + 0.05);
-  if (Math.abs(Next - Current) >= 0.025) {
-    Game.Renderer.setPixelRatio(Next);
-    Game.Renderer.setSize(innerWidth, innerHeight, false);
-    LastQualityChangeAt = Now;
+function CompactCandidates() {
+  const Now = performance.now();
+  if (Now - LastCompaction < 30000) return;
+  LastCompaction = Now;
+  let Write = 0;
+  for (let Read = 0; Read < Candidates.length; Read += 1) {
+    const Object = Candidates[Read];
+    if (!Object?.parent) continue;
+    Candidates[Write++] = Object;
   }
-}
-
-function Frame(Now) {
-  const DeltaMs = Math.min(100, Math.max(0, Now - LastFrameAt));
-  LastFrameAt = Now;
-  FrameAccumulator += DeltaMs;
-  FrameSamples += 1;
-  if (Now - LastCullAt >= 100) {
-    LastCullAt = Now;
-    CullSlice();
-  }
-  if (Now - LastDiscoveryAt >= 1600) ScheduleDiscovery();
-  AdaptPixelRatio(Now);
-  requestAnimationFrame(Frame);
+  Candidates.length = Write;
+  if (CandidateCursor >= Candidates.length) CandidateCursor = 0;
 }
 
 Game.Renderer.setPixelRatio(Math.min(Game.Renderer.getPixelRatio(), TARGET_PIXEL_RATIO));
-ScheduleDiscovery();
-requestAnimationFrame(Frame);
+ScanNewRoots(true);
+
+const CullTimer = setInterval(() => {
+  CullSlice();
+  CompactCandidates();
+}, 150);
+const DiscoveryTimer = setInterval(() => ScanNewRoots(false), 2200);
+addEventListener("store-ui-performance-state", Event => {
+  if (!Event.detail?.open) setTimeout(() => ScanNewRoots(false), 0);
+});
+addEventListener("pagehide", () => {
+  clearInterval(CullTimer);
+  clearInterval(DiscoveryTimer);
+}, { once: true });
 
 window.__STORE_PERFORMANCE_BUFFER_R94__ = {
   ScanNewRoots,
@@ -135,4 +133,4 @@ window.__STORE_PERFORMANCE_BUFFER_R94__ = {
   GetCandidateCount: () => Candidates.length,
   GetPixelRatio: () => Game.Renderer.getPixelRatio()
 };
-window.__STORE_PERFORMANCE_BUFFER_BUILD__ = "V0.30.0-R94";
+window.__STORE_PERFORMANCE_BUFFER_BUILD__ = "V0.30.2-R96";
