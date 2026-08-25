@@ -6,8 +6,8 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-104";
-const Version = "0.30.1";
+const Cache = "20260825-105";
+const Version = "0.30.2";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -108,11 +108,12 @@ try {
   await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
   await import(`./final-contact-r19.js?v=${Cache}`);
   await OptionalImport("./creepy-hud-r93.js", "Lean creepy in-game HUD presentation");
-  await OptionalImport("./furniture-carry-r94.js", "Furniture carrying and weight movement authority");
-  await OptionalImport("./furniture-designer-mimic-r94.js", "Mason furniture requests, check-ins and mimic encounters");
+  await OptionalImport("./furniture-carry-r94.js", "Cached furniture carrying and weight authority");
+  await OptionalImport("./furniture-designer-mimic-r94.js", "Event-driven Mason requests, check-ins and mimic encounters");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
-  await OptionalImport("./ui-performance-r95.js", "Immediate low-latency menu and UI authority");
-  window.__STORE_PERFORMANCE_BUFFER_R94__?.ScanNewRoots?.();
+  await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
+  window.__STORE_PERFORMANCE_BUFFER_R94__?.ScanNewRoots?.(true);
+  window.__STORE_FURNITURE_CARRY_R94__?.RefreshIndex?.(true);
   CoreReady = true;
 } catch (Error) {
   console.error("Core store boot failed.", Error);
