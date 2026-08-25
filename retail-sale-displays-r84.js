@@ -12,26 +12,10 @@ const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
 
 const Assets = Object.freeze({
-  CoffeeTable: {
-    Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99",
-    Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15,
-    Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0"
-  },
-  SideTable: {
-    Url: `${KayKitBase}table_small.gltf`, Label: "SIDE TABLE", Price: "89.99",
-    Height: 0.62, MaxWidth: 0.95, MaxDepth: 0.95,
-    Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0"
-  },
-  DiningTable: {
-    Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99",
-    Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25,
-    Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0"
-  },
-  BoxShelf: {
-    Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99",
-    Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95,
-    Source: "https://kenney.nl/assets/mini-market"
-  }
+  CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  SideTable: { Url: `${KayKitBase}table_small.gltf`, Label: "SIDE TABLE", Price: "89.99", Height: 0.62, MaxWidth: 0.95, MaxDepth: 0.95, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" }
 });
 
 const CouchNames = new Set(["Couch_Large1", "Couch_L"]);
@@ -89,11 +73,7 @@ function NormalizeAsset(Object, Definition, RotationY = 0) {
   let Bounds = BoundsOf(Object);
   if (Bounds.isEmpty()) return false;
   const Size = Bounds.getSize(new THREE.Vector3());
-  const Scale = Math.min(
-    Definition.Height / Math.max(Size.y, 0.001),
-    Definition.MaxWidth / Math.max(Size.x, 0.001),
-    Definition.MaxDepth / Math.max(Size.z, 0.001)
-  );
+  const Scale = Math.min(Definition.Height / Math.max(Size.y, 0.001), Definition.MaxWidth / Math.max(Size.x, 0.001), Definition.MaxDepth / Math.max(Size.z, 0.001));
   Object.scale.multiplyScalar(Scale);
   Object.updateWorldMatrix(true, true);
   Bounds = BoundsOf(Object);
@@ -137,12 +117,9 @@ function CanPlace(Chunk, Candidate, Occupied) {
 function CandidateSlots(Chunk, Seed = 0) {
   const Z = Chunk.CenterZ;
   const Slots = [
-    [-5.25, Z - 5.8], [5.25, Z + 5.8],
-    [-5.25, Z + 3.1], [5.25, Z - 3.1],
-    [-8.15, Z - 1.1], [8.15, Z + 1.1],
-    [-10.85, Z + 5.7], [10.85, Z - 5.7],
-    [-12.45, Z - 2.7], [12.45, Z + 2.7],
-    [-7.15, Z + 7.2], [7.15, Z - 7.2]
+    [-5.25, Z - 5.8], [5.25, Z + 5.8], [-5.25, Z + 3.1], [5.25, Z - 3.1],
+    [-8.15, Z - 1.1], [8.15, Z + 1.1], [-10.85, Z + 5.7], [10.85, Z - 5.7],
+    [-12.45, Z - 2.7], [12.45, Z + 2.7], [-7.15, Z + 7.2], [7.15, Z - 7.2]
   ];
   const Shift = ((Seed % Slots.length) + Slots.length) % Slots.length;
   return [...Slots.slice(Shift), ...Slots.slice(0, Shift)];
@@ -153,7 +130,6 @@ async function PlaceSaleAsset(Chunk, Key, Name, Seed, RotationY, Occupied) {
   const Object = await CloneAsset(Key);
   if (!Object || !NormalizeAsset(Object, Definition, RotationY)) return null;
   const LocalBounds = BoundsOf(Object);
-
   for (const [X, Z] of CandidateSlots(Chunk, Seed)) {
     const Candidate = LocalBounds.clone().translate(new THREE.Vector3(X, 0, Z));
     if (!CanPlace(Chunk, Candidate, Occupied)) continue;
@@ -180,7 +156,6 @@ async function PlaceSaleAsset(Chunk, Key, Name, Seed, RotationY, Occupied) {
 function SalePlans(Chunk) {
   const Theme = String(Chunk.Theme || "").toUpperCase();
   const Flip = Chunk.Index % 2 === 0 ? 0 : Math.PI * 0.5;
-
   if (Theme === "LIVING ROOM") return [
     { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip },
     { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
@@ -216,41 +191,48 @@ function ExistingSaleItems(Chunk) {
   return (Chunk.Group?.children || []).filter(Object => Object?.parent === Chunk.Group && Object.userData?.RetailSellableR84);
 }
 
+function RemoveReservationsForObjects(Chunk, Objects) {
+  const ObjectBounds = Objects.map(BoundsOf).filter(Box => !Box.isEmpty());
+  for (let Index = Chunk.ReservedBounds.length - 1; Index >= 0; Index -= 1) {
+    const Box = Chunk.ReservedBounds[Index];
+    if (ObjectBounds.some(ObjectBox => OverlapXZ(Box, ObjectBox, -0.01))) Chunk.ReservedBounds.splice(Index, 1);
+  }
+}
+
 async function EnsureSaleItems(Chunk) {
   if (!Chunk.Group.userData?.RetailShowroomR79) return false;
   const Plans = SalePlans(Chunk);
+  const MinimumRequired = Math.min(2, Plans.length);
   const Existing = ExistingSaleItems(Chunk);
+
+  if (Chunk.Group.userData?.RetailSaleAttemptedR85 && Existing.length >= MinimumRequired) {
+    Chunk.Group.userData.RetailSaleItemsR84 = true;
+    return true;
+  }
   if (Existing.length === Plans.length) {
+    Chunk.Group.userData.RetailSaleAttemptedR85 = true;
     Chunk.Group.userData.RetailSaleItemsR84 = true;
     return true;
   }
 
+  RemoveReservationsForObjects(Chunk, Existing);
   for (const Object of Existing) Object.parent?.remove(Object);
-  for (let Index = Chunk.ReservedBounds.length - 1; Index >= 0; Index -= 1) {
-    const Box = Chunk.ReservedBounds[Index];
-    if (Existing.some(Object => OverlapXZ(Box, BoundsOf(Object), -0.01))) Chunk.ReservedBounds.splice(Index, 1);
-  }
 
   const Occupied = OccupiedBounds(Chunk);
   let Added = 0;
   for (let Index = 0; Index < Plans.length; Index += 1) {
     const Plan = Plans[Index];
     try {
-      const Object = await PlaceSaleAsset(
-        Chunk,
-        Plan.Key,
-        `${Plan.Name}-${Index}`,
-        Math.abs(Chunk.Index) * 5 + Index * 3,
-        Plan.RotationY,
-        Occupied
-      );
+      const Object = await PlaceSaleAsset(Chunk, Plan.Key, `${Plan.Name}-${Index}`, Math.abs(Chunk.Index) * 5 + Index * 3, Plan.RotationY, Occupied);
       if (Object) Added += 1;
     } catch (Error) {
       console.warn(`Retail sale asset ${Plan.Key} unavailable`, Error);
     }
   }
-  Chunk.Group.userData.RetailSaleItemsR84 = Added === Plans.length;
-  return Added === Plans.length;
+
+  Chunk.Group.userData.RetailSaleAttemptedR85 = true;
+  Chunk.Group.userData.RetailSaleItemsR84 = Added >= MinimumRequired;
+  return Added >= MinimumRequired;
 }
 
 function CouchSignature(Model) {
@@ -269,13 +251,11 @@ async function EnsureCouchRugs(Chunk) {
   const Couches = (Chunk.Models || []).filter(Model => Model?.parent && CouchNames.has(Model.name));
   const Rugs = ExistingCouchRugs(Chunk);
   const CouchIds = new Set(Couches.map(Model => Model.uuid));
-
   for (const Rug of Rugs) {
     const Source = Couches.find(Model => Model.uuid === Rug.userData.CouchSourceUUIDR84);
     if (Source && Rug.userData.CouchSourceSignatureR84 === CouchSignature(Source)) continue;
     Rug.parent?.remove(Rug);
   }
-
   const CurrentRugs = ExistingCouchRugs(Chunk);
   for (let Index = 0; Index < Couches.length; Index += 1) {
     const Couch = Couches[Index];
@@ -295,7 +275,6 @@ async function EnsureCouchRugs(Chunk) {
       console.warn("Couch showroom rug unavailable", Error);
     }
   }
-
   const FinishedRugs = ExistingCouchRugs(Chunk).filter(Rug => CouchIds.has(Rug.userData.CouchSourceUUIDR84));
   Chunk.Group.userData.CouchRugsR84 = FinishedRugs.length >= Couches.length;
   return FinishedRugs.length >= Couches.length;
