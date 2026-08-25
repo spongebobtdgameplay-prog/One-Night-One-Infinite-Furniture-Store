@@ -1,402 +1,343 @@
 import * as THREE from "three";
 
 const Game = window.__STORE_GAME__;
-if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes || !Game?.ActiveChunks || !Game?.PreparedChunks) {
-  throw new Error("The Infinity Store must load before core collision authority.");
-}
+if (!Game?.CollisionBoxes || !Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before core fix authority.");
 
-const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
-const PlayerEyeHeight = 1.68;
-const CELL_SIZE = 0.58;
-const MIN_TRIANGLE_AREA = 0.0007;
-const MIN_HORIZONTAL_NORMAL = 0.08;
-
-const FurnitureNames = new Set([
+const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__;
+const ExactCollisionByObject = new WeakMap();
+const MaterialFixed = new WeakSet();
+const ManagedOriginalNames = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
   "NightStand_2", "Shelf_Large", "Bookshelf", "Kitchen_Cabinet1", "Kitchen_Fridge",
   "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1"
 ]);
-const RetailNames = new Set([
+const ManagedImportedNames = new Set([
   "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
   "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79"
 ]);
-const RemovedGeometryNames = new Set(["Window_Large1"]);
-const ProcessedCollision = new WeakMap();
-const TempA = new THREE.Vector3();
-const TempB = new THREE.Vector3();
-const TempC = new THREE.Vector3();
-const TempAB = new THREE.Vector3();
-const TempAC = new THREE.Vector3();
-const TempNormal = new THREE.Vector3();
-const TempLocal = new THREE.Vector3();
-const TempScale = new THREE.Vector3();
-
-function BoundsOf(Object) {
-  Object.updateWorldMatrix(true, true);
-  return new THREE.Box3().setFromObject(Object);
-}
-
-function EntryBounds(Entry) {
-  return Entry?.OriginalStructureBox || Entry?.OriginalBox || Entry?.Box || Entry || null;
-}
-
-function IsStructureEntry(Entry) {
-  return Boolean(Entry?.PrecisePlayerStructure || /Wall|Partition|Boundary|RearStore|Ceiling|Door/i.test(String(Entry?.Type || "")));
-}
+const GRID_CELL = 0.58;
+const MIN_TRIANGLE_AREA = 0.0007;
+const MIN_HORIZONTAL_AMOUNT = 0.08;
+const RugPattern = /CouchDisplayRugR84-|OnlineDisplayRugR75-|LargeShowroomRugR82/i;
+const LegacyPattern = /GeneratedSolid|GeometryPrecise|ExactCollisionR86|ExactCollisionR87|PreciseCollision|FurnitureCollision|RetailSellableCollision/i;
+const StructurePattern = /Wall|Partition|Boundary|RearStore|Ceiling|Door/i;
+const TempV0 = new THREE.Vector3();
+const TempV1 = new THREE.Vector3();
+const TempV2 = new THREE.Vector3();
+const TempInv = new THREE.Matrix4();
+const TempPoint = new THREE.Vector3();
+const TempClosest = new THREE.Vector3();
 
 function IsRugObject(Object) {
-  const Name = String(Object?.name || "");
-  return Name.startsWith("CouchDisplayRugR84-") ||
-    Name.startsWith("OnlineDisplayRugR75-") ||
-    Name === "LargeShowroomRugR82" ||
-    Object?.userData?.DecorationKind === "Rug" ||
-    Object?.userData?.DecorationKind === "LargeShowroomRug" ||
-    Object?.userData?.WalkableCarpetR87 === true;
-}
-
-function IsLowWalkableEntry(Entry) {
-  if (!Entry || Entry.CoreFixR87 || IsStructureEntry(Entry)) return false;
-  const Type = String(Entry.Type || "");
-  const Object = Entry.CollisionObject;
-  if (/Rug|Carpet|FloorSurface|WalkableSurface/i.test(Type) || IsRugObject(Object)) return true;
-  const Box = EntryBounds(Entry);
-  if (!Box?.min || !Box?.max) return false;
-  const Height = Box.max.y - Box.min.y;
-  return Box.max.y <= 0.18 && Box.min.y <= 0.10 && Height <= 0.18;
+  if (!Object) return false;
+  const Name = String(Object.name || "");
+  const Kind = String(Object.userData?.DecorationKind || "");
+  return RugPattern.test(Name) || /Rug|LargeShowroomRug/i.test(Kind) || Object.userData?.WalkableCarpetR87 === true;
 }
 
 function IsManagedRoot(Object) {
-  if (!Object?.isObject3D || IsRugObject(Object)) return false;
-  const Name = String(Object.name || "");
-  if (FurnitureNames.has(Name) || RetailNames.has(Name)) return true;
+  if (!Object) return false;
+  if (ManagedOriginalNames.has(Object.name) || ManagedImportedNames.has(Object.name)) return true;
   if (Object.userData?.RetailSellableR84) return true;
-  if (Name.startsWith("RetailCoffeeTableR84") || Name.startsWith("RetailSideTableR84") || Name.startsWith("RetailDiningTableR84") || Name.startsWith("RetailBoxShelfR84")) return true;
   return false;
+}
+
+function IsStructureEntry(Entry) {
+  return Entry?.PrecisePlayerStructure === true || StructurePattern.test(String(Entry?.Type || ""));
+}
+
+function EntryBox(Entry) {
+  return Entry?.Box || Entry;
+}
+
+function IsLowWalkableEntry(Entry) {
+  if (!Entry || IsStructureEntry(Entry)) return false;
+  const Type = String(Entry.Type || "");
+  const Object = Entry.CollisionObject || Entry.SourceModel || Entry.Model;
+  if (/Rug|Carpet|FloorSurface|WalkableSurface/i.test(Type) || IsRugObject(Object)) return true;
+  const Box = EntryBox(Entry);
+  if (!Box?.min || !Box?.max) return false;
+  const Height = Number(Box.max.y) - Number(Box.min.y);
+  return Number(Box.max.y) <= 0.18 && Number(Box.min.y) <= 0.10 && Height <= 0.18;
 }
 
 function IsLegacyManagedEntry(Entry) {
-  if (!Entry || Entry.CoreFixR87) return false;
-  if (IsManagedRoot(Entry.CollisionObject) || IsManagedRoot(Entry.SourceModel) || IsManagedRoot(Entry.Model)) return true;
-  const Type = String(Entry.Type || "");
-  if (Type === "RetailFurnitureSolidR83") return true;
-  for (const Name of FurnitureNames) {
-    if (Type === Name || Type.startsWith(`${Name}MeshCollisionR86`) || Type.startsWith(`${Name}Exact`)) return true;
-  }
-  for (const Name of RetailNames) if (Type === Name || Type.startsWith(`${Name}Solid`)) return true;
-  if (/^Retail(CoffeeTable|SideTable|DiningTable|BoxShelf)R84.*Solid/i.test(Type)) return true;
-  return false;
-}
-
-function RejectFutureCollision(Entry) {
   if (!Entry) return false;
-  return IsLowWalkableEntry(Entry) || IsLegacyManagedEntry(Entry) || /Window_Large1/i.test(String(Entry.Type || ""));
+  const Object = Entry.CollisionObject || Entry.SourceModel || Entry.Model;
+  if (IsManagedRoot(Object)) return true;
+  return LegacyPattern.test(String(Entry.Type || ""));
 }
 
-if (!Game.CollisionBoxes.__CoreGuardR87) {
-  const OriginalPush = Game.CollisionBoxes.push;
-  Game.CollisionBoxes.push = function GuardedCollisionPush(...Entries) {
-    const Allowed = Entries.filter(Entry => !RejectFutureCollision(Entry));
-    return OriginalPush.apply(this, Allowed);
-  };
-  Object.defineProperty(Game.CollisionBoxes, "__CoreGuardR87", { value: true, configurable: false, enumerable: false });
-}
-
-function RemoveGlobalEntry(Chunk, Entry) {
-  if (!Entry) return;
-  Entry.Active = false;
+function PurgeGlobalEntries(Predicate) {
   for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
-    if (Game.CollisionBoxes[Index] === Entry) Game.CollisionBoxes.splice(Index, 1);
+    if (Predicate(Game.CollisionBoxes[Index])) Game.CollisionBoxes.splice(Index, 1);
   }
-  const LocalIndex = Chunk?.CollisionEntries?.indexOf?.(Entry) ?? -1;
-  if (LocalIndex >= 0) Chunk.CollisionEntries.splice(LocalIndex, 1);
+}
+
+function PurgeChunkEntries(Chunk, Predicate) {
+  if (!Chunk?.CollisionEntries) return;
+  for (let Index = Chunk.CollisionEntries.length - 1; Index >= 0; Index -= 1) {
+    if (Predicate(Chunk.CollisionEntries[Index])) Chunk.CollisionEntries.splice(Index, 1);
+  }
+}
+
+function PatchCollisionPush() {
+  if (Game.CollisionBoxes.__CoreFixR87Patched) return;
+  const OriginalPush = Game.CollisionBoxes.push.bind(Game.CollisionBoxes);
+  Game.CollisionBoxes.push = (...Entries) => {
+    const Allowed = Entries.filter(Entry => !IsLowWalkableEntry(Entry) && !IsLegacyManagedEntry(Entry) && !/Window_Large1/i.test(String(Entry?.Type || "")));
+    return Allowed.length ? OriginalPush(...Allowed) : Game.CollisionBoxes.length;
+  };
+  Game.CollisionBoxes.__CoreFixR87Patched = true;
+}
+PatchCollisionPush();
+
+function RemoveDecorativeWindows(Chunk) {
+  const Remove = [];
+  Chunk.Group?.traverse?.(Object => {
+    if (/Window_Large1/i.test(String(Object.name || ""))) Remove.push(Object);
+  });
+  for (const Object of Remove) Object.parent?.remove(Object);
+  PurgeChunkEntries(Chunk, Entry => /Window_Large1/i.test(String(Entry?.Type || "")) || /Window_Large1/i.test(String(Entry?.CollisionObject?.name || "")));
 }
 
 function PurgeGhostAndLegacyEntries(Chunk) {
-  for (const Entry of [...(Chunk.CollisionEntries || [])]) {
-    if (IsLowWalkableEntry(Entry) || IsLegacyManagedEntry(Entry) || /Window_Large1/i.test(String(Entry?.Type || ""))) RemoveGlobalEntry(Chunk, Entry);
-  }
-  for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
-    const Entry = Game.CollisionBoxes[Index];
-    if (Entry?.ChunkId !== Chunk.Id) continue;
-    if (IsLowWalkableEntry(Entry) || IsLegacyManagedEntry(Entry) || /Window_Large1/i.test(String(Entry?.Type || ""))) Game.CollisionBoxes.splice(Index, 1);
-  }
+  PurgeChunkEntries(Chunk, Entry => IsLowWalkableEntry(Entry) || IsLegacyManagedEntry(Entry));
+  PurgeGlobalEntries(Entry => {
+    const EntryChunk = Entry?.ChunkIndex ?? Entry?.ChunkId;
+    if (EntryChunk !== undefined && Chunk.Index !== undefined && Number(EntryChunk) !== Number(Chunk.Index)) return false;
+    return IsLowWalkableEntry(Entry) || IsLegacyManagedEntry(Entry);
+  });
 }
 
-function PointInsideTriangle(X, Z, A, B, C) {
-  const AB = (B.x - A.x) * (Z - A.y) - (B.y - A.y) * (X - A.x);
-  const BC = (C.x - B.x) * (Z - B.y) - (C.y - B.y) * (X - B.x);
-  const CA = (A.x - C.x) * (Z - C.y) - (A.y - C.y) * (X - C.x);
-  const HasNegative = AB < -0.000001 || BC < -0.000001 || CA < -0.000001;
-  const HasPositive = AB > 0.000001 || BC > 0.000001 || CA > 0.000001;
-  return !(HasNegative && HasPositive);
-}
-
-function DistanceSquaredToSegment(X, Z, A, B) {
-  const DX = B.x - A.x;
-  const DZ = B.y - A.y;
-  const LengthSquared = DX * DX + DZ * DZ;
-  if (LengthSquared <= 0.0000001) {
-    const PX = X - A.x;
-    const PZ = Z - A.y;
-    return PX * PX + PZ * PZ;
-  }
-  const T = THREE.MathUtils.clamp(((X - A.x) * DX + (Z - A.y) * DZ) / LengthSquared, 0, 1);
-  const PX = X - (A.x + DX * T);
-  const PZ = Z - (A.y + DZ * T);
-  return PX * PX + PZ * PZ;
-}
-
-function CircleHitsTriangle(X, Z, RadiusSquared, Triangle) {
-  const A = Triangle.A;
-  const B = Triangle.B;
-  const C = Triangle.C;
-  return PointInsideTriangle(X, Z, A, B, C) ||
-    DistanceSquaredToSegment(X, Z, A, B) <= RadiusSquared ||
-    DistanceSquaredToSegment(X, Z, B, C) <= RadiusSquared ||
-    DistanceSquaredToSegment(X, Z, C, A) <= RadiusSquared;
-}
-
-function CellKey(X, Z) {
-  return `${X}:${Z}`;
-}
-
-function AddTriangleToGrid(Grid, Triangle, Index) {
-  const MinX = Math.floor(Math.min(Triangle.A.x, Triangle.B.x, Triangle.C.x) / CELL_SIZE);
-  const MaxX = Math.floor(Math.max(Triangle.A.x, Triangle.B.x, Triangle.C.x) / CELL_SIZE);
-  const MinZ = Math.floor(Math.min(Triangle.A.y, Triangle.B.y, Triangle.C.y) / CELL_SIZE);
-  const MaxZ = Math.floor(Math.max(Triangle.A.y, Triangle.B.y, Triangle.C.y) / CELL_SIZE);
-  for (let X = MinX; X <= MaxX; X += 1) {
-    for (let Z = MinZ; Z <= MaxZ; Z += 1) {
-      const Key = CellKey(X, Z);
-      if (!Grid.has(Key)) Grid.set(Key, []);
-      Grid.get(Key).push(Index);
+function RegisterWalkableRugs(Chunk) {
+  Chunk.Group?.traverse?.(Object => {
+    if (!Object?.parent || !IsRugObject(Object)) return;
+    Object.userData.WalkableCarpetR87 = true;
+    Object.userData.DecorationNoCollision = true;
+    if (!Object.userData.SurfaceStepRegisteredR87) {
+      SurfaceStep?.RegisterRug?.(Object, String(Chunk.Index ?? Chunk.Id ?? ""));
+      Object.userData.SurfaceStepRegisteredR87 = true;
     }
+  });
+}
+
+function FixDarkMaterials(Root) {
+  if (!Root || MaterialFixed.has(Root)) return;
+  Root.traverse(Object => {
+    if (!Object.isMesh || !Object.material) return;
+    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
+    for (let Index = 0; Index < Materials.length; Index += 1) {
+      const Original = Materials[Index];
+      if (!Original) continue;
+      const Material = Original.clone();
+      const Name = `${Root.name} ${Object.name}`;
+      const HasMap = Boolean(Material.map);
+      const Brightness = Material.color ? Material.color.r + Material.color.g + Material.color.b : 3;
+      if (HasMap && Material.color && Brightness < 1.2) Material.color.setHex(0xb8beb8);
+      else if (Material.color && Brightness < 0.72) {
+        if (/Chair|Armchair|Couch/i.test(Name)) Material.color.setHex(0x738577);
+        else if (/Shelf|Book|Box|Cabinet/i.test(Name)) Material.color.setHex(0x8f806a);
+        else if (/Cart/i.test(Name)) Material.color.setHex(0x777f7c);
+        else if (/Basket|Bag/i.test(Name)) Material.color.setHex(0x8d7864);
+        else if (/Kitchen|Fridge|Oven|Sink|Light/i.test(Name)) Material.color.setHex(0x858b88);
+        else Material.color.setHex(0x777a72);
+      }
+      Material.needsUpdate = true;
+      Materials[Index] = Material;
+    }
+    Object.material = Array.isArray(Object.material) ? Materials : Materials[0];
+  });
+  MaterialFixed.add(Root);
+}
+
+function PointToSegmentDistanceSquared(PX, PZ, AX, AZ, BX, BZ) {
+  const DX = BX - AX;
+  const DZ = BZ - AZ;
+  const LengthSquared = DX * DX + DZ * DZ;
+  if (LengthSquared <= 1e-12) {
+    const X = PX - AX;
+    const Z = PZ - AZ;
+    return X * X + Z * Z;
   }
+  const T = THREE.MathUtils.clamp(((PX - AX) * DX + (PZ - AZ) * DZ) / LengthSquared, 0, 1);
+  const X = PX - (AX + DX * T);
+  const Z = PZ - (AZ + DZ * T);
+  return X * X + Z * Z;
+}
+
+function PointInTriangle2D(PX, PZ, A, B, C) {
+  const V0X = C.x - A.x, V0Z = C.z - A.z;
+  const V1X = B.x - A.x, V1Z = B.z - A.z;
+  const V2X = PX - A.x, V2Z = PZ - A.z;
+  const Dot00 = V0X * V0X + V0Z * V0Z;
+  const Dot01 = V0X * V1X + V0Z * V1Z;
+  const Dot02 = V0X * V2X + V0Z * V2Z;
+  const Dot11 = V1X * V1X + V1Z * V1Z;
+  const Dot12 = V1X * V2X + V1Z * V2Z;
+  const Denominator = Dot00 * Dot11 - Dot01 * Dot01;
+  if (Math.abs(Denominator) < 1e-12) return false;
+  const Inv = 1 / Denominator;
+  const U = (Dot11 * Dot02 - Dot01 * Dot12) * Inv;
+  const V = (Dot00 * Dot12 - Dot01 * Dot02) * Inv;
+  return U >= 0 && V >= 0 && U + V <= 1;
+}
+
+function CircleHitsTriangle(PX, PZ, Radius, A, B, C) {
+  if (PointInTriangle2D(PX, PZ, A, B, C)) return true;
+  const RadiusSquared = Radius * Radius;
+  return PointToSegmentDistanceSquared(PX, PZ, A.x, A.z, B.x, B.z) <= RadiusSquared ||
+    PointToSegmentDistanceSquared(PX, PZ, B.x, B.z, C.x, C.z) <= RadiusSquared ||
+    PointToSegmentDistanceSquared(PX, PZ, C.x, C.z, A.x, A.z) <= RadiusSquared;
+}
+
+function TriangleGridKey(X, Z) {
+  return `${Math.floor(X / GRID_CELL)},${Math.floor(Z / GRID_CELL)}`;
 }
 
 function BuildExactFootprint(Model) {
   Model.updateWorldMatrix(true, true);
   const Triangles = [];
   const Grid = new Map();
-  const Bounds2 = new THREE.Box2().makeEmpty();
-  const WorldBox = BoundsOf(Model);
+  const Bounds = new THREE.Box3().setFromObject(Model);
+  let MinimumY = Infinity;
+  let MaximumY = -Infinity;
 
   Model.traverse(Object => {
-    if (!Object?.isMesh || !Object.visible || !Object.geometry?.attributes?.position) return;
+    if (!Object.isMesh || !Object.visible || !Object.geometry?.attributes?.position) return;
     if (/Text|Label|Glow/i.test(String(Object.name || ""))) return;
-    const Position = Object.geometry.attributes.position;
-    const Index = Object.geometry.index;
-    const TriangleCount = Index ? Math.floor(Index.count / 3) : Math.floor(Position.count / 3);
+    const Geometry = Object.geometry;
+    const Positions = Geometry.attributes.position;
+    const Index = Geometry.index;
+    const TriangleCount = Index ? Index.count / 3 : Positions.count / 3;
+    Object.updateWorldMatrix(true, false);
 
     for (let TriangleIndex = 0; TriangleIndex < TriangleCount; TriangleIndex += 1) {
-      const Offset = TriangleIndex * 3;
-      const IA = Index ? Index.getX(Offset) : Offset;
-      const IB = Index ? Index.getX(Offset + 1) : Offset + 1;
-      const IC = Index ? Index.getX(Offset + 2) : Offset + 2;
-      TempA.fromBufferAttribute(Position, IA).applyMatrix4(Object.matrixWorld);
-      TempB.fromBufferAttribute(Position, IB).applyMatrix4(Object.matrixWorld);
-      TempC.fromBufferAttribute(Position, IC).applyMatrix4(Object.matrixWorld);
-      TempAB.copy(TempB).sub(TempA);
-      TempAC.copy(TempC).sub(TempA);
-      TempNormal.crossVectors(TempAB, TempAC);
-      const Length = TempNormal.length();
-      if (Length <= 0.000001) continue;
-      const HorizontalAmount = Math.abs(TempNormal.y / Length);
-      if (HorizontalAmount < MIN_HORIZONTAL_NORMAL) continue;
-      const Area = Math.abs((TempB.x - TempA.x) * (TempC.z - TempA.z) - (TempB.z - TempA.z) * (TempC.x - TempA.x)) * 0.5;
-      if (Area < MIN_TRIANGLE_AREA) continue;
+      const IA = Index ? Index.getX(TriangleIndex * 3) : TriangleIndex * 3;
+      const IB = Index ? Index.getX(TriangleIndex * 3 + 1) : TriangleIndex * 3 + 1;
+      const IC = Index ? Index.getX(TriangleIndex * 3 + 2) : TriangleIndex * 3 + 2;
+      TempV0.fromBufferAttribute(Positions, IA).applyMatrix4(Object.matrixWorld);
+      TempV1.fromBufferAttribute(Positions, IB).applyMatrix4(Object.matrixWorld);
+      TempV2.fromBufferAttribute(Positions, IC).applyMatrix4(Object.matrixWorld);
 
-      const Triangle = {
-        A: new THREE.Vector2(TempA.x, TempA.z),
-        B: new THREE.Vector2(TempB.x, TempB.z),
-        C: new THREE.Vector2(TempC.x, TempC.z)
-      };
-      const NewIndex = Triangles.length;
-      Triangles.push(Triangle);
-      Bounds2.expandByPoint(Triangle.A);
-      Bounds2.expandByPoint(Triangle.B);
-      Bounds2.expandByPoint(Triangle.C);
-      AddTriangleToGrid(Grid, Triangle, NewIndex);
-    }
-  });
+      const Area2 = Math.abs((TempV1.x - TempV0.x) * (TempV2.z - TempV0.z) - (TempV2.x - TempV0.x) * (TempV1.z - TempV0.z));
+      if (Area2 < MIN_TRIANGLE_AREA) continue;
+      TempPoint.subVectors(TempV1, TempV0);
+      TempClosest.subVectors(TempV2, TempV0);
+      const NormalY = Math.abs(TempPoint.x * TempClosest.z - TempPoint.z * TempClosest.x);
+      const NormalLength = Math.max(1e-6, TempPoint.clone().cross(TempClosest).length());
+      if (NormalY / NormalLength < MIN_HORIZONTAL_AMOUNT) continue;
 
-  return { Triangles, Grid, Bounds2, WorldBox };
-}
-
-function BuildOrientedFallback(Model) {
-  const Pieces = [];
-  Model.updateWorldMatrix(true, true);
-  Model.traverse(Object => {
-    if (!Object?.isMesh || !Object.visible || !Object.geometry) return;
-    if (/Text|Label|Glow/i.test(String(Object.name || ""))) return;
-    Object.geometry.computeBoundingBox?.();
-    const LocalBox = Object.geometry.boundingBox?.clone?.();
-    if (!LocalBox || LocalBox.isEmpty()) return;
-    Object.updateWorldMatrix(true, false);
-    const Inverse = Object.matrixWorld.clone().invert();
-    Object.getWorldScale(TempScale);
-    const Scale = TempScale.clone().set(Math.abs(TempScale.x), Math.abs(TempScale.y), Math.abs(TempScale.z));
-    const WorldBox = new THREE.Box3().setFromObject(Object);
-    if (WorldBox.isEmpty()) return;
-    Pieces.push({ LocalBox, Inverse, Scale, WorldBox });
-  });
-  return Pieces.slice(0, 30);
-}
-
-function CircleHitsOrientedPiece(Position, Radius, Piece) {
-  const FeetY = Position.y - PlayerEyeHeight;
-  const HeadY = Position.y + 0.12;
-  if (Piece.WorldBox.max.y < FeetY + 0.03 || Piece.WorldBox.min.y > HeadY) return false;
-  TempLocal.copy(Position).applyMatrix4(Piece.Inverse);
-  const ClosestX = THREE.MathUtils.clamp(TempLocal.x, Piece.LocalBox.min.x, Piece.LocalBox.max.x);
-  const ClosestZ = THREE.MathUtils.clamp(TempLocal.z, Piece.LocalBox.min.z, Piece.LocalBox.max.z);
-  const DX = (TempLocal.x - ClosestX) * Math.max(Piece.Scale.x, 0.0001);
-  const DZ = (TempLocal.z - ClosestZ) * Math.max(Piece.Scale.z, 0.0001);
-  return DX * DX + DZ * DZ <= Radius * Radius;
-}
-
-function CircleHitsExact(Position, Radius, Geometry, FallbackPieces) {
-  const FeetY = Position.y - PlayerEyeHeight;
-  const HeadY = Position.y + 0.12;
-  const WorldBox = Geometry.WorldBox;
-  if (WorldBox.max.y < FeetY + 0.03 || WorldBox.min.y > HeadY) return false;
-
-  if (Geometry.Triangles.length) {
-    const Bounds = Geometry.Bounds2;
-    if (Position.x + Radius < Bounds.min.x || Position.x - Radius > Bounds.max.x || Position.z + Radius < Bounds.min.y || Position.z - Radius > Bounds.max.y) return false;
-    const MinCellX = Math.floor((Position.x - Radius) / CELL_SIZE);
-    const MaxCellX = Math.floor((Position.x + Radius) / CELL_SIZE);
-    const MinCellZ = Math.floor((Position.z - Radius) / CELL_SIZE);
-    const MaxCellZ = Math.floor((Position.z + Radius) / CELL_SIZE);
-    const RadiusSquared = Radius * Radius;
-    const Seen = new Set();
-    for (let X = MinCellX; X <= MaxCellX; X += 1) {
-      for (let Z = MinCellZ; Z <= MaxCellZ; Z += 1) {
-        for (const Index of Geometry.Grid.get(CellKey(X, Z)) || []) {
-          if (Seen.has(Index)) continue;
-          Seen.add(Index);
-          if (CircleHitsTriangle(Position.x, Position.z, RadiusSquared, Geometry.Triangles[Index])) return true;
+      const A = { x: TempV0.x, z: TempV0.z };
+      const B = { x: TempV1.x, z: TempV1.z };
+      const C = { x: TempV2.x, z: TempV2.z };
+      const Entry = { A, B, C };
+      const IndexValue = Triangles.length;
+      Triangles.push(Entry);
+      MinimumY = Math.min(MinimumY, TempV0.y, TempV1.y, TempV2.y);
+      MaximumY = Math.max(MaximumY, TempV0.y, TempV1.y, TempV2.y);
+      const MinX = Math.min(A.x, B.x, C.x), MaxX = Math.max(A.x, B.x, C.x);
+      const MinZ = Math.min(A.z, B.z, C.z), MaxZ = Math.max(A.z, B.z, C.z);
+      for (let X = Math.floor(MinX / GRID_CELL); X <= Math.floor(MaxX / GRID_CELL); X += 1) {
+        for (let Z = Math.floor(MinZ / GRID_CELL); Z <= Math.floor(MaxZ / GRID_CELL); Z += 1) {
+          const Key = `${X},${Z}`;
+          if (!Grid.has(Key)) Grid.set(Key, []);
+          Grid.get(Key).push(IndexValue);
         }
       }
     }
-    return false;
-  }
+  });
 
-  for (const Piece of FallbackPieces) if (CircleHitsOrientedPiece(Position, Radius, Piece)) return true;
+  return { Triangles, Grid, Bounds, MinimumY, MaximumY };
+}
+
+function CircleHitsExact(Data, Position, Radius) {
+  if (!Data?.Triangles?.length) return false;
+  if (Position.y < Data.Bounds.min.y - 0.35 || Position.y > Data.Bounds.max.y + 2.6) return false;
+  const MinX = Math.floor((Position.x - Radius) / GRID_CELL), MaxX = Math.floor((Position.x + Radius) / GRID_CELL);
+  const MinZ = Math.floor((Position.z - Radius) / GRID_CELL), MaxZ = Math.floor((Position.z + Radius) / GRID_CELL);
+  const Checked = new Set();
+  for (let X = MinX; X <= MaxX; X += 1) {
+    for (let Z = MinZ; Z <= MaxZ; Z += 1) {
+      const List = Data.Grid.get(`${X},${Z}`);
+      if (!List) continue;
+      for (const TriangleIndex of List) {
+        if (Checked.has(TriangleIndex)) continue;
+        Checked.add(TriangleIndex);
+        const Triangle = Data.Triangles[TriangleIndex];
+        if (CircleHitsTriangle(Position.x, Position.z, Radius, Triangle.A, Triangle.B, Triangle.C)) return true;
+      }
+    }
+  }
   return false;
 }
 
-function TargetSignature(Model) {
+function BuildOrientedFallback(Model) {
+  const Entries = [];
   Model.updateWorldMatrix(true, true);
-  const E = Model.matrixWorld.elements;
-  return `${E[0].toFixed(3)}:${E[2].toFixed(3)}:${E[5].toFixed(3)}:${E[8].toFixed(3)}:${E[10].toFixed(3)}:${E[12].toFixed(3)}:${E[13].toFixed(3)}:${E[14].toFixed(3)}:${Model.children.length}`;
+  Model.traverse(Object => {
+    if (!Object.isMesh || !Object.visible || /Text|Label|Glow/i.test(String(Object.name || ""))) return;
+    Object.geometry?.computeBoundingBox?.();
+    if (!Object.geometry?.boundingBox) return;
+    Entries.push({ Object, Box: Object.geometry.boundingBox.clone() });
+  });
+  return Entries;
 }
 
-function RemoveExistingCoreEntry(Chunk, Model) {
-  for (const Entry of [...(Chunk.CollisionEntries || [])]) {
-    if (Entry?.CoreFixR87 && Entry.CollisionObject === Model) RemoveGlobalEntry(Chunk, Entry);
+function CircleHitsFallback(Entries, Position, Radius) {
+  for (const Entry of Entries) {
+    Entry.Object.updateWorldMatrix(true, false);
+    TempInv.copy(Entry.Object.matrixWorld).invert();
+    TempPoint.copy(Position).applyMatrix4(TempInv);
+    const Scale = Entry.Object.getWorldScale(TempClosest);
+    const LocalRadius = Radius / Math.max(0.0001, Math.min(Math.abs(Scale.x), Math.abs(Scale.z)));
+    const ClosestX = THREE.MathUtils.clamp(TempPoint.x, Entry.Box.min.x, Entry.Box.max.x);
+    const ClosestZ = THREE.MathUtils.clamp(TempPoint.z, Entry.Box.min.z, Entry.Box.max.z);
+    const DX = TempPoint.x - ClosestX;
+    const DZ = TempPoint.z - ClosestZ;
+    if (DX * DX + DZ * DZ <= LocalRadius * LocalRadius) return true;
   }
+  return false;
 }
 
-function InstallExactCollision(Chunk, Model) {
-  const Signature = TargetSignature(Model);
-  if (ProcessedCollision.get(Model) === Signature) return;
-  RemoveExistingCoreEntry(Chunk, Model);
+function TransformSignature(Model) {
+  Model.updateWorldMatrix(true, false);
+  const E = Model.matrixWorld.elements;
+  return `${E[0].toFixed(4)},${E[1].toFixed(4)},${E[2].toFixed(4)},${E[4].toFixed(4)},${E[5].toFixed(4)},${E[6].toFixed(4)},${E[8].toFixed(4)},${E[9].toFixed(4)},${E[10].toFixed(4)},${E[12].toFixed(3)},${E[13].toFixed(3)},${E[14].toFixed(3)}`;
+}
 
-  const Geometry = BuildExactFootprint(Model);
-  const FallbackPieces = Geometry.Triangles.length ? [] : BuildOrientedFallback(Model);
-  if (!Geometry.Triangles.length && !FallbackPieces.length) return;
-  const WorldBox = Geometry.WorldBox.clone();
+function RemoveExistingExactEntry(Chunk, Root) {
+  const Remove = Entry => Entry?.CoreFixR87 && Entry?.CollisionObject === Root;
+  PurgeChunkEntries(Chunk, Remove);
+  PurgeGlobalEntries(Remove);
+}
+
+function InstallExactCollision(Chunk, Root) {
+  const Signature = TransformSignature(Root);
+  const Existing = ExactCollisionByObject.get(Root);
+  if (Existing?.Signature === Signature && Existing.Entry && Game.CollisionBoxes.includes(Existing.Entry)) return;
+  RemoveExistingExactEntry(Chunk, Root);
+
+  const Exact = BuildExactFootprint(Root);
+  const Fallback = Exact.Triangles.length ? null : BuildOrientedFallback(Root);
+  const Bounds = Exact.Bounds.clone();
   const Entry = {
-    Box: WorldBox,
-    OriginalBox: WorldBox.clone(),
-    OriginalLegacyBox: WorldBox.clone(),
-    ChunkId: Chunk.Id,
-    Type: `${String(Model.name || "Furniture")}ExactCollisionR87`,
-    Active: Boolean(Chunk.Active),
-    CollisionObject: Model,
+    Type: `${Root.name || "Furniture"}ExactCollisionR87`,
+    Box: Bounds,
+    CollisionObject: Root,
+    SourceModel: Root,
     CoreFixR87: true,
     CoreFixR86: true,
     PreciseGeometry: true,
-    LegacyCollisionDisabled: true,
-    TestPlayerCollision(Position, Radius = 0.285) {
-      return CircleHitsExact(Position, Radius, Geometry, FallbackPieces);
+    TestPlayerCollision(Position, Radius) {
+      if (!Root.parent || !Root.visible || Root.userData?.CarriedR94 || Root.userData?.DeliveredR94) return false;
+      return Exact.Triangles.length ? CircleHitsExact(Exact, Position, Radius) : CircleHitsFallback(Fallback, Position, Radius);
     }
   };
+  Chunk.CollisionEntries ||= [];
   Chunk.CollisionEntries.push(Entry);
-  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
-  ProcessedCollision.set(Model, Signature);
-}
-
-function MaterialHex(Material) {
-  if (!Material?.color?.isColor) return null;
-  return Material.color.getHex(THREE.SRGBColorSpace);
-}
-
-function IsHardToSee(Material) {
-  const Hex = MaterialHex(Material);
-  if (Hex === null) return false;
-  const Red = (Hex >> 16) & 255;
-  const Green = (Hex >> 8) & 255;
-  const Blue = Hex & 255;
-  return Math.max(Red, Green, Blue) <= 54 || (Red + Green + Blue) / 3 <= 42;
-}
-
-function ReplacementForName(Name) {
-  if (/Chair|Armchair/i.test(Name)) return 0x87977f;
-  if (/Shelf|Book|Box/i.test(Name)) return 0x958a77;
-  if (/Cart/i.test(Name)) return 0x87928d;
-  if (/Basket|Bag/i.test(Name)) return 0xa88f72;
-  if (/Oven|Fridge|Sink|Light/i.test(Name)) return 0x8b9698;
-  if (/Couch|Sofa/i.test(Name)) return 0x7e8f83;
-  return 0x7b8580;
-}
-
-function FixDarkMaterials(Root) {
-  const Replacement = ReplacementForName(String(Root.name || ""));
-  Root.traverse(Object => {
-    if (!Object?.isMesh || !Object.material) return;
-    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
-    const Updated = Materials.map(Material => {
-      if (!IsHardToSee(Material)) return Material;
-      const Copy = Material.clone();
-      Copy.color?.setHex(Copy.map ? 0xb8beb8 : Replacement, THREE.SRGBColorSpace);
-      if ("roughness" in Copy) Copy.roughness = Math.max(0.54, Copy.roughness ?? 0.70);
-      if (Copy.emissive?.isColor && Copy.emissiveIntensity > 0.01) {
-        Copy.emissive.setHex(0x252c28, THREE.SRGBColorSpace);
-        Copy.emissiveIntensity = Math.min(Copy.emissiveIntensity, 0.08);
-      }
-      Copy.needsUpdate = true;
-      return Copy;
-    });
-    Object.material = Array.isArray(Object.material) ? Updated : Updated[0];
-  });
-}
-
-function RemoveDecorativeWindows(Chunk) {
-  const Removed = new Set();
-  for (const Model of Chunk.Models || []) {
-    if (!Model?.parent || !RemovedGeometryNames.has(String(Model.name || ""))) continue;
-    Removed.add(Model);
-    Model.parent.remove(Model);
-  }
-  if (Removed.size) Chunk.Models = (Chunk.Models || []).filter(Model => !Removed.has(Model));
-
-  const RemoveObjects = [];
-  Chunk.Group?.traverse?.(Object => {
-    if (Object !== Chunk.Group && RemovedGeometryNames.has(String(Object?.name || ""))) RemoveObjects.push(Object);
-  });
-  for (const Object of RemoveObjects) Object.parent?.remove(Object);
-}
-
-function RegisterWalkableRugs(Chunk) {
-  SurfaceStep?.UnregisterChunk?.(Chunk.Id);
-  Chunk.Group?.traverse?.(Object => {
-    if (!IsRugObject(Object) || !Object.visible) return;
-    Object.userData.WalkableCarpetR87 = true;
-    Object.userData.DecorationNoCollision = true;
-    SurfaceStep?.RegisterRug?.(Object, Chunk.Id);
-  });
+  Game.CollisionBoxes.push(Entry);
+  ExactCollisionByObject.set(Root, { Signature, Entry });
 }
 
 function CollectManagedRoots(Chunk) {
@@ -447,7 +388,6 @@ export function ProcessAll() {
     ProcessChunk(Chunk);
   }
   for (const Chunk of Game.PreparedChunks.values()) if (!Seen.has(Chunk)) ProcessChunk(Chunk);
-
   for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
     const Entry = Game.CollisionBoxes[Index];
     if (IsLowWalkableEntry(Entry) || IsLegacyManagedEntry(Entry) || /Window_Large1/i.test(String(Entry?.Type || ""))) Game.CollisionBoxes.splice(Index, 1);
@@ -455,9 +395,9 @@ export function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 480);
+const Interval = setInterval(ProcessAll, 1600);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.24.1-R87";
+window.__STORE_CORE_FIX_BUILD__ = "V0.30.0-R94";
