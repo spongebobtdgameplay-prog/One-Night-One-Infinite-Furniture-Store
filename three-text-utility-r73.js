@@ -10,7 +10,7 @@ function NormalizeText(Text) {
   return String(Text ?? "").trim().replace(/\s+/g, " ").toUpperCase();
 }
 
-async function GetGeometry(Text, Depth = 0.08, Bevel = true) {
+async function GetGeometry(Text, Depth = 0.105, Bevel = true) {
   const Normalized = NormalizeText(Text) || " ";
   const Key = `${Normalized}|${Depth.toFixed(3)}|${Bevel ? 1 : 0}`;
   if (GeometryCache.has(Key)) return GeometryCache.get(Key);
@@ -20,20 +20,22 @@ async function GetGeometry(Text, Depth = 0.08, Bevel = true) {
     font: Font,
     size: 1,
     depth: Depth,
-    curveSegments: 5,
+    curveSegments: 2,
     bevelEnabled: Bevel,
-    bevelThickness: Bevel ? 0.012 : 0,
-    bevelSize: Bevel ? 0.010 : 0,
+    bevelThickness: Bevel ? 0.010 : 0,
+    bevelSize: Bevel ? 0.008 : 0,
     bevelOffset: 0,
-    bevelSegments: Bevel ? 2 : 0
+    bevelSegments: Bevel ? 1 : 0
   });
 
   Geometry.computeBoundingBox();
+  Geometry.computeBoundingSphere();
   const Bounds = Geometry.boundingBox;
   const Width = Math.max(0.0001, Bounds.max.x - Bounds.min.x);
   const Height = Math.max(0.0001, Bounds.max.y - Bounds.min.y);
   Geometry.translate(-(Bounds.min.x + Bounds.max.x) * 0.5, -(Bounds.min.y + Bounds.max.y) * 0.5, -Depth * 0.5);
   Geometry.computeBoundingBox();
+  Geometry.computeBoundingSphere();
 
   const Result = { Geometry, Width, Height };
   GeometryCache.set(Key, Result);
@@ -44,7 +46,7 @@ export async function Create3DText(Text, Options = {}) {
   const {
     MaxWidth = Infinity,
     MaxHeight = Infinity,
-    Depth = 0.08,
+    Depth = 0.105,
     Bevel = true,
     Material = null,
     Color = 0xf2e5c5,
@@ -53,7 +55,8 @@ export async function Create3DText(Text, Options = {}) {
     Emissive = 0x000000,
     EmissiveIntensity = 0,
     CastShadow = false,
-    ReceiveShadow = false
+    ReceiveShadow = false,
+    CullDistance = 54
   } = Options;
 
   const Data = await GetGeometry(Text, Depth, Bevel);
@@ -73,17 +76,15 @@ export async function Create3DText(Text, Options = {}) {
   Mesh.scale.setScalar(Scale);
   Mesh.castShadow = CastShadow;
   Mesh.receiveShadow = ReceiveShadow;
+  Mesh.frustumCulled = true;
   Mesh.userData.Text3DR73 = true;
   Mesh.userData.TextValue = NormalizeText(Text);
+  Mesh.userData.DistanceCullR94 = Number.isFinite(CullDistance) ? CullDistance : 54;
   return Mesh;
 }
 
 export async function CreateDoubleSided3DText(Text, Options = {}) {
-  const {
-    FrontZ = 0.12,
-    BackZ = -0.12
-  } = Options;
-
+  const { FrontZ = 0.12, BackZ = -0.12 } = Options;
   const Front = await Create3DText(Text, Options);
   const Back = Front.clone();
   Back.material = Front.material;
@@ -93,6 +94,7 @@ export async function CreateDoubleSided3DText(Text, Options = {}) {
 
   const Group = new THREE.Group();
   Group.name = "DoubleSided3DTextR73";
+  Group.userData.DistanceCullR94 = Front.userData.DistanceCullR94;
   Group.add(Front, Back);
   return Group;
 }
@@ -106,4 +108,4 @@ export function Dispose3DTextCache() {
   GeometryCache.clear();
 }
 
-window.__STORE_3D_TEXT_BUILD__ = "V0.15.0-R73";
+window.__STORE_3D_TEXT_BUILD__ = "V0.30.0-R94";
