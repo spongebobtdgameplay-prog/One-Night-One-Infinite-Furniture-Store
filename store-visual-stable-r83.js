@@ -1,13 +1,13 @@
 import * as THREE from "three";
-import { CreateDepartmentSign3D } from "./sign-utility-r73.js?v=20260824-92";
-import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-92";
-import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-92";
+import { CreateDepartmentSign3D } from "./sign-utility-r73.js?v=20260824-93";
+import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-93";
+import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-93";
 import {
   CreateOnlineSurfaceDecoration,
   CreateOnlineWallDecoration,
   OnlineDecorationKeys,
   PreloadOnlineDecorations
-} from "./online-decoration-library-r75.js?v=20260824-92";
+} from "./online-decoration-library-r75.js?v=20260824-93";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) throw new Error("Store game must load before stable visual dressing.");
