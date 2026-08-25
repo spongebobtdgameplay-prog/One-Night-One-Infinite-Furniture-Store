@@ -29,24 +29,35 @@ function RemoveMatchingReservation(Chunk, OldBox) {
   }
 }
 
-function RefreshCollision(Chunk, Object) {
-  const Type = `${Object.name}SolidR82`;
-  const Entry = (Chunk.CollisionEntries || []).find(Value => Value?.Type === Type);
-  if (!Entry) return;
-  const Old = Entry.Box?.clone?.();
-  if (Old) RemoveMatchingReservation(Chunk, Old);
+function TightBounds(Object) {
   const Bounds = BoundsOf(Object);
-  if (Bounds.isEmpty()) return;
+  if (Bounds.isEmpty()) return null;
   const Size = Bounds.getSize(new THREE.Vector3());
   const Center = Bounds.getCenter(new THREE.Vector3());
-  const Box = new THREE.Box3(
+  return new THREE.Box3(
     new THREE.Vector3(Center.x - Math.max(0.10, Size.x * 0.47), Math.max(0, Bounds.min.y), Center.z - Math.max(0.10, Size.z * 0.47)),
     new THREE.Vector3(Center.x + Math.max(0.10, Size.x * 0.47), Bounds.max.y, Center.z + Math.max(0.10, Size.z * 0.47))
   );
+}
+
+function ApplyEntryBounds(Chunk, Entry, Object, Reserve = true) {
+  if (!Entry) return;
+  const Old = Entry.Box?.clone?.();
+  if (Old) RemoveMatchingReservation(Chunk, Old);
+  const Box = TightBounds(Object);
+  if (!Box) return;
   Entry.Box = Box;
   Entry.OriginalBox = Box.clone();
   Entry.OriginalLegacyBox = Box.clone();
-  Chunk.ReservedBounds.push(Box.clone());
+  if (Reserve) Chunk.ReservedBounds.push(Box.clone());
+}
+
+function RefreshCollision(Chunk, Object) {
+  ApplyEntryBounds(Chunk, (Chunk.CollisionEntries || []).find(Value => Value?.Type === `${Object.name}SolidR82`), Object, true);
+}
+
+function RefreshHeaderCollision(Chunk, Object, Type) {
+  ApplyEntryBounds(Chunk, (Chunk.CollisionEntries || []).find(Value => Value?.Type === Type), Object, false);
 }
 
 function Move(Object, X, Z, RotationY) {
@@ -64,9 +75,10 @@ function OrganizeCarts(Chunk) {
   const Facing = Side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
   const X = Side * 14.35;
   const CenterZ = Chunk.CenterZ;
-  const StartZ = CenterZ - (Math.min(Carts.length, 7) - 1) * 0.48;
+  const Count = Math.min(Carts.length, 7);
+  const StartZ = CenterZ - (Count - 1) * 0.48;
 
-  for (let Index = 0; Index < Math.min(Carts.length, 7); Index += 1) {
+  for (let Index = 0; Index < Count; Index += 1) {
     Move(Carts[Index], X, StartZ + Index * 0.96, Facing);
     RefreshCollision(Chunk, Carts[Index]);
   }
@@ -101,15 +113,21 @@ function OrganizeBagsAndBaskets(Chunk) {
 
 function CenterRetailZoneHeaders(Chunk) {
   const CartHeader = Chunk.Group?.getObjectByName?.("RetailZoneHeaderR82-CART-RETURN");
+  if (CartHeader) {
+    const Side = CartHeader.position.x < 0 ? -1 : 1;
+    CartHeader.position.set(Side * 16.08, 2.30, Chunk.CenterZ);
+    CartHeader.scale.setScalar(0.88);
+    CartHeader.updateWorldMatrix(true, true);
+    RefreshHeaderCollision(Chunk, CartHeader, "CartReturnSignSolidR82");
+  }
+
   const BagHeader = Chunk.Group?.getObjectByName?.("RetailZoneHeaderR82-BAGS-+-BASKETS");
-  for (const Header of [CartHeader, BagHeader]) {
-    if (!Header) continue;
-    const Side = Header.position.x < 0 ? -1 : 1;
-    Header.position.x = Side * 16.08;
-    Header.position.y = 2.30;
-    Header.position.z = Chunk.CenterZ;
-    Header.scale.setScalar(0.88);
-    Header.updateWorldMatrix(true, true);
+  if (BagHeader) {
+    const Side = BagHeader.position.x < 0 ? -1 : 1;
+    BagHeader.position.set(Side * 16.08, 2.30, Chunk.CenterZ);
+    BagHeader.scale.setScalar(0.88);
+    BagHeader.updateWorldMatrix(true, true);
+    RefreshHeaderCollision(Chunk, BagHeader, "BagAreaSignSolidR82");
   }
 }
 
