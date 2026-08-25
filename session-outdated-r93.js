@@ -51,7 +51,7 @@ for (const EventName of ["keydown", "mousedown", "pointerdown", "touchstart", "w
   addEventListener(EventName, TouchActivity, { passive: true, capture: true });
 }
 
-addEventListener("visibilitychange", () => {
+document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     HiddenAt = Date.now();
     return;
