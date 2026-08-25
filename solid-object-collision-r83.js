@@ -106,8 +106,10 @@ function InstanceBoxes(Object, Limit = 80) {
 
 function ObjectKind(Object) {
   const Name = String(Object?.name || "");
+  if (Object?.userData?.RetailSellableR84) return "RetailFurniture";
   if (Name === "DepartmentHeaderR73") return "DepartmentSign";
   if (Name.startsWith("CompactPriceTagR83-")) return "FurnitureSign";
+  if (Name.startsWith("CouchDisplayRugR84-")) return "FloorSurface";
   if (Name.startsWith("OnlineChunkDecorationR76-")) return "FloorDecoration";
   if (Name.startsWith("OnlineSurfaceDecorationR76-")) return "SurfaceDecoration";
   if (Name.startsWith("OnlineWallDecorationR76-")) return "WallDecoration";
@@ -136,6 +138,7 @@ function Install(Object, Chunk, Kind) {
   let Boxes;
   if (Kind === "WarehouseBoxes") Boxes = InstanceBoxes(Object, 80);
   else if (Kind === "FurnitureSign" || Kind === "DepartmentSign") Boxes = MeshBoxes(Object, 14);
+  else if (Kind === "RetailFurniture") Boxes = MeshBoxes(Object, 20);
   else if (Kind === "SurfaceDecoration") Boxes = MeshBoxes(Object, 6);
   else Boxes = MeshBoxes(Object, 10);
 
@@ -177,4 +180,4 @@ const Interval = setInterval(() => ProcessAll(false), 1100);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SOLID_OBJECT_COLLISION_R83__ = { ProcessAll, ProcessChunk };
-window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.22.0-R83";
+window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.23.0-R84";
