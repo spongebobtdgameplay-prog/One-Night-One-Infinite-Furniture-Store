@@ -1,5 +1,5 @@
-const Cache = "20260824-95";
-const Version = "0.24.0";
+const Cache = "20260824-96";
+const Version = "0.24.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -83,7 +83,8 @@ try {
   await OptionalImport("./price-tag-authority-r83.js", "Single-version compact item prices");
   await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
   await OptionalImport("./solid-object-collision-r83.js", "Finalized static object collision");
-  await OptionalImport("./core-fix-authority-r86.js", "Tight furniture collision, readable materials and walkable rugs");
+  await OptionalImport("./surface-step-animation-r87.js", "Dedicated carpet step animation utility");
+  await OptionalImport("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
   await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
