@@ -181,7 +181,7 @@ function NearestFurniture(MaxDistance = 2.15) {
     Best = Record;
     BestDistance = Distance;
   }
-  return Best ? { ...Best, Distance: BestDistance } : null;
+  return Best ? { Record: Best, Distance: BestDistance, Object: Best.Object, Chunk: Best.Chunk, Name: Best.Name, Weight: Best.Weight } : null;
 }
 
 function IsRelatedEntry(Entry, Object) {
@@ -242,10 +242,11 @@ function PlayerPivot() {
   return Game.Scene.getObjectByName("PlayerCharacterPivot") || null;
 }
 
-function Pickup(Record) {
-  if (!Record?.Object || Held) return false;
+function Pickup(Candidate) {
+  if (!Candidate?.Object || Held) return false;
   const Pivot = PlayerPivot();
   if (!Pivot) return false;
+  const Record = Candidate.Record || FurnitureById.get(Candidate.Object.uuid) || Candidate;
   const Object = Record.Object;
   const PriceTags = FindPriceTags(Object, Record.Chunk);
   const Visual = BuildCarryVisual(Object);
@@ -254,7 +255,16 @@ function Pickup(Record) {
   Object.userData.CarriedR94 = true;
   for (const Tag of PriceTags) Tag.visible = false;
   Pivot.add(Visual);
-  Held = { ...Record, Visual, PriceTags, Parent: Object.parent };
+  Held = {
+    Record,
+    Object,
+    Chunk: Record.Chunk,
+    Visual,
+    PriceTags,
+    Parent: Object.parent,
+    Weight: Record.Weight,
+    Name: Record.Name
+  };
   CarryBadge.style.display = "block";
   CarryBadge.textContent = `${Held.Name} • ${Held.Weight} KG • Q DROP`;
   window.dispatchEvent(new CustomEvent("store-furniture-picked", { detail: GetHeld() }));
@@ -287,18 +297,19 @@ function Drop() {
     ShowTransient("NO ROOM TO DROP HERE");
     return false;
   }
-  const Record = Held;
-  const Source = Record.Object;
-  const Parent = Record.Parent;
-  if (!Parent) return false;
+  const State = Held;
+  const Record = State.Record;
+  const Source = State.Object;
+  const Parent = State.Parent;
+  if (!Parent || !Record) return false;
   TempLocal.copy(Position);
   Parent.worldToLocal(TempLocal);
   Source.position.x = TempLocal.x;
   Source.position.z = TempLocal.z;
   Source.userData.CarriedR94 = false;
   SetSourceVisible(Source, true);
-  for (const Tag of Record.PriceTags) Tag.visible = true;
-  Record.Visual.parent?.remove(Record.Visual);
+  for (const Tag of State.PriceTags) Tag.visible = true;
+  State.Visual.parent?.remove(State.Visual);
   Held = null;
   CarryBadge.style.display = "none";
   MeasureRecord(Record);
@@ -309,20 +320,22 @@ function Drop() {
 
 function ConsumeHeld(Matcher = null) {
   if (!Held) return { ok: false };
-  if (Matcher && !Matcher(Held)) return { ok: false, mismatch: true, held: GetHeld() };
-  const Record = Held;
-  const Delivered = GetHeld();
+  const PublicHeld = GetHeld();
+  if (Matcher && !Matcher(PublicHeld)) return { ok: false, mismatch: true, held: PublicHeld };
+  const State = Held;
+  const Record = State.Record;
+  if (!Record) return { ok: false };
   Record.Object.userData.CarriedR94 = false;
   Record.Object.userData.DeliveredR94 = true;
   SetSourceVisible(Record.Object, false);
-  for (const Tag of Record.PriceTags) Tag.visible = false;
-  Record.Visual.parent?.remove(Record.Visual);
+  for (const Tag of State.PriceTags) Tag.visible = false;
+  State.Visual.parent?.remove(State.Visual);
   FurnitureById.delete(Record.Object.uuid);
   FurnitureRecords = FurnitureRecords.filter(Item => Item !== Record);
   Held = null;
   CarryBadge.style.display = "none";
-  window.dispatchEvent(new CustomEvent("store-furniture-delivered", { detail: Delivered }));
-  return { ok: true, delivered: Delivered };
+  window.dispatchEvent(new CustomEvent("store-furniture-delivered", { detail: PublicHeld }));
+  return { ok: true, delivered: PublicHeld };
 }
 
 function GetHeld() {
@@ -499,4 +512,4 @@ window.__STORE_FURNITURE_CARRY_R94__ = {
   RefreshIndex: RefreshFurnitureIndex,
   ShowTransient
 };
-window.__STORE_FURNITURE_CARRY_BUILD__ = "V0.30.2-R96";
+window.__STORE_FURNITURE_CARRY_BUILD__ = "V0.30.3-R96";
