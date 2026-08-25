@@ -39,21 +39,19 @@ function ApplyTaskVisual(Task) {
 
 function RefreshRoomClock() {
   const Room = Multiplayer.GetState().room;
-  if (!Room) {
+  if (!Room?.started) {
     RoomClockSeconds = null;
-    LastRoomCode = "";
+    LastRoomCode = Room?.code || "";
     return;
   }
-  if (Room.code !== LastRoomCode || Number.isFinite(Number(Room.storeSeconds))) {
-    LastRoomCode = Room.code;
-    RoomClockSeconds = Number(Room.storeSeconds);
-    RoomClockCapturedAt = performance.now();
-  }
+  LastRoomCode = Room.code;
+  RoomClockSeconds = Number(Room.storeSeconds);
+  RoomClockCapturedAt = performance.now();
 }
 
 function ApplySharedTasks() {
   const Room = Multiplayer.GetState().room;
-  if (!Room) {
+  if (!Room?.started) {
     AppliedRemoteTasks.clear();
     SubmittedLocalTasks.clear();
     return;
@@ -89,6 +87,7 @@ function ApplySharedTasks() {
 }
 
 function ApplyServerCorrection(Snapshot) {
+  if (!Multiplayer.GetState().room?.started) return;
   const X = Number(Snapshot?.x);
   const Z = Number(Snapshot?.z);
   if (!Number.isFinite(X) || !Number.isFinite(Z)) return;
@@ -106,11 +105,12 @@ function ApplyServerCorrection(Snapshot) {
 }
 
 addEventListener("store-room-change", RefreshRoomClock);
+addEventListener("store-multiplayer-start", RefreshRoomClock);
 addEventListener("store-movement-correction", Event => ApplyServerCorrection(Event.detail));
 
 function Frame() {
   const Room = Multiplayer.GetState().room;
-  if (Room && RoomClockSeconds !== null && GameClock) {
+  if (Room?.started && RoomClockSeconds !== null && GameClock) {
     const Elapsed = Math.max(0, performance.now() - RoomClockCapturedAt) / 1000;
     GameClock.textContent = FormatClock(RoomClockSeconds + Elapsed * STORE_TIME_RATE);
   }
@@ -121,4 +121,4 @@ function Frame() {
 RefreshRoomClock();
 requestAnimationFrame(Frame);
 window.__STORE_MULTIPLAYER_AUTHORITY_R89__ = { ApplySharedTasks, ApplyServerCorrection, RefreshRoomClock };
-window.__STORE_MULTIPLAYER_AUTHORITY_BUILD__ = "V0.25.1-R89";
+window.__STORE_MULTIPLAYER_AUTHORITY_BUILD__ = "V0.26.1-R91";
