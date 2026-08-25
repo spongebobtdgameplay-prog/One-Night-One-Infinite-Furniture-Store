@@ -1,5 +1,5 @@
-const Cache = "20260824-91";
-const Version = "0.23.0";
+const Cache = "20260824-92";
+const Version = "0.23.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -77,7 +77,7 @@ try {
   await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
   await OptionalImport("./store-finish-r80.js", "Rear closure and merchandising walls");
   await OptionalImport("./retail-zones-r82.js", "Real cart, bag and large-rug retail zones");
-  await OptionalImport("./retail-sale-displays-r84.js", "Rug-backed couches and imported sale displays");
+  await OptionalImport("./retail-sale-displays-r84.js", "Rug-backed couches and organized sale islands");
   await OptionalImport("./retail-organization-r83.js", "Organized cart and bag bays");
   await OptionalImport("./shelf-stock-r83.js", "Stocked showroom shelves");
   await OptionalImport("./price-tag-authority-r83.js", "Single-version compact item prices");
