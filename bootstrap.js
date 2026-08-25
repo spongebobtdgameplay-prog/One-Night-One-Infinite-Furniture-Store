@@ -6,8 +6,8 @@ if (AccountGatePromise) {
   if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
 }
 
-const Cache = "20260825-108";
-const Version = "0.30.4";
+const Cache = "20260825-109";
+const Version = "0.30.5";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -87,11 +87,10 @@ try {
 
   await OptionalImport("./ui-performance-r95.js", "R96 UI idle and low-latency authority");
   await OptionalImport("./runtime-performance-buffer-r94.js", "Incremental distance and frame performance buffer");
-  await OptionalImport("./multiplayer-client-r88.js", "Authenticated multiplayer client");
-  await OptionalImport("./multiplayer-network-guard-r97.js", "Single-flight WebSocket multiplayer network guard");
+  await OptionalImport("./multiplayer-client-r98.js", "Single-connection event-driven multiplayer client");
   await OptionalImport("./player-nameplate-r94.js", "Compact account player nameplates");
   await OptionalImport("./session-outdated-r93.js", "Stale-session refresh guard");
-  await OptionalImport("./multiplayer-ui-r93.js", "Stable account, server browser and multiplayer lobby UI");
+  await OptionalImport("./multiplayer-ui-r98.js", "Zero-poll event-driven multiplayer lobby UI");
   await OptionalImport("./multiplayer-authority-r89.js", "Started-game multiplayer task, clock and correction authority");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -144,4 +143,4 @@ if (ReadyButton && CoreReady) {
 }
 
 window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}`;
-window.__STORE_MULTIPLAYER_UI_R93__?.Render?.();
+window.__STORE_MULTIPLAYER_UI_R98__?.Render?.();
