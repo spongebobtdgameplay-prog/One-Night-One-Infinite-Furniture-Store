@@ -120,6 +120,13 @@ function Delay(Milliseconds) {
   return new Promise(Resolve => setTimeout(Resolve, Milliseconds));
 }
 
+function YieldMainThread() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) requestIdleCallback(() => Resolve(), { timeout: 80 });
+    else setTimeout(Resolve, 16);
+  });
+}
+
 async function RunWorldPasses(Chunk) {
   const Visual = window.__STORE_VISUAL_REDESIGN_R73__;
   const Retail = window.__STORE_RETAIL_SHOWROOM_R79__;
@@ -133,16 +140,20 @@ async function RunWorldPasses(Chunk) {
 
   if (Visual?.ProcessChunk) await Visual.ProcessChunk(Chunk);
   if (Retail?.ProcessChunk) await Retail.ProcessChunk(Chunk);
+  await YieldMainThread();
   if (Zones?.ProcessChunk) await Zones.ProcessChunk(Chunk);
   if (SaleDisplays?.ProcessChunk) await SaleDisplays.ProcessChunk(Chunk);
   if (Organize?.ProcessChunk) await Organize.ProcessChunk(Chunk);
+  await YieldMainThread();
   if (ShelfStock?.ProcessChunk) await ShelfStock.ProcessChunk(Chunk);
   Finish?.ProcessChunk?.(Chunk);
   if (Chunk.Index === 0) await Finish?.EnsureRearClosure?.();
   await Tags?.RebuildChunk?.(Chunk);
+  await YieldMainThread();
   RemoveTerminalBeacons(Chunk);
   window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
-  window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessAll?.();
+  window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessChunk?.(Chunk);
+  window.__STORE_RENDER_DISTANCE_LIGHTING__?.ProcessChunk?.(Chunk);
   CoreFix?.ProcessChunk?.(Chunk);
 }
 
@@ -155,12 +166,14 @@ export async function FinalizeChunk(Chunk) {
     while (!CoreReady(Chunk) && performance.now() - Started < 9000) {
       if (Pass % 2 === 0) await RunWorldPasses(Chunk);
       UpdateStability(Chunk);
-      await Delay(Pass < 7 ? 90 : 150);
+      await YieldMainThread();
+      await Delay(Pass < 5 ? 180 : 280);
       Pass += 1;
     }
 
     await RunWorldPasses(Chunk);
-    await Delay(140);
+    await YieldMainThread();
+    await Delay(180);
     UpdateStability(Chunk);
     if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R86 fix pass.`);
 
@@ -179,7 +192,10 @@ async function PrimeBootWorld() {
   const Chunks = [];
   for (const Chunk of Game.ActiveChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled) Chunks.push(Chunk);
   for (const Chunk of Game.PreparedChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled && !Chunks.includes(Chunk)) Chunks.push(Chunk);
-  await Promise.allSettled(Chunks.map(Chunk => FinalizeChunk(Chunk)));
+  for (const Chunk of Chunks) {
+    await FinalizeChunk(Chunk);
+    await YieldMainThread();
+  }
 }
 
 await PrimeBootWorld();
@@ -192,17 +208,30 @@ Game.PreparedChunks.get = function(Index) {
   return Chunk;
 };
 
-function Discover() {
+let DiscoverBusy = false;
+async function Discover() {
+  if (DiscoverBusy) return;
+  let Target = null;
   for (const Chunk of Game.PreparedChunks.values()) {
     if (Chunk?.Ready && !Chunk.Cancelled && !Chunk.Group?.userData?.PresentationReadyR83) {
-      FinalizeChunk(Chunk).catch(Error => console.warn("Prepared chunk presentation failed", Error));
+      Target = Chunk;
+      break;
     }
+  }
+  if (!Target) return;
+  DiscoverBusy = true;
+  try {
+    await FinalizeChunk(Target);
+  } catch (Error) {
+    console.warn("Prepared chunk presentation failed", Error);
+  } finally {
+    DiscoverBusy = false;
   }
 }
 
-Discover();
-const Interval = setInterval(Discover, 180);
+void Discover();
+const Interval = setInterval(() => void Discover(), 800);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.24.0-R86";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.25.1-PERF1";
