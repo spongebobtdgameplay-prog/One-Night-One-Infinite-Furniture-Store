@@ -1,4 +1,4 @@
-const Cache = "20260825-113";
+const Cache = "20260825-114";
 const Version = "0.25.1";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -23,8 +23,10 @@ for (const LinkData of FaviconLinks) {
 }
 
 const BuildVersion = document.getElementById("BuildVersion");
-if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • PERF 3`;
+if (BuildVersion) BuildVersion.textContent = `BUILD V${Version} • TRACE 1`;
 window.__STORE_VERSION__ = Version;
+
+await import(`./runtime-profiler-r114.js?v=${Cache}`);
 
 async function OptionalImport(Path, Label) {
   try {
@@ -148,4 +150,4 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.cursor = "";
 }
 
-window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-PERF3`;
+window.__STORE_BOOTSTRAP_BUILD__ = `V${Version}-TRACE1`;
