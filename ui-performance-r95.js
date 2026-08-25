@@ -90,13 +90,14 @@ function BindObservers() {
   SyncUiState();
 }
 
-Game.Renderer.render = function FastUiRender(Scene, Camera) {
+const FastUiRender = function FastUiRender(Scene, Camera) {
   if (!UiModalOpen) return OriginalRender(Scene, Camera);
   const Now = performance.now();
   if (Now - LastUiRenderAt < UI_WORLD_FRAME_MS) return;
   LastUiRenderAt = Now;
   return OriginalRender(Scene, Camera);
 };
+Game.Renderer.render = FastUiRender;
 
 const BodyObserver = new MutationObserver(() => {
   const KnownCount = WatchTargets.filter(Element => Element?.isConnected).length;
@@ -105,13 +106,6 @@ const BodyObserver = new MutationObserver(() => {
   if (KnownCount !== CurrentCount) BindObservers();
 });
 BodyObserver.observe(document.body, { childList: true });
-
-addEventListener("pointerdown", Event => {
-  const Control = Event.target?.closest?.("button,input,select,[role=button]");
-  if (!Control) return;
-  Control.dataset.FastPressR95 = "1";
-  queueMicrotask(() => delete Control.dataset.FastPressR95);
-}, { capture: true, passive: true });
 
 BindObservers();
 addEventListener("pagehide", () => {
