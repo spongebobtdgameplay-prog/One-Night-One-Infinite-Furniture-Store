@@ -5,7 +5,7 @@ if (!Game?.Scene || !Game?.Camera || !Game?.Renderer || !Game?.ActiveChunks || !
   throw new Error("Game must load before runtime performance buffer.");
 }
 
-const RegisteredRoots = new WeakSet();
+const RootChildCounts = new WeakMap();
 const Candidates = [];
 const CandidateSet = new WeakSet();
 const TempWorld = new THREE.Vector3();
@@ -29,15 +29,16 @@ function RegisterObject(Object) {
   if (!IsText && !IsLight) return;
   CandidateSet.add(Object);
   Candidates.push(Object);
-  if (Object.visible === undefined) Object.visible = true;
   if (Object.isPointLight && !Number.isFinite(Object.userData.RuntimeBaseIntensityR94)) {
     Object.userData.RuntimeBaseIntensityR94 = Number(Object.userData.BaseIntensity ?? Object.intensity ?? 1.5);
   }
 }
 
-function ScanRoot(Root) {
-  if (!Root?.traverse || RegisteredRoots.has(Root)) return;
-  RegisteredRoots.add(Root);
+function ScanRoot(Root, Force = false) {
+  if (!Root?.traverse) return;
+  const ChildCount = Root.children?.length || 0;
+  if (!Force && RootChildCounts.get(Root) === ChildCount) return;
+  RootChildCounts.set(Root, ChildCount);
   Root.traverse(RegisterObject);
 }
 
@@ -52,11 +53,8 @@ function ScanNewRoots() {
 function ScheduleDiscovery() {
   if (DiscoveryScheduled) return;
   DiscoveryScheduled = true;
-  if ("requestIdleCallback" in window) {
-    requestIdleCallback(ScanNewRoots, { timeout: 900 });
-  } else {
-    setTimeout(ScanNewRoots, 24);
-  }
+  if ("requestIdleCallback" in window) requestIdleCallback(ScanNewRoots, { timeout: 900 });
+  else setTimeout(ScanNewRoots, 24);
 }
 
 function DistanceLimit(Object) {
@@ -90,8 +88,7 @@ function CullSlice() {
     const DX = TempWorld.x - CameraPosition.x;
     const DY = TempWorld.y - CameraPosition.y;
     const DZ = TempWorld.z - CameraPosition.z;
-    const Visible = DX * DX + DY * DY + DZ * DZ <= Limit * Limit;
-    SetCandidateVisible(Object, Visible);
+    SetCandidateVisible(Object, DX * DX + DY * DY + DZ * DZ <= Limit * Limit);
   }
 }
 
@@ -102,10 +99,8 @@ function AdaptPixelRatio(Now) {
   FrameSamples = 0;
   const Current = Game.Renderer.getPixelRatio();
   let Next = Current;
-
   if (AverageMs > 22.5) Next = Math.max(MIN_PIXEL_RATIO, Current - 0.08);
   else if (AverageMs < 17.0 && Current < TARGET_PIXEL_RATIO) Next = Math.min(TARGET_PIXEL_RATIO, Current + 0.05);
-
   if (Math.abs(Next - Current) >= 0.025) {
     Game.Renderer.setPixelRatio(Next);
     Game.Renderer.setSize(innerWidth, innerHeight, false);
@@ -118,7 +113,6 @@ function Frame(Now) {
   LastFrameAt = Now;
   FrameAccumulator += DeltaMs;
   FrameSamples += 1;
-
   if (Now - LastCullAt >= 100) {
     LastCullAt = Now;
     CullSlice();
