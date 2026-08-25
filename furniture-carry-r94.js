@@ -23,31 +23,46 @@ const KnownWeights = new Map([
   ["RetailStorageCabinetR79", 37], ["RetailDisplayCabinetR79", 39]
 ]);
 
+const Hud = document.getElementById("Hud");
 const TempCenter = new THREE.Vector3();
 const TempSize = new THREE.Vector3();
-const TempWorld = new THREE.Vector3();
 const TempForward = new THREE.Vector3();
 const TempLocal = new THREE.Vector3();
 const TempEuler = new THREE.Euler();
 const TempQuaternion = new THREE.Quaternion();
+const TempBox = new THREE.Box3();
 const InteractionProviders = new Map();
+const FurnitureById = new Map();
+let FurnitureRecords = [];
+let IndexSignature = "";
 let Held = null;
-let LastCandidateRefresh = -Infinity;
 let CurrentCandidate = null;
-let LastCameraPosition = Game.Camera.position.clone();
-let CarryMove = 0;
+let LastCandidateRefresh = -Infinity;
+let LastIndexCheck = -Infinity;
+let LastAnimationAt = performance.now();
 let CarryPhase = 0;
-let LastFrameAt = performance.now();
+let CarryMove = 0;
+let LastCameraX = Game.Camera.position.x;
+let LastCameraZ = Game.Camera.position.z;
+let CarryPose = null;
 
 const Prompt = document.createElement("div");
 Prompt.id = "InteractionHintR94";
-Prompt.style.cssText = "position:fixed;left:50%;bottom:17%;z-index:82;transform:translateX(-50%);display:none;pointer-events:none;padding:8px 12px;border:1px solid rgba(203,166,116,.32);background:rgba(5,6,5,.89);color:#e7dbc5;font:850 11px Arial,sans-serif;letter-spacing:.1em;text-transform:uppercase;box-shadow:0 10px 34px rgba(0,0,0,.45)";
+Prompt.style.cssText = "position:fixed;left:50%;bottom:17%;z-index:82;transform:translateX(-50%);display:none;pointer-events:none;padding:8px 12px;border:1px solid rgba(203,166,116,.32);background:#080a08;color:#e7dbc5;font:850 11px Arial,sans-serif;letter-spacing:.1em;text-transform:uppercase";
 document.body.appendChild(Prompt);
 
 const CarryBadge = document.createElement("div");
 CarryBadge.id = "CarryBadgeR94";
-CarryBadge.style.cssText = "position:fixed;right:16px;bottom:94px;z-index:73;display:none;pointer-events:none;min-width:145px;padding:9px 11px;border:1px solid rgba(184,135,83,.22);background:rgba(6,7,6,.78);color:rgba(226,214,193,.78);font:800 10px Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase";
+CarryBadge.style.cssText = "position:fixed;right:16px;bottom:94px;z-index:73;display:none;pointer-events:none;min-width:145px;padding:9px 11px;border:1px solid rgba(184,135,83,.22);background:#080908;color:rgba(226,214,193,.78);font:800 10px Arial,sans-serif;letter-spacing:.08em;text-transform:uppercase";
 document.body.appendChild(CarryBadge);
+
+function UiOpen() {
+  return Boolean(window.__STORE_UI_MODAL_OPEN_R96__ || window.__STORE_UI_MODAL_OPEN_R95__);
+}
+
+function GameplayVisible() {
+  return Boolean(Hud && !Hud.classList.contains("Hidden"));
+}
 
 function FriendlyName(Object) {
   const Given = String(Object?.userData?.RetailLabel || "").trim();
@@ -72,18 +87,15 @@ function FriendlyName(Object) {
 }
 
 function IsFurniture(Object) {
-  if (!Object?.isObject3D || !Object.parent || Object.userData?.DeliveredR94 || Object.userData?.CarriedR94) return false;
+  if (!Object?.isObject3D || !Object.parent || Object.userData?.DeliveredR94) return false;
   if (FurnitureNames.has(Object.name)) return true;
   if (Object.userData?.RetailSellableR84) return true;
   return /^Retail(CoffeeTable|SideTable|DiningTable|BoxShelf)R84/i.test(String(Object.name || ""));
 }
 
-function FurnitureWeight(Object) {
+function ComputeWeight(Object, Size) {
   if (KnownWeights.has(Object?.name)) return KnownWeights.get(Object.name);
-  const Bounds = new THREE.Box3().setFromObject(Object);
-  if (Bounds.isEmpty()) return 20;
-  Bounds.getSize(TempSize);
-  const Volume = Math.max(0.1, TempSize.x * TempSize.y * TempSize.z);
+  const Volume = Math.max(0.1, Size.x * Size.y * Size.z);
   return Math.round(THREE.MathUtils.clamp(10 + Math.pow(Volume, 0.58) * 8.2, 10, 55));
 }
 
@@ -91,59 +103,98 @@ function SpeedMultiplier(Weight) {
   return THREE.MathUtils.clamp(0.94 - Number(Weight || 0) * 0.0058, 0.62, 0.90);
 }
 
-function FurnitureRoots() {
-  const Result = [];
-  const Seen = new Set();
+function MeasureRecord(Record) {
+  const Object = Record.Object;
+  if (!Object?.parent) return false;
+  Object.updateWorldMatrix(true, true);
+  TempBox.setFromObject(Object);
+  if (TempBox.isEmpty()) return false;
+  TempBox.getCenter(TempCenter);
+  TempBox.getSize(TempSize);
+  Record.MinX = TempBox.min.x;
+  Record.MaxX = TempBox.max.x;
+  Record.MinZ = TempBox.min.z;
+  Record.MaxZ = TempBox.max.z;
+  Record.CenterX = TempCenter.x;
+  Record.CenterZ = TempCenter.z;
+  Record.Weight = ComputeWeight(Object, TempSize);
+  Record.Name = FriendlyName(Object);
+  return true;
+}
+
+function AddRecord(Object, Chunk) {
+  if (!IsFurniture(Object) || FurnitureById.has(Object.uuid)) return;
+  const Record = { Object, Chunk, MinX: 0, MaxX: 0, MinZ: 0, MaxZ: 0, CenterX: 0, CenterZ: 0, Weight: 20, Name: "FURNITURE" };
+  if (!MeasureRecord(Record)) return;
+  FurnitureById.set(Object.uuid, Record);
+  FurnitureRecords.push(Record);
+}
+
+function BuildIndexSignature() {
+  const Parts = [];
+  for (const [Id, Chunk] of Game.ActiveChunks) Parts.push(`A${Id}:${Chunk?.Models?.length || 0}:${Chunk?.Group?.children?.length || 0}`);
+  for (const [Id, Chunk] of Game.PreparedChunks) Parts.push(`P${Id}:${Chunk?.Models?.length || 0}:${Chunk?.Group?.children?.length || 0}`);
+  return Parts.sort().join("|");
+}
+
+function RefreshFurnitureIndex(Force = false) {
+  if (UiOpen() && !Force) return FurnitureRecords;
+  const Signature = BuildIndexSignature();
+  if (!Force && Signature === IndexSignature) return FurnitureRecords;
+  IndexSignature = Signature;
   for (const Collection of [Game.ActiveChunks, Game.PreparedChunks]) {
     for (const Chunk of Collection.values()) {
-      for (const Model of Chunk?.Models || []) {
-        if (!IsFurniture(Model) || Seen.has(Model.uuid)) continue;
-        Seen.add(Model.uuid);
-        Result.push({ Object: Model, Chunk });
-      }
-      for (const Object of Chunk?.Group?.children || []) {
-        if (!IsFurniture(Object) || Seen.has(Object.uuid)) continue;
-        Seen.add(Object.uuid);
-        Result.push({ Object, Chunk });
-      }
+      for (const Model of Chunk?.Models || []) AddRecord(Model, Chunk);
+      for (const Object of Chunk?.Group?.children || []) AddRecord(Object, Chunk);
     }
   }
-  return Result;
+  FurnitureRecords = FurnitureRecords.filter(Record => {
+    if (Record.Object?.parent && !Record.Object.userData?.DeliveredR94) return true;
+    FurnitureById.delete(Record.Object?.uuid);
+    return false;
+  });
+  return FurnitureRecords;
 }
 
-function DistanceToObject(Object) {
-  const Bounds = new THREE.Box3().setFromObject(Object);
-  if (Bounds.isEmpty()) return Infinity;
-  Bounds.clampPoint(Game.Camera.position, TempWorld);
-  return Math.hypot(TempWorld.x - Game.Camera.position.x, TempWorld.y - Game.Camera.position.y, TempWorld.z - Game.Camera.position.z);
+function DistanceToCachedBounds(Record) {
+  const X = Game.Camera.position.x;
+  const Z = Game.Camera.position.z;
+  const DX = X < Record.MinX ? Record.MinX - X : X > Record.MaxX ? X - Record.MaxX : 0;
+  const DZ = Z < Record.MinZ ? Record.MinZ - Z : Z > Record.MaxZ ? Z - Record.MaxZ : 0;
+  return Math.hypot(DX, DZ);
 }
 
-function NearestFurniture(MaxDistance = 2.1) {
+function NearestFurniture(MaxDistance = 2.15) {
   if (Held) return null;
   let Best = null;
   let BestDistance = MaxDistance;
-  for (const Record of FurnitureRoots()) {
-    const Distance = DistanceToObject(Record.Object);
+  const X = Game.Camera.position.x;
+  const Z = Game.Camera.position.z;
+  for (const Record of FurnitureRecords) {
+    const Object = Record.Object;
+    if (!Object?.parent || Object.userData?.CarriedR94 || Object.userData?.DeliveredR94) continue;
+    const RoughDX = Record.CenterX - X;
+    const RoughDZ = Record.CenterZ - Z;
+    if (RoughDX * RoughDX + RoughDZ * RoughDZ > 36) continue;
+    const Distance = DistanceToCachedBounds(Record);
     if (Distance >= BestDistance) continue;
-    Best = { ...Record, Distance };
+    Best = Record;
     BestDistance = Distance;
   }
-  return Best;
+  return Best ? { ...Best, Distance: BestDistance } : null;
 }
 
 function IsRelatedEntry(Entry, Object) {
-  if (!Entry || !Object) return false;
-  return Entry.CollisionObject === Object || Entry.SourceModel === Object || Entry.Model === Object;
+  return Boolean(Entry && Object && (Entry.CollisionObject === Object || Entry.SourceModel === Object || Entry.Model === Object));
 }
 
 function RemoveFurnitureCollision(Object, Chunk) {
   for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
     if (IsRelatedEntry(Game.CollisionBoxes[Index], Object)) Game.CollisionBoxes.splice(Index, 1);
   }
-  if (Chunk?.CollisionEntries) {
-    for (let Index = Chunk.CollisionEntries.length - 1; Index >= 0; Index -= 1) {
-      if (IsRelatedEntry(Chunk.CollisionEntries[Index], Object)) Chunk.CollisionEntries.splice(Index, 1);
-    }
+  if (!Chunk?.CollisionEntries) return;
+  for (let Index = Chunk.CollisionEntries.length - 1; Index >= 0; Index -= 1) {
+    if (IsRelatedEntry(Chunk.CollisionEntries[Index], Object)) Chunk.CollisionEntries.splice(Index, 1);
   }
 }
 
@@ -169,20 +220,18 @@ function BuildCarryVisual(Source) {
   Visual.position.set(0, 0, 0);
   Visual.quaternion.identity();
   Visual.traverse(Object => {
-    if (Object.isMesh) {
-      Object.castShadow = false;
-      Object.receiveShadow = false;
-      Object.frustumCulled = true;
-    }
+    if (!Object.isMesh) return;
+    Object.castShadow = false;
+    Object.receiveShadow = false;
+    Object.frustumCulled = true;
   });
   VisualRoot.add(Visual);
   VisualRoot.updateMatrixWorld(true);
-  const Bounds = new THREE.Box3().setFromObject(VisualRoot);
-  Bounds.getCenter(TempCenter);
-  Bounds.getSize(TempSize);
+  TempBox.setFromObject(VisualRoot);
+  TempBox.getCenter(TempCenter);
+  TempBox.getSize(TempSize);
   Visual.position.sub(TempCenter);
-  const MaxDimension = Math.max(TempSize.x, TempSize.y, TempSize.z, 0.01);
-  const Scale = Math.min(1, 1.45 / MaxDimension);
+  const Scale = Math.min(1, 1.45 / Math.max(TempSize.x, TempSize.y, TempSize.z, 0.01));
   VisualRoot.scale.setScalar(Scale);
   VisualRoot.position.set(0, 1.12, 0.72);
   VisualRoot.rotation.set(-0.04, Math.PI, 0);
@@ -198,7 +247,6 @@ function Pickup(Record) {
   const Pivot = PlayerPivot();
   if (!Pivot) return false;
   const Object = Record.Object;
-  const Weight = FurnitureWeight(Object);
   const PriceTags = FindPriceTags(Object, Record.Chunk);
   const Visual = BuildCarryVisual(Object);
   RemoveFurnitureCollision(Object, Record.Chunk);
@@ -206,17 +254,9 @@ function Pickup(Record) {
   Object.userData.CarriedR94 = true;
   for (const Tag of PriceTags) Tag.visible = false;
   Pivot.add(Visual);
-  Held = {
-    Object,
-    Chunk: Record.Chunk,
-    Visual,
-    Weight,
-    Name: FriendlyName(Object),
-    PriceTags,
-    Parent: Object.parent
-  };
+  Held = { ...Record, Visual, PriceTags, Parent: Object.parent };
   CarryBadge.style.display = "block";
-  CarryBadge.textContent = `${Held.Name} • ${Weight} KG • Q DROP`;
+  CarryBadge.textContent = `${Held.Name} • ${Held.Weight} KG • Q DROP`;
   window.dispatchEvent(new CustomEvent("store-furniture-picked", { detail: GetHeld() }));
   return true;
 }
@@ -238,48 +278,47 @@ function PositionBlocked(Position) {
 
 function Drop() {
   if (!Held) return false;
-  const Pivot = PlayerPivot();
-  if (!Pivot) return false;
-  Pivot.getWorldDirection(TempForward);
+  Game.Camera.getWorldDirection(TempForward);
   TempForward.y = 0;
-  if (TempForward.lengthSq() < 0.001) TempForward.set(0, 0, 1);
+  if (TempForward.lengthSq() < 0.001) TempForward.set(0, 0, -1);
   TempForward.normalize();
-  const Position = Game.Camera.position.clone().addScaledVector(TempForward, 1.45);
-  Position.y = 0;
-  if (PositionBlocked(new THREE.Vector3(Position.x, Game.Camera.position.y, Position.z))) {
+  const Position = TempCenter.copy(Game.Camera.position).addScaledVector(TempForward, 1.55);
+  if (PositionBlocked(Position)) {
     ShowTransient("NO ROOM TO DROP HERE");
     return false;
   }
-
-  const Source = Held.Object;
-  const Parent = Held.Parent;
+  const Record = Held;
+  const Source = Record.Object;
+  const Parent = Record.Parent;
   if (!Parent) return false;
-  Parent.updateWorldMatrix(true, false);
   TempLocal.copy(Position);
   Parent.worldToLocal(TempLocal);
   Source.position.x = TempLocal.x;
   Source.position.z = TempLocal.z;
   Source.userData.CarriedR94 = false;
   SetSourceVisible(Source, true);
-  for (const Tag of Held.PriceTags) Tag.visible = true;
-  Held.Visual.parent?.remove(Held.Visual);
-  const Detail = GetHeld();
+  for (const Tag of Record.PriceTags) Tag.visible = true;
+  Record.Visual.parent?.remove(Record.Visual);
   Held = null;
   CarryBadge.style.display = "none";
-  queueMicrotask(() => window.__STORE_CORE_FIX_R86__?.ProcessAll?.());
-  window.dispatchEvent(new CustomEvent("store-furniture-dropped", { detail: Detail }));
+  MeasureRecord(Record);
+  queueMicrotask(() => window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Record.Chunk));
+  window.dispatchEvent(new CustomEvent("store-furniture-dropped", { detail: { object: Source, name: Record.Name, weight: Record.Weight } }));
   return true;
 }
 
 function ConsumeHeld(Matcher = null) {
   if (!Held) return { ok: false };
   if (Matcher && !Matcher(Held)) return { ok: false, mismatch: true, held: GetHeld() };
+  const Record = Held;
   const Delivered = GetHeld();
-  Held.Object.userData.CarriedR94 = false;
-  Held.Object.userData.DeliveredR94 = true;
-  SetSourceVisible(Held.Object, false);
-  for (const Tag of Held.PriceTags) Tag.visible = false;
-  Held.Visual.parent?.remove(Held.Visual);
+  Record.Object.userData.CarriedR94 = false;
+  Record.Object.userData.DeliveredR94 = true;
+  SetSourceVisible(Record.Object, false);
+  for (const Tag of Record.PriceTags) Tag.visible = false;
+  Record.Visual.parent?.remove(Record.Visual);
+  FurnitureById.delete(Record.Object.uuid);
+  FurnitureRecords = FurnitureRecords.filter(Item => Item !== Record);
   Held = null;
   CarryBadge.style.display = "none";
   window.dispatchEvent(new CustomEvent("store-furniture-delivered", { detail: Delivered }));
@@ -297,7 +336,7 @@ function ShowTransient(Text) {
   clearTimeout(ShowTransient.Timer);
   ShowTransient.Timer = setTimeout(() => {
     if (!CurrentCandidate) Prompt.style.display = "none";
-  }, 1000);
+  }, 900);
 }
 
 function RegisterInteraction(Id, Provider) {
@@ -313,7 +352,7 @@ function BuiltInCarryCandidate() {
     id: "pickup",
     priority: 10,
     distance: Furniture.Distance,
-    text: `E • PICK UP ${FriendlyName(Furniture.Object)}`,
+    text: `E • PICK UP ${Furniture.Name}`,
     activate: () => Pickup(Furniture)
   };
 }
@@ -333,17 +372,25 @@ function BestCandidate() {
 }
 
 function RefreshPrompt(Now = performance.now()) {
-  if (Now - LastCandidateRefresh < 80) return;
-  LastCandidateRefresh = Now;
-  CurrentCandidate = BestCandidate();
-  const Hud = document.getElementById("Hud");
-  const GameplayVisible = Hud && !Hud.classList.contains("Hidden");
-  if (!CurrentCandidate || !GameplayVisible) {
+  if (UiOpen() || !GameplayVisible()) {
+    CurrentCandidate = null;
     Prompt.style.display = "none";
     return;
   }
-  Prompt.textContent = String(CurrentCandidate.text || "E • INTERACT");
-  Prompt.style.display = "block";
+  if (Now - LastIndexCheck >= 1000) {
+    LastIndexCheck = Now;
+    RefreshFurnitureIndex(false);
+  }
+  if (Now - LastCandidateRefresh < 125) return;
+  LastCandidateRefresh = Now;
+  CurrentCandidate = BestCandidate();
+  if (!CurrentCandidate) {
+    Prompt.style.display = "none";
+    return;
+  }
+  const Text = String(CurrentCandidate.text || "E • INTERACT");
+  if (Prompt.textContent !== Text) Prompt.textContent = Text;
+  if (Prompt.style.display !== "block") Prompt.style.display = "block";
 }
 
 function Bone(Root, Name) {
@@ -358,7 +405,15 @@ function RotateBone(Object, X = 0, Y = 0, Z = 0) {
   Object.quaternion.multiply(TempQuaternion).normalize();
 }
 
-if (!Player.__FurnitureCarryR94Wrapped) {
+function EnsureCarryPose(Root) {
+  if (CarryPose?.Root === Root) return CarryPose;
+  const Names = ["Torso", "Chest", "UpperArm.L", "UpperArm.R", "LowerArm.L", "LowerArm.R", "Wrist.L", "Wrist.R"];
+  const Bones = Names.map(Name => Bone(Root, Name)).filter(Boolean);
+  CarryPose = { Root, Bones, Saved: Bones.map(() => new THREE.Quaternion()) };
+  return CarryPose;
+}
+
+if (!Player.__FurnitureCarryR96Wrapped) {
   const OriginalSpeed = Player.GetMovementSpeed.bind(Player);
   Player.GetMovementSpeed = function FurnitureWeightedSpeed(...Args) {
     const Base = OriginalSpeed(...Args);
@@ -368,12 +423,11 @@ if (!Player.__FurnitureCarryR94Wrapped) {
 
   const OriginalRender = Player.Render.bind(Player);
   Player.Render = function FurnitureCarryRender(Renderer, Scene, Camera) {
-    if (!Held) return OriginalRender(Renderer, Scene, Camera);
+    if (!Held || UiOpen()) return OriginalRender(Renderer, Scene, Camera);
     const Root = PlayerPivot();
     if (!Root) return OriginalRender(Renderer, Scene, Camera);
-    const Names = ["Torso", "Chest", "UpperArm.L", "UpperArm.R", "LowerArm.L", "LowerArm.R", "Wrist.L", "Wrist.R"];
-    const Bones = Names.map(Name => Bone(Root, Name)).filter(Boolean);
-    const Saved = Bones.map(Item => Item.quaternion.clone());
+    const Pose = EnsureCarryPose(Root);
+    for (let Index = 0; Index < Pose.Bones.length; Index += 1) Pose.Saved[Index].copy(Pose.Bones[Index].quaternion);
     const Load = THREE.MathUtils.clamp(Held.Weight / 55, 0, 1);
     RotateBone(Bone(Root, "Torso"), 0.08 + Load * 0.09, 0, 0);
     RotateBone(Bone(Root, "Chest"), -0.03, 0, 0);
@@ -381,20 +435,18 @@ if (!Player.__FurnitureCarryR94Wrapped) {
     RotateBone(Bone(Root, "UpperArm.R"), -0.80 - Load * 0.08, -0.06, -0.78);
     RotateBone(Bone(Root, "LowerArm.L"), -0.76, 0, -0.10);
     RotateBone(Bone(Root, "LowerArm.R"), -0.76, 0, 0.10);
-    RotateBone(Bone(Root, "Wrist.L"), 0.18, 0, 0);
-    RotateBone(Bone(Root, "Wrist.R"), 0.18, 0, 0);
     Root.updateMatrixWorld(true);
     try { return OriginalRender(Renderer, Scene, Camera); }
     finally {
-      for (let Index = 0; Index < Bones.length; Index += 1) Bones[Index].quaternion.copy(Saved[Index]);
+      for (let Index = 0; Index < Pose.Bones.length; Index += 1) Pose.Bones[Index].quaternion.copy(Pose.Saved[Index]);
       Root.updateMatrixWorld(true);
     }
   };
-  Player.__FurnitureCarryR94Wrapped = true;
+  Player.__FurnitureCarryR96Wrapped = true;
 }
 
 addEventListener("keydown", Event => {
-  if (Event.repeat) return;
+  if (Event.repeat || UiOpen()) return;
   if (Event.code === "KeyQ" && Held && !window.__STORE_GAMEPLAY_LOCKED_R94__) {
     Event.preventDefault();
     Event.stopImmediatePropagation();
@@ -402,7 +454,7 @@ addEventListener("keydown", Event => {
     return;
   }
   if (Event.code !== "KeyE" || window.__STORE_GAMEPLAY_LOCKED_R94__) return;
-  const Candidate = BestCandidate();
+  const Candidate = CurrentCandidate || BestCandidate();
   if (!Candidate?.activate) return;
   Event.preventDefault();
   Event.stopImmediatePropagation();
@@ -410,20 +462,29 @@ addEventListener("keydown", Event => {
 }, true);
 
 function Frame(Now) {
-  const Delta = Math.min(0.05, Math.max(0.001, (Now - LastFrameAt) / 1000));
-  LastFrameAt = Now;
-  const Distance = Math.hypot(Game.Camera.position.x - LastCameraPosition.x, Game.Camera.position.z - LastCameraPosition.z);
-  LastCameraPosition.copy(Game.Camera.position);
-  CarryMove = THREE.MathUtils.lerp(CarryMove, THREE.MathUtils.clamp(Distance / Math.max(Delta * 3.45, 0.001), 0, 1), 1 - Math.exp(-Delta * 8));
-  CarryPhase += Delta * (4.3 + CarryMove * 3.2);
-  if (Held?.Visual) {
-    const Load = THREE.MathUtils.clamp(Held.Weight / 55, 0, 1);
-    Held.Visual.position.y = 1.12 + Math.sin(CarryPhase * 2) * 0.015 * CarryMove;
-    Held.Visual.rotation.z = Math.sin(CarryPhase) * 0.018 * CarryMove * (1 + Load * 0.4);
+  requestAnimationFrame(Frame);
+  if (UiOpen()) {
+    Prompt.style.display = "none";
+    LastAnimationAt = Now;
+    return;
   }
   RefreshPrompt(Now);
-  requestAnimationFrame(Frame);
+  if (!Held || Now - LastAnimationAt < 33) return;
+  const Delta = Math.min(0.05, Math.max(0.001, (Now - LastAnimationAt) / 1000));
+  LastAnimationAt = Now;
+  const DX = Game.Camera.position.x - LastCameraX;
+  const DZ = Game.Camera.position.z - LastCameraZ;
+  LastCameraX = Game.Camera.position.x;
+  LastCameraZ = Game.Camera.position.z;
+  const Distance = Math.hypot(DX, DZ);
+  CarryMove = THREE.MathUtils.lerp(CarryMove, THREE.MathUtils.clamp(Distance / Math.max(Delta * 3.45, 0.001), 0, 1), 1 - Math.exp(-Delta * 8));
+  CarryPhase += Delta * (4.3 + CarryMove * 3.2);
+  const Load = THREE.MathUtils.clamp(Held.Weight / 55, 0, 1);
+  Held.Visual.position.y = 1.12 + Math.sin(CarryPhase * 2) * 0.015 * CarryMove;
+  Held.Visual.rotation.z = Math.sin(CarryPhase) * 0.018 * CarryMove * (1 + Load * 0.4);
 }
+
+RefreshFurnitureIndex(true);
 requestAnimationFrame(Frame);
 
 window.__STORE_FURNITURE_CARRY_R94__ = {
@@ -432,9 +493,10 @@ window.__STORE_FURNITURE_CARRY_R94__ = {
   ConsumeHeld,
   RegisterInteraction,
   FriendlyName,
-  FurnitureWeight,
+  FurnitureWeight: Object => FurnitureById.get(Object?.uuid)?.Weight || 20,
   SpeedMultiplier,
-  ListFurniture: FurnitureRoots,
+  ListFurniture: () => RefreshFurnitureIndex(false).map(Record => ({ Object: Record.Object, Chunk: Record.Chunk, Name: Record.Name, Weight: Record.Weight })),
+  RefreshIndex: RefreshFurnitureIndex,
   ShowTransient
 };
-window.__STORE_FURNITURE_CARRY_BUILD__ = "V0.30.0-R94";
+window.__STORE_FURNITURE_CARRY_BUILD__ = "V0.30.2-R96";
