@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CreateCompactPricePlacard3D, FaceCompactPricePlacardTowardAisle } from "./price-tag-utility-r81.js?v=20260824-88";
-import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-88";
-import { FriendlyItemName } from "./display-layout-utility-r74.js?v=20260824-88";
+import { CreateCompactPricePlacard3D, FaceCompactPricePlacardTowardAisle } from "./price-tag-utility-r81.js?v=20260824-91";
+import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-91";
+import { FriendlyItemName } from "./display-layout-utility-r74.js?v=20260824-91";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("The Infinity Store must load before price tags.");
@@ -33,7 +33,10 @@ function SellableItems(Chunk) {
   const Items = [];
   for (const Model of Chunk.Models || []) if (Model?.parent && FurnitureNames.has(Model.name)) Items.push(Model);
   for (const Object of Chunk.Group?.children || []) {
-    if (Object?.parent !== Chunk.Group || !Object.userData?.RetailImportedR79 || !RetailLabels.has(Object.name)) continue;
+    if (Object?.parent !== Chunk.Group) continue;
+    const ExistingRetail = Boolean(Object.userData?.RetailImportedR79 && RetailLabels.has(Object.name));
+    const NewRetail = Boolean(Object.userData?.RetailSellableR84);
+    if (!ExistingRetail && !NewRetail) continue;
     Items.push(Object);
   }
   Items.sort((A, B) => {
@@ -46,13 +49,18 @@ function SellableItems(Chunk) {
 }
 
 function ItemLabel(Item) {
-  return RetailLabels.get(Item.name) || FriendlyItemName(Item.name);
+  return String(Item.userData?.RetailLabel || RetailLabels.get(Item.name) || FriendlyItemName(Item.name)).toUpperCase();
+}
+
+function ItemPrice(Item, Chunk, Index) {
+  const Fixed = String(Item.userData?.RetailPrice || "").trim();
+  return Fixed || FurniturePrice(Item.name, Chunk.Index, Index);
 }
 
 function SignatureOf(Items) {
   return Items.map(Item => {
     const C = BoundsOf(Item).getCenter(new THREE.Vector3());
-    return `${Item.uuid}:${C.x.toFixed(2)}:${C.z.toFixed(2)}`;
+    return `${Item.uuid}:${C.x.toFixed(2)}:${C.z.toFixed(2)}:${ItemLabel(Item)}:${Item.userData?.RetailPrice || ""}`;
   }).join("|");
 }
 
@@ -138,7 +146,10 @@ export async function RebuildChunk(Chunk) {
     const Items = SellableItems(Chunk);
     const Signature = SignatureOf(Items);
     const Existing = ExistingTags(Chunk);
-    if (Signatures.get(Chunk) === Signature && Existing.length === Items.length) return;
+    if (Signatures.get(Chunk) === Signature && Existing.length === Items.length) {
+      Chunk.Group.userData.PriceTagsR83 = true;
+      return;
+    }
 
     RemoveOldPriceObjects(Chunk);
     const Occupied = [];
@@ -147,7 +158,7 @@ export async function RebuildChunk(Chunk) {
       if (!Item?.parent) continue;
       const Position = FindPlacement(Chunk, Item, Index, Occupied);
       if (!Position) continue;
-      const Price = FurniturePrice(Item.name, Chunk.Index, Index);
+      const Price = ItemPrice(Item, Chunk, Index);
       const Sign = await CreateCompactPricePlacard3D(ItemLabel(Item), Price, {
         Name: `CompactPriceTagR83-${Index}`,
         AccentColor: AccentColors[Index % AccentColors.length]
@@ -165,7 +176,7 @@ export async function RebuildChunk(Chunk) {
       if (Index % 4 === 3) await Yield();
     }
     Signatures.set(Chunk, Signature);
-    Chunk.Group.userData.PriceTagsR83 = true;
+    Chunk.Group.userData.PriceTagsR83 = ExistingTags(Chunk).length === Items.length;
   } finally {
     Rebuilding.delete(Chunk);
   }
@@ -189,4 +200,4 @@ const Interval = setInterval(Discover, 1000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.22.0-R83";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.23.0-R84";
