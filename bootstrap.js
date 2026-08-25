@@ -1,5 +1,13 @@
-const Cache = "20260824-99";
-const Version = "0.26.1";
+const AccountGatePromise = window.__STORE_ACCOUNT_GATE_PROMISE__;
+if (AccountGatePromise) {
+  const WaitingStatus = document.getElementById("BootStatus");
+  if (WaitingStatus) WaitingStatus.textContent = "Waiting for account selection...";
+  window.__STORE_ACCOUNT_GATE_RESULT__ = await AccountGatePromise;
+  if (WaitingStatus) WaitingStatus.textContent = "Preparing store...";
+}
+
+const Cache = "20260825-100";
+const Version = "0.27.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
