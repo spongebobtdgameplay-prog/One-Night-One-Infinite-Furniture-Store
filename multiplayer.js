@@ -1864,7 +1864,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.4";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.5";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
