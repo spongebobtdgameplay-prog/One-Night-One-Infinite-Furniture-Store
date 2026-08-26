@@ -254,6 +254,7 @@ Style.textContent = `
 .StoreNetworkLabel{display:grid;gap:7px;color:rgba(244,239,230,.64);font-size:.58rem;font-weight:900;letter-spacing:.11em}
 .StoreNetworkInput,.StoreNetworkSelect{box-sizing:border-box;width:100%;min-height:46px;border:1px solid rgba(255,255,255,.20);background:#0e1110;color:#fff;padding:0 13px;font:750 .8rem Inter,system-ui,sans-serif;outline:none;border-radius:0}
 .StoreNetworkInput:focus,.StoreNetworkSelect:focus{border-color:#c99358}
+.StoreMaskedSecretInput{font-family:Arial,sans-serif;letter-spacing:.12em}
 .StoreNetworkActions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:8px;margin-top:5px}
 .StoreNetworkButton{display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.24);background:#252a27;color:#fff;font-size:.61rem;font-weight:900;letter-spacing:.10em;text-transform:uppercase;cursor:pointer}
 .StoreNetworkButton.Primary{border-color:#d09a60;background:#b77b43;color:#100c08}
@@ -328,7 +329,7 @@ AccountOverlay.innerHTML = `
           <div class="StoreSelectedAccount"><small>CONTINUE WITH</small><strong id="StoreQuickAccountName">PLAYER</strong></div>
           <form id="StoreQuickAccountForm" class="StoreNetworkForm" autocomplete="off" data-form-type="other">
             <label class="StoreNetworkLabel">PASSWORD
-              <input id="StoreQuickPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="one-time-code" name="infinity-store-quick-secret-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
+              <input id="StoreQuickPassword" class="StoreNetworkInput StoreMaskedSecretInput" type="text" inputmode="text" maxlength="20" autocomplete="off" name="store-entry-a" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <div class="StoreNetworkActions"><button id="StoreQuickSubmit" class="StoreNetworkButton Primary" type="submit">CONTINUE</button></div>
           </form>
@@ -345,10 +346,10 @@ AccountOverlay.innerHTML = `
               <input id="StoreAccountUsername" class="StoreNetworkInput" maxlength="20" autocomplete="one-time-code" name="infinity-store-account-name-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <label class="StoreNetworkLabel">PASSWORD
-              <input id="StoreAccountPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="one-time-code" name="infinity-store-login-secret-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
+              <input id="StoreAccountPassword" class="StoreNetworkInput StoreMaskedSecretInput" type="text" inputmode="text" maxlength="20" autocomplete="off" name="store-entry-b" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <label id="StoreAccountRepeatWrap" class="StoreNetworkLabel" hidden>RETYPE PASSWORD
-              <input id="StoreAccountRepeat" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="new-password" name="infinity-store-create-secret-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
+              <input id="StoreAccountRepeat" class="StoreNetworkInput StoreMaskedSecretInput" type="text" inputmode="text" maxlength="20" autocomplete="off" name="store-entry-c" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <div class="StoreNetworkActions">
               <button id="StoreAccountSubmit" class="StoreNetworkButton Primary" type="submit">LOGIN</button>
@@ -494,11 +495,100 @@ const ProfileStatus = document.getElementById("StoreProfileStatus");
 let AccountMode = "login";
 let SelectedAccountName = "";
 let AccountChooserExcludedName = "";
+const MaskedSecrets = new WeakMap();
+
+ConfigureMaskedSecret(QuickPassword);
+ConfigureMaskedSecret(AccountPassword);
+ConfigureMaskedSecret(AccountRepeat);
 
 function SetMessage(Element, Message, Error = false) {
   if (!Element) return;
   Element.textContent = Message || "";
   Element.classList.toggle("Error", Boolean(Error));
+}
+
+function ReadMaskedSecret(Input) {
+  return MaskedSecrets.get(Input) || "";
+}
+
+function SetMaskedSecret(Input, Value, Cursor = null) {
+  const MaxLength = Number(Input?.maxLength) > 0 ? Number(Input.maxLength) : 20;
+  const Secret = String(Value || "").slice(0, MaxLength);
+  MaskedSecrets.set(Input, Secret);
+  Input.value = "•".repeat(Secret.length);
+  const Position = Cursor === null ? Secret.length : Math.max(0, Math.min(Number(Cursor) || 0, Secret.length));
+  try { Input.setSelectionRange(Position, Position); } catch {}
+}
+
+function ReplaceMaskedSecret(Input, Text, Start, End) {
+  const Current = ReadMaskedSecret(Input);
+  const Insert = String(Text || "");
+  const MaxLength = Number(Input?.maxLength) > 0 ? Number(Input.maxLength) : 20;
+  const Left = Current.slice(0, Start);
+  const Right = Current.slice(End);
+  const Available = Math.max(0, MaxLength - Left.length - Right.length);
+  const Added = Insert.slice(0, Available);
+  const Next = Left + Added + Right;
+  SetMaskedSecret(Input, Next, Left.length + Added.length);
+}
+
+function ConfigureMaskedSecret(Input) {
+  if (!Input || Input.dataset.MaskedSecretReady) return;
+  Input.dataset.MaskedSecretReady = "1";
+  SetMaskedSecret(Input, "");
+
+  Input.addEventListener("beforeinput", Event => {
+    const Start = Input.selectionStart ?? ReadMaskedSecret(Input).length;
+    const End = Input.selectionEnd ?? Start;
+    const Type = String(Event.inputType || "");
+
+    if (Type === "insertText" || Type === "insertCompositionText" || Type === "insertReplacementText") {
+      Event.preventDefault();
+      ReplaceMaskedSecret(Input, Event.data || "", Start, End);
+      return;
+    }
+
+    if (Type === "deleteContentBackward") {
+      Event.preventDefault();
+      if (Start !== End) ReplaceMaskedSecret(Input, "", Start, End);
+      else if (Start > 0) ReplaceMaskedSecret(Input, "", Start - 1, Start);
+      return;
+    }
+
+    if (Type === "deleteContentForward") {
+      Event.preventDefault();
+      if (Start !== End) ReplaceMaskedSecret(Input, "", Start, End);
+      else ReplaceMaskedSecret(Input, "", Start, Math.min(Start + 1, ReadMaskedSecret(Input).length));
+      return;
+    }
+
+    if (Type.startsWith("delete")) {
+      Event.preventDefault();
+      ReplaceMaskedSecret(Input, "", Start, End);
+    }
+  });
+
+  Input.addEventListener("paste", Event => {
+    Event.preventDefault();
+    const Text = Event.clipboardData?.getData("text") || "";
+    const Start = Input.selectionStart ?? ReadMaskedSecret(Input).length;
+    const End = Input.selectionEnd ?? Start;
+    ReplaceMaskedSecret(Input, Text, Start, End);
+  });
+
+  Input.addEventListener("cut", Event => {
+    Event.preventDefault();
+    const Start = Input.selectionStart ?? 0;
+    const End = Input.selectionEnd ?? Start;
+    if (Start !== End) ReplaceMaskedSecret(Input, "", Start, End);
+  });
+
+  Input.addEventListener("copy", Event => Event.preventDefault());
+
+  Input.addEventListener("input", () => {
+    const Secret = ReadMaskedSecret(Input);
+    if (Input.value !== "•".repeat(Secret.length)) SetMaskedSecret(Input, Secret);
+  });
 }
 
 function SetAccountMode(Mode) {
@@ -507,10 +597,9 @@ function SetAccountMode(Mode) {
     Tab.classList.toggle("Active", Tab.dataset.accountTab === AccountMode);
   }
   AccountRepeatWrap.hidden = AccountMode !== "create";
-  AccountPassword.setAttribute("autocomplete", AccountMode === "create" ? "new-password" : "one-time-code");
-  AccountPassword.name = AccountMode === "create" ? "infinity-store-new-secret-v2" : "infinity-store-login-secret-v2";
+  SetMaskedSecret(AccountPassword, "");
+  SetMaskedSecret(AccountRepeat, "");
   AccountSubmit.textContent = AccountMode === "create" ? "CREATE ACCOUNT" : "LOGIN";
-  AccountRepeat.value = "";
   SetMessage(AccountStatus, "");
 }
 
@@ -540,7 +629,7 @@ function RenderAccountChoices(Accounts = GetChooserAccounts()) {
     Button.addEventListener("click", () => {
       SelectedAccountName = Name;
       QuickAccountName.textContent = Name;
-      QuickPassword.value = "";
+      SetMaskedSecret(QuickPassword, "");
       SetMessage(QuickStatus, "");
       ShowAccountStep("quick");
       requestAnimationFrame(() => QuickPassword.focus());
@@ -553,8 +642,8 @@ function ShowManualAccount(Mode = "login", Message = "") {
   SelectedAccountName = "";
   SetAccountMode(Mode);
   AccountUsername.value = "";
-  AccountPassword.value = "";
-  AccountRepeat.value = "";
+  SetMaskedSecret(AccountPassword, "");
+  SetMaskedSecret(AccountRepeat, "");
   document.getElementById("StoreManualBack").hidden = GetChooserAccounts().length === 0;
   SetMessage(AccountStatus, Message);
   ShowAccountStep("manual");
@@ -569,9 +658,9 @@ function ShowAccountChooser(Message = "") {
   }
   RenderAccountChoices(Accounts);
   SelectedAccountName = "";
-  QuickPassword.value = "";
-  AccountPassword.value = "";
-  AccountRepeat.value = "";
+  SetMaskedSecret(QuickPassword, "");
+  SetMaskedSecret(AccountPassword, "");
+  SetMaskedSecret(AccountRepeat, "");
   ShowAccountStep("chooser");
   SetMessage(AccountChooserStatus, Message);
 }
@@ -1714,10 +1803,10 @@ document.getElementById("StoreQuickAccountForm").addEventListener("submit", asyn
   }
   QuickSubmit.disabled = true;
   SetMessage(QuickStatus, "Signing in...");
-  const Result = await Login(SelectedAccountName, QuickPassword.value);
+  const Result = await Login(SelectedAccountName, ReadMaskedSecret(QuickPassword));
   QuickSubmit.disabled = false;
   if (!Result?.ok) SetMessage(QuickStatus, ErrorText(Result?.error), true);
-  else QuickPassword.value = "";
+  else SetMaskedSecret(QuickPassword, "");
 });
 
 document.getElementById("StoreAccountForm").addEventListener("submit", async Event => {
@@ -1725,13 +1814,13 @@ document.getElementById("StoreAccountForm").addEventListener("submit", async Eve
   AccountSubmit.disabled = true;
   SetMessage(AccountStatus, AccountMode === "create" ? "Creating account..." : "Signing in...");
   const Result = AccountMode === "create"
-    ? await Register(AccountUsername.value, AccountPassword.value, AccountRepeat.value)
-    : await Login(AccountUsername.value, AccountPassword.value);
+    ? await Register(AccountUsername.value, ReadMaskedSecret(AccountPassword), ReadMaskedSecret(AccountRepeat))
+    : await Login(AccountUsername.value, ReadMaskedSecret(AccountPassword));
   AccountSubmit.disabled = false;
   if (!Result?.ok) SetMessage(AccountStatus, ErrorText(Result?.error), true);
   else {
-    AccountPassword.value = "";
-    AccountRepeat.value = "";
+    SetMaskedSecret(AccountPassword, "");
+    SetMaskedSecret(AccountRepeat, "");
   }
 });
 
@@ -1881,7 +1970,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.6";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.7";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
