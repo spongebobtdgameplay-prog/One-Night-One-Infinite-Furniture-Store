@@ -62,7 +62,7 @@ const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
-const WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
+let WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -71,6 +71,7 @@ let CompletedTasks = 0;
 let CurrentTask = null;
 let LastChunkIndex = 0;
 let LastObjectiveText = "";
+let SeedResetFlight = null;
 
 function MixSeed32(Value) {
   let Mixed = Value >>> 0;
@@ -704,8 +705,6 @@ function PopulateBathroom(Chunk, CenterZ) {
   SpawnModel(Chunk, "Bathroom_Toilet", -11.7, CenterZ + 1.8, 0);
   SpawnModel(Chunk, "Bathroom_Toilet", 7.8, CenterZ - 5.0, Math.PI);
   SpawnModel(Chunk, "Bathroom_Toilet", 11.7, CenterZ - 1.8, Math.PI);
-  SpawnModel(Chunk, "Window_Large1", -5.7, CenterZ + 0.6, -Math.PI / 2);
-  SpawnModel(Chunk, "Window_Large1", 5.7, CenterZ - 0.6, Math.PI / 2);
 }
 
 function PopulateWarehouse(Chunk, CenterZ, Seed) {
@@ -770,10 +769,8 @@ function CreatePreparedChunk(Index) {
   Box("BaseboardLeft", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(-16.87, 0.09, CenterZ), TrimMaterial, Chunk);
   Box("BaseboardRight", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(16.87, 0.09, CenterZ), TrimMaterial, Chunk);
 
-  const PartitionSide = SeededRandom(Seed + 4.13) < 0.5 ? -1 : 1;
-  AddPartition(Chunk, PartitionSide * 6.35, CenterZ + 5.2, 4.0);
-  AddPartition(Chunk, -PartitionSide * 6.35, CenterZ - 5.2, 4.0);
-  if (SeededRandom(Seed + 4) > 0.62) AddPartition(Chunk, PartitionSide * 11.8, CenterZ - 1.5, 3.1);
+  AddPartition(Chunk, -6.35, CenterZ + 5.2, 4.0);
+  AddPartition(Chunk, 6.35, CenterZ - 5.2, 4.0);
   AddSectionSign(Chunk, Theme, TopZ - 3.1);
 
   for (const Offset of [-9.0, 0, 9.0]) AddLightFixture(Chunk, 0, CenterZ + Offset, SeededRandom(Seed + Offset * 3) > 0.88);
@@ -915,6 +912,61 @@ async function PrepareInitialWorld() {
   }
   RequestChunk(-4).catch(() => {});
   RequestChunk(4).catch(() => {});
+}
+
+function NormalizeWorldSeed(Value) {
+  const NumberValue = Number(Value);
+  if (!Number.isFinite(NumberValue)) return null;
+  const Seed = Math.trunc(NumberValue) >>> 0;
+  return Seed || 1;
+}
+
+async function SetWorldSeed(Value) {
+  const NextSeed = NormalizeWorldSeed(Value);
+  if (NextSeed === null) return false;
+  if (NextSeed === WorldSeed) return true;
+
+  if (SeedResetFlight) {
+    await SeedResetFlight;
+    if (NextSeed === WorldSeed) return true;
+  }
+
+  SeedResetFlight = (async () => {
+    const WasStarted = Started;
+    Started = false;
+    await Promise.allSettled([...PreparingChunks.values()]);
+
+    for (const Index of [...ActiveChunks.keys()]) DeactivateChunk(Index, false);
+    for (const Index of [...PreparedChunks.keys()]) DropPreparedChunk(Index);
+
+    PreparingChunks.clear();
+    CollisionBoxes.length = 0;
+    Tasks.clear();
+    LoadedDisplays = 0;
+    CompletedTasks = 0;
+    CurrentTask = null;
+    LastChunkIndex = 0;
+    LastObjectiveText = "";
+
+    WorldSeed = NextSeed;
+    window.__STORE_WORLD_SEED__ = WorldSeed;
+    if (window.__STORE_GAME__) window.__STORE_GAME__.WorldSeed = WorldSeed;
+
+    Camera.position.set(0, PlayerEyeHeight, 8);
+    await PrepareInitialWorld();
+    ResetTaskProgress();
+    window.__STORE_VISUAL_REDESIGN_R73__?.Discover?.();
+    window.__STORE_RETAIL_SHOWROOM_R79__?.Discover?.();
+    window.__STORE_PRESENTATION_READY_R83__?.Discover?.();
+
+    if (BootStatus) BootStatus.textContent = `Store ready — synchronized seed ${WorldSeed}.`;
+    Started = WasStarted;
+    return true;
+  })().finally(() => {
+    SeedResetFlight = null;
+  });
+
+  return SeedResetFlight;
 }
 
 function RenderClock() {
@@ -1183,7 +1235,7 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.12.0";
+window.__STORE_GAME_BUILD__ = "V0.12.1";
 window.__STORE_VERSION__ = "0.12.0";
 window.__STORE_GAME__ = {
   Scene,
@@ -1202,7 +1254,8 @@ window.__STORE_GAME__ = {
   SetCompletedTaskCount,
   CompleteSharedTask,
   ResetTaskProgress,
+  SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.12.0"
+  Version: "0.12.1"
 };
 Animate();
