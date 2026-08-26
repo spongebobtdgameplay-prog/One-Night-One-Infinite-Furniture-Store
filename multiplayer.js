@@ -212,7 +212,8 @@ function ErrorText(Error) {
     GAME_ALREADY_STARTED: "That game has already started.",
     MAX_PLAYERS_TOO_LOW: "The player limit cannot be lower than the current player count.",
     NOT_ENOUGH_PLAYERS: "At least 2 players are required to start.",
-    SESSION_OUTDATED: "This game session is outdated. Refresh the page."
+    SESSION_OUTDATED: "This game session is outdated. Refresh the page.",
+    RATE_LIMITED: "Too many requests. Try again shortly."
   };
   return Map[Error] || String(Error || "Something went wrong.");
 }
@@ -321,7 +322,8 @@ AccountOverlay.innerHTML = `
         <section id="StoreAccountChooser" class="StoreAccountStep">
           <div class="StoreAccountSectionTitle">CONTINUE WITH</div>
           <div id="StoreAccountChoices" class="StoreAccountChoices"></div>
-          <button id="StoreAccountOther" class="StoreNetworkButton StoreAccountOther" type="button">NOT ANY OF THESE ACCOUNTS</button>
+          <button id="StoreAccountOther" class="StoreNetworkButton StoreAccountOther" type="button">LOG IN TO A DIFFERENT ACCOUNT</button>
+          <button id="StoreAccountCreateNew" class="StoreNetworkButton StoreAccountOther" type="button">CREATE A NEW ACCOUNT</button>
           <p id="StoreAccountChooserStatus" class="StoreNetworkStatus"></p>
         </section>
         <section id="StoreQuickAccount" class="StoreAccountStep" hidden>
@@ -495,6 +497,7 @@ const ProfileStatus = document.getElementById("StoreProfileStatus");
 let AccountMode = "login";
 let SelectedAccountName = "";
 let AccountChooserExcludedName = "";
+let AccountFallbackMode = "create";
 const MaskedSecrets = new WeakMap();
 
 ConfigureMaskedSecret(QuickPassword);
@@ -653,7 +656,7 @@ function ShowManualAccount(Mode = "login", Message = "") {
 function ShowAccountChooser(Message = "") {
   const Accounts = GetChooserAccounts();
   if (!Accounts.length) {
-    ShowManualAccount("login", Message);
+    ShowManualAccount(AccountFallbackMode, Message);
     return;
   }
   RenderAccountChoices(Accounts);
@@ -672,8 +675,9 @@ function ShowOutdated() {
   SetStatus("outdated");
 }
 
-function ShowAccountScreen(Message = "", ExcludedName = "") {
+function ShowAccountScreen(Message = "", ExcludedName = "", FallbackMode = "create") {
   AccountChooserExcludedName = String(ExcludedName || "");
+  AccountFallbackMode = FallbackMode === "login" ? "login" : "create";
   AccountOverlay.hidden = false;
   AccountNormal.hidden = false;
   AccountOutdated.hidden = true;
@@ -854,7 +858,7 @@ async function Logout(ShowAccount = true) {
   SetStatus("offline");
   Dispatch("store-account-change", GetState());
   NetworkOverlay.hidden = true;
-  if (ShowAccount) ShowAccountScreen("Sign in to continue.", LoggedOutUsername);
+  if (ShowAccount) ShowAccountScreen("Sign in to continue.", LoggedOutUsername, "login");
   return { ok: true };
 }
 
@@ -904,6 +908,11 @@ function BindSocketEvents(Target) {
     if (/SESSION_OUTDATED/i.test(Message)) {
       Target.disconnect();
       ShowOutdated();
+      return;
+    }
+    if (/RATE_LIMITED/i.test(Message)) {
+      Target.disconnect();
+      SetStatus("offline");
       return;
     }
     if (/AUTH_REQUIRED/i.test(Message)) {
@@ -1021,6 +1030,7 @@ async function ConnectSocket() {
         const Message = String(Error?.message || "");
         if (/SESSION_OUTDATED/i.test(Message)) Done({ ok: false, error: "SESSION_OUTDATED" });
         else if (/AUTH_REQUIRED/i.test(Message)) Done({ ok: false, error: "AUTH_REQUIRED" });
+        else if (/RATE_LIMITED/i.test(Message)) Done({ ok: false, error: "RATE_LIMITED" });
         else Done({ ok: false, error: "SOCKET_OFFLINE" });
       };
       const Timer = setTimeout(() => Done({ ok: Boolean(Socket?.connected), error: Socket?.connected ? undefined : "SERVER_TIMEOUT" }), 15_500);
@@ -1190,8 +1200,8 @@ function ShowNetworkView(Name) {
 }
 
 function OpenMultiplayer() {
-  if (!Account) {
-    ShowAccountScreen("Sign in to use multiplayer.");
+  if (!Account || !SessionToken) {
+    ShowAccountScreen("Sign in to use multiplayer.", "", "login");
     return;
   }
   NetworkOverlay.hidden = false;
@@ -1204,8 +1214,8 @@ function OpenMultiplayer() {
 }
 
 function OpenProfile() {
-  if (!Account) {
-    ShowAccountScreen("Sign in to view your profile.");
+  if (!Account || !SessionToken) {
+    ShowAccountScreen("Sign in to view your profile.", "", "login");
     return;
   }
   NetworkOverlay.hidden = false;
@@ -1772,7 +1782,12 @@ async function WaitForAccount() {
 }
 
 async function InitializeAccountGate() {
-  ShowAccountScreen("Choose an account to continue.");
+  const HasRememberedAccounts = ReadSavedAccounts().length > 0;
+  ShowAccountScreen(
+    HasRememberedAccounts ? "Choose an account to continue." : "Create an account to continue.",
+    "",
+    HasRememberedAccounts ? "login" : "create"
+  );
   if (!SessionToken) {
     CheckCompatibility().catch(() => {});
     return;
@@ -1781,7 +1796,7 @@ async function InitializeAccountGate() {
   if (Result?.ok) return;
   if (Result?.error === "SESSION_OUTDATED") return;
   if (Result?.error === "AUTH_REQUIRED") {
-    ShowAccountScreen("Your previous session expired. Choose an account.");
+    ShowAccountScreen("Your previous session expired. Sign in again.", "", "login");
     return;
   }
   ShowAccountScreen(ErrorText(Result?.error));
@@ -1792,6 +1807,7 @@ AccountOverlay.querySelectorAll("[data-account-tab]").forEach(Button => {
 });
 
 document.getElementById("StoreAccountOther").addEventListener("click", () => ShowManualAccount("login"));
+document.getElementById("StoreAccountCreateNew").addEventListener("click", () => ShowManualAccount("create"));
 document.getElementById("StoreManualBack").addEventListener("click", () => ShowAccountChooser());
 document.getElementById("StoreQuickBack").addEventListener("click", () => ShowAccountChooser());
 
@@ -1970,7 +1986,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.7";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.8";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
