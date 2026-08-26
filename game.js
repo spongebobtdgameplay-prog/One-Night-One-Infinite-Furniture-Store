@@ -33,7 +33,7 @@ Renderer.setSize(innerWidth, innerHeight, false);
 Renderer.shadowMap.enabled = false;
 Renderer.outputColorSpace = THREE.SRGBColorSpace;
 Renderer.toneMapping = THREE.ACESFilmicToneMapping;
-Renderer.toneMappingExposure = 1.10;
+Renderer.toneMappingExposure = 1.15;
 
 const Controls = new PointerLockControls(Camera, document.body);
 const Loader = new GLTFLoader();
@@ -180,7 +180,7 @@ function CreateSurfaceTexture(BaseColor, AccentColor, Pattern) {
 }
 
 const WallTexture = CreateTexture(256, 4.5, 4.5, (Context, Size) => {
-  Context.fillStyle = "#77766f";
+  Context.fillStyle = "#807e76";
   Context.fillRect(0, 0, Size, Size);
   for (let Index = 0; Index < 900; Index += 1) {
     const X = SeededRandom(Index * 3 + 1) * Size;
@@ -192,13 +192,13 @@ const WallTexture = CreateTexture(256, 4.5, 4.5, (Context, Size) => {
   const Grime = Context.createLinearGradient(0, 0, 0, Size);
   Grime.addColorStop(0, "rgba(255,255,255,0.025)");
   Grime.addColorStop(0.73, "rgba(40,34,28,0.02)");
-  Grime.addColorStop(1, "rgba(28,22,18,0.25)");
+  Grime.addColorStop(1, "rgba(28,22,18,0.12)");
   Context.fillStyle = Grime;
   Context.fillRect(0, 0, Size, Size);
 });
 
 const FloorTexture = CreateTexture(256, 7.5, 7.5, (Context, Size) => {
-  Context.fillStyle = "#565149";
+  Context.fillStyle = "#5d584f";
   Context.fillRect(0, 0, Size, Size);
   for (let Index = 0; Index < 950; Index += 1) {
     const X = SeededRandom(Index * 4 + 11) * Size;
@@ -254,8 +254,8 @@ function Pbr(Map, Color, Roughness, Metalness = 0) {
   return new THREE.MeshStandardMaterial({ map: Map, color: Color, roughness: Roughness, metalness: Metalness });
 }
 
-const WallMaterial = Pbr(WallTexture, 0xb8b5ab, 0.94, 0.01);
-const FloorMaterial = Pbr(FloorTexture, 0x92897d, 0.97, 0.01);
+const WallMaterial = Pbr(WallTexture, 0xc1beb4, 0.94, 0.01);
+const FloorMaterial = Pbr(FloorTexture, 0x9b9185, 0.97, 0.01);
 const CeilingMaterial = Pbr(CeilingTexture, 0xb4b2aa, 0.98, 0);
 const TrimMaterial = new THREE.MeshStandardMaterial({ color: 0x2f2c28, roughness: 0.82, metalness: 0.16 });
 const LightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x242628, roughness: 0.68, metalness: 0.62 });
@@ -1169,11 +1169,11 @@ function ShowError(Message) {
   ErrorPanel.classList.remove("Hidden");
 }
 
-const Ambient = new THREE.AmbientLight(0xd9d2c5, 0.72);
+const Ambient = new THREE.AmbientLight(0xd9d2c5, 0.82);
 Scene.add(Ambient);
-const Hemisphere = new THREE.HemisphereLight(0xc7d0d1, 0x30281f, 0.66);
+const Hemisphere = new THREE.HemisphereLight(0xc7d0d1, 0x30281f, 0.72);
 Scene.add(Hemisphere);
-const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.34);
+const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.40);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
