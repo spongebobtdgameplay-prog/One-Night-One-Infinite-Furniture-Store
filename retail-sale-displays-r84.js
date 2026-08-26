@@ -21,7 +21,7 @@ const Assets = Object.freeze({
     Urls: [PolyHavenCardboardBox, MicrosoftCardboardBox],
     Label: "CARDBOARD BOX",
     Description: "WORN CORRUGATED SHIPPING BOX",
-    Price: "4.99",
+    Price: "$4.99",
     Height: 0.46,
     MaxWidth: 0.70,
     MaxDepth: 0.70,
