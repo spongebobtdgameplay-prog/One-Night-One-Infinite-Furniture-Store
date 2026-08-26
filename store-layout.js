@@ -33,6 +33,7 @@ const Footprints = Object.freeze({
   RetailSideTableR84: [0.95, 0.95],
   RetailDiningTableR84: [2.30, 1.25],
   RetailBoxShelfR84: [1.55, 0.95],
+  RetailCardboardBoxR84: [0.70, 0.62],
   Cart: [1.20, 1.55],
   Basket: [0.75, 0.75],
   BagShelf: [1.55, 0.95],
@@ -410,6 +411,111 @@ function IncludeOptional(Seed, Entry) {
   return SeedRoll(Seed, Entry.Slot) <= Entry.Chance;
 }
 
+function AddDenseDepartmentSlots(Layout, Theme) {
+  const Extra = [];
+
+  if (Theme === "LIVING ROOM") {
+    Extra.push(
+      Slot("Density.Living.Left.Table", "Table_RoundLarge", -10.10, -4.55, 0),
+      Slot("Density.Living.Left.Chair", "Chair_2", -7.45, -4.55, 0.12),
+      Slot("Density.Living.Right.Table", "Table_RoundLarge", 10.10, 4.55, 0),
+      Slot("Density.Living.Right.Chair", "Chair_2", 7.45, 4.55, -0.12),
+      Slot("Density.Living.Left.InnerChair", "Chair_2", -6.45, 0.25, 0.18),
+      Slot("Density.Living.Right.InnerChair", "Chair_2", 6.45, -0.25, -0.18)
+    );
+  } else if (Theme === "BEDROOMS") {
+    Extra.push(
+      Slot("Density.Bedroom.Right.Single", "Bed_Single", 10.25, 4.35, Math.PI, { Decorations: ["PillowB"] }),
+      Slot("Density.Bedroom.Right.Nightstand", "NightStand_2", 8.55, 4.35, 0, { Decorations: ["TableLamp"] }),
+      Slot("Density.Bedroom.Left.SingleStand", "NightStand_2", -8.55, -4.25, 0, { Decorations: ["TableLamp"] }),
+      Slot("Density.Bedroom.Left.Chair", "Chair_2", -6.55, -7.75, 0.10),
+      Slot("Density.Bedroom.Right.Chair", "Chair_2", 6.55, 7.75, -0.10)
+    );
+  } else if (Theme === "KITCHENS") {
+    for (const [Index, X] of [-13.35, -11.85, -10.35, -8.85].entries()) {
+      Extra.push(Slot(`Density.Kitchen.Left.Run.${Index}`, "Kitchen_Cabinet1", X, -7.85, Math.PI));
+    }
+    for (const [Index, X] of [8.85, 10.35, 11.85, 13.35].entries()) {
+      Extra.push(Slot(`Density.Kitchen.Right.Run.${Index}`, "Kitchen_Cabinet1", X, 7.85, 0));
+    }
+  } else if (Theme === "BATHROOMS") {
+    Extra.push(
+      Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -8.55, -0.95, 0),
+      Slot("Density.Bathroom.Left.ToiletB", "Bathroom_Toilet", -11.10, 0.95, 0),
+      Slot("Density.Bathroom.Right.ToiletA", "Bathroom_Toilet", 8.55, 0.95, Math.PI),
+      Slot("Density.Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.10, -0.95, Math.PI),
+      Slot("Density.Bathroom.Left.ToiletC", "Bathroom_Toilet", -7.05, 8.00, 0),
+      Slot("Density.Bathroom.Right.ToiletC", "Bathroom_Toilet", 7.05, -8.00, Math.PI)
+    );
+  } else if (Theme === "WAREHOUSE" || Theme === "STORAGE") {
+    let NumberIndex = 0;
+    for (const X of [-6.35, 6.35]) {
+      for (const Z of [-6.20, 0, 6.20]) {
+        Extra.push(Slot(`Density.Warehouse.InnerShelf.${NumberIndex}`, "Shelf_Large", X, Z, X < 0 ? 0 : Math.PI, { StockStyle: "Books" }));
+        NumberIndex += 1;
+      }
+    }
+  } else if (Theme === "SHOWROOM") {
+    Extra.push(
+      Slot("Density.Showroom.Right.Couch", "Couch_Large1", 11.10, 6.75, Math.PI, { Decorations: ["PillowA", "PillowB"] }),
+      Slot("Density.Showroom.Right.Chair", "Chair_2", 7.20, 6.75, -0.12),
+      Slot("Density.Showroom.Left.Bookshelf", "Bookshelf", -14.05, 0.35, Math.PI / 2, { StockStyle: "Books" }),
+      Slot("Density.Showroom.Left.InnerChair", "Chair_2", -6.55, 0.20, 0.10),
+      Slot("Density.Showroom.Right.Table", "Table_RoundLarge", 10.00, 0.15, 0)
+    );
+  } else if (Theme === "CLEARANCE") {
+    Extra.push(
+      Slot("Density.Clearance.Left.Bookshelf", "Bookshelf", -13.80, -7.85, Math.PI / 2, { StockStyle: "Books" }),
+      Slot("Density.Clearance.Left.Chair", "Chair_2", -6.55, -7.55, 0.15),
+      Slot("Density.Clearance.Right.Chair", "Chair_2", 6.55, 7.55, -0.15),
+      Slot("Density.Clearance.Right.Table", "Table_RoundLarge", 9.80, 0.00, 0),
+      Slot("Density.Clearance.Left.Nightstand", "NightStand_2", -6.45, 3.20, 0)
+    );
+  }
+
+  Layout.Base.push(...Extra);
+}
+
+function AddCardboardBoxScatter(Layout, Theme, Index, Seed) {
+  const DenseStorage = Theme === "WAREHOUSE" || Theme === "STORAGE";
+  const Candidates = DenseStorage
+    ? [
+        [-14.10, -3.05], [14.10, 3.05], [-14.10, 3.05], [14.10, -3.05],
+        [-7.85, -9.00], [7.85, 9.00]
+      ]
+    : [
+        [-6.25, -8.90], [6.25, 8.90], [-6.25, 2.85], [6.25, -2.85],
+        [-6.25, -2.85], [6.25, 2.85]
+      ];
+
+  const Count = DenseStorage ? 6 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 4 : 3);
+  const RotationChoices = [-0.20, -0.08, 0.10, 0.22];
+  let Added = 0;
+
+  for (let CandidateIndex = 0; CandidateIndex < Candidates.length && Added < Count; CandidateIndex += 1) {
+    const Shift = Math.floor(SeedRoll(Seed, `BoxScatterOrder:${CandidateIndex}`) * Candidates.length);
+    const SourceIndex = (CandidateIndex + Shift) % Candidates.length;
+    const [X, Z] = Candidates[SourceIndex];
+    if (Index === 0 && Z > 5.20) continue;
+    const Rotation = RotationChoices[Math.floor(SeedRoll(Seed, `BoxScatterRotation:${CandidateIndex}`) * RotationChoices.length)];
+    Layout.Sale.push(Slot(
+      `CardboardBox.${Added}`,
+      "RetailCardboardBoxR84",
+      X,
+      Z,
+      Rotation,
+      {
+        Kind: "Sale",
+        AssetKey: "CardboardBox",
+        Name: "RetailCardboardBoxR84",
+        Sellable: Added === 0,
+        Footprint: [0.70, 0.62]
+      }
+    ));
+    Added += 1;
+  }
+}
+
 function AddRetailZone(Layout, Index, Seed) {
   if (Index !== 0) return;
   const Side = SeedRoll(Seed, "EntranceRetailZoneSide") < 0.5 ? -1 : 1;
@@ -424,8 +530,8 @@ function AddRetailZone(Layout, Index, Seed) {
     Slot("Entrance.Basket.2", "Basket", -Side * 12.75, 9.70, -Facing, { Kind: "Zone", Sellable: false })
   );
   Layout.ZoneHeaders.push(
-    { Slot: "Entrance.CartHeader", Text: "CART RETURN", X: Side * 15.45, Z: 8.55, Rotation: Facing },
-    { Slot: "Entrance.BagHeader", Text: "BAGS + BASKETS", X: -Side * 15.45, Z: 8.60, Rotation: -Facing }
+    { Slot: "Entrance.CartHeader", Text: "CART RETURN", X: Side * 16.78, Z: 8.55, Rotation: Facing, WallMounted: true },
+    { Slot: "Entrance.BagHeader", Text: "BAGS + BASKETS", X: -Side * 16.78, Z: 8.60, Rotation: -Facing, WallMounted: true }
   );
 }
 
@@ -597,7 +703,9 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
     Task: null
   };
 
+  AddDenseDepartmentSlots(Layout, ThemeName);
   ReserveEntranceTransition(Layout, Index);
+  AddCardboardBoxScatter(Layout, ThemeName, Index, Seed);
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
@@ -625,4 +733,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.1";
+window.__STORE_LAYOUT_BUILD__ = "V0.27.2";
