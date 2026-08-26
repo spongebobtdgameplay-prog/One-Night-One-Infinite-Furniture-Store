@@ -137,7 +137,7 @@ function CreateLoaderUi() {
   Wrapper.append(Progress, Warning, SeedLabel, SkipButton);
   const BuildNode = BuildVersion || BootCard.lastElementChild;
   BootCard.insertBefore(Wrapper, BuildNode);
-  return { SkipButton, Warning, Progress, SeedLabel };
+  return { Wrapper, SkipButton, Warning, Progress, SeedLabel };
 }
 
 const LoaderUi = CreateLoaderUi();
@@ -226,12 +226,8 @@ if (BootStatus) {
   else BootStatus.textContent = `2 minute preload limit reached • world seed ${World.Seed} • continuing...`;
 }
 
-if (LoaderUi.Warning) {
-  LoaderUi.Warning.textContent = Result === "ready"
-    ? "Preload complete. The store can now build from cached models."
-    : "Background loading is still active. You may see temporary lag or furniture pop-in until it finishes.";
-}
 if (LoaderUi.SkipButton) LoaderUi.SkipButton.style.display = "none";
+LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;

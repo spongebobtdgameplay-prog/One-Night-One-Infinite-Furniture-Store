@@ -1,4 +1,5 @@
 const Card = document.querySelector(".BootCard");
+const StartButton = document.getElementById("StartButton");
 const BuildVersion = document.getElementById("BuildVersion");
 
 if (Card) {
@@ -9,26 +10,52 @@ if (Card) {
 for (const Shape of document.querySelectorAll(".R43Vector")) Shape.remove();
 
 let Actions = document.getElementById("MainMenuActions");
-if (Card && !Actions) {
+if (Card && StartButton && !Actions) {
   Actions = document.createElement("div");
   Actions.id = "MainMenuActions";
   Actions.className = "MainMenuActions";
-  Card.insertBefore(Actions, BuildVersion || null);
+  StartButton.insertAdjacentElement("afterend", Actions);
 }
 
-if (Actions && !document.getElementById("FirstMenuSettingsButton")) {
-  const SettingsButton = document.createElement("button");
-  SettingsButton.id = "FirstMenuSettingsButton";
-  SettingsButton.type = "button";
-  SettingsButton.className = "SecondaryMenuButton";
-  SettingsButton.textContent = "SETTINGS";
-  SettingsButton.addEventListener("click", () => {
-    const Overlay = document.getElementById("SettingsOverlayR43");
-    if (!Overlay) return;
-    Overlay.classList.add("Open");
-    Overlay.setAttribute("aria-hidden", "false");
-  });
-  Actions.appendChild(SettingsButton);
+function CreateMenuButton(Id, Text, ClassName, Handler) {
+  let Button = document.getElementById(Id);
+  if (Button) return Button;
+  Button = document.createElement("button");
+  Button.id = Id;
+  Button.type = "button";
+  Button.className = ClassName;
+  Button.textContent = Text;
+  Button.addEventListener("click", Handler);
+  Actions?.appendChild(Button);
+  return Button;
 }
 
-window.__STORE_SINGLE_MENU_BUILD__ = "V0.12.25";
+if (Actions) {
+  CreateMenuButton(
+    "StoreMultiplayerMainButton",
+    "MULTIPLAYER",
+    "MainMenuButton MainMenuButtonMultiplayer",
+    () => window.__STORE_MULTIPLAYER__?.OpenMultiplayer?.()
+  );
+
+  CreateMenuButton(
+    "StoreProfileMainButton",
+    "PROFILE",
+    "MainMenuButton",
+    () => window.__STORE_MULTIPLAYER__?.OpenProfile?.()
+  );
+
+  CreateMenuButton(
+    "FirstMenuSettingsButton",
+    "SETTINGS",
+    "MainMenuButton",
+    () => {
+      const Overlay = document.getElementById("SettingsOverlayR43");
+      if (!Overlay) return;
+      Overlay.classList.add("Open");
+      Overlay.setAttribute("aria-hidden", "false");
+    }
+  );
+}
+
+window.__STORE_SINGLE_MENU_BUILD__ = "V0.12.26";
