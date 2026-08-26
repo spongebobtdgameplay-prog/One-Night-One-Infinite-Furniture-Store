@@ -1120,7 +1120,7 @@ function ApplyJoinResult(Result) {
   if (!Result?.ok) return Result;
   ApplyRoomState(Result.room, Result.players || [], Result.serverTime);
   ShowNetworkView("lobby");
-  if (Result.room?.started) StartGameFromRoom();
+  if (Result.room?.started) StartGameFromRoom().catch(() => {});
   return Result;
 }
 
@@ -1207,7 +1207,7 @@ async function StartRoom() {
     CurrentRoomServerTime = Number(Result.serverTime) || Date.now();
     ApplyRoomClock(CurrentRoom, CurrentRoomServerTime);
     RenderLobby();
-    StartGameFromRoom();
+    StartGameFromRoom().catch(() => {});
   }
   return Result;
 }
