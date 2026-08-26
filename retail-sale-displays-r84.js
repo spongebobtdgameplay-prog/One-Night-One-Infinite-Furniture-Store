@@ -1,6 +1,5 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CreateOnlineRug } from "./online-decoration-library-r75.js?v=20260824-92";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before retail sale displays.");
@@ -17,8 +16,6 @@ const Assets = Object.freeze({
   DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" }
 });
-
-const CouchNames = new Set(["Couch_Large1", "Couch_L"]);
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -85,208 +82,61 @@ function NormalizeAsset(Object, Definition, RotationY = 0) {
   return true;
 }
 
-function OverlapXZ(A, B, Padding = 0.16) {
-  return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding && A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
-}
-
-function OccupiedBounds(Chunk) {
-  const Bounds = [];
-  for (const Model of Chunk.Models || []) {
-    if (!Model?.parent) continue;
-    const Box = BoundsOf(Model);
-    if (!Box.isEmpty()) Bounds.push(Box);
-  }
-  for (const Object of Chunk.Group?.children || []) {
-    if (!Object?.parent || Object.parent !== Chunk.Group) continue;
-    if (!Object.userData?.RetailImportedR79 && !Object.userData?.RetailZoneR82 && !Object.userData?.RetailSellableR84) continue;
-    const Box = BoundsOf(Object);
-    if (!Box.isEmpty()) Bounds.push(Box);
-  }
-  return Bounds;
-}
-
-function CanPlace(Chunk, Candidate, Occupied) {
-  if (Candidate.min.x < -15.65 || Candidate.max.x > 15.65) return false;
-  if (Candidate.min.z < Chunk.BottomZ + 0.62 || Candidate.max.z > Chunk.TopZ - 0.62) return false;
-  for (const Box of Chunk.StructureBounds || []) if (OverlapXZ(Candidate, Box, 0.12)) return false;
-  for (const Box of Chunk.ReservedBounds || []) if (OverlapXZ(Candidate, Box, 0.14)) return false;
-  for (const Box of Occupied) if (OverlapXZ(Candidate, Box, 0.24)) return false;
-  return true;
-}
-
-function CandidateSlots(Chunk, Seed = 0) {
-  const Z = Chunk.CenterZ;
-  const Slots = [
-    [-5.25, Z - 5.8], [5.25, Z + 5.8], [-5.25, Z + 3.1], [5.25, Z - 3.1],
-    [-8.15, Z - 1.1], [8.15, Z + 1.1], [-10.85, Z + 5.7], [10.85, Z - 5.7],
-    [-12.45, Z - 2.7], [12.45, Z + 2.7], [-7.15, Z + 7.2], [7.15, Z - 7.2]
-  ];
-  const Shift = ((Seed % Slots.length) + Slots.length) % Slots.length;
-  return [...Slots.slice(Shift), ...Slots.slice(0, Shift)];
-}
-
-async function PlaceSaleAsset(Chunk, Key, Name, Seed, RotationY, Occupied) {
-  const Definition = Assets[Key];
-  const Object = await CloneAsset(Key);
-  if (!Object || !NormalizeAsset(Object, Definition, RotationY)) return null;
-  const LocalBounds = BoundsOf(Object);
-  for (const [X, Z] of CandidateSlots(Chunk, Seed)) {
-    const Candidate = LocalBounds.clone().translate(new THREE.Vector3(X, 0, Z));
-    if (!CanPlace(Chunk, Candidate, Occupied)) continue;
-    Object.position.x += X;
-    Object.position.z += Z;
-    Object.name = Name;
-    Object.userData.ChunkId = Chunk.Id;
-    Object.userData.RetailImportedR84 = true;
-    Object.userData.RetailSellableR84 = true;
-    Object.userData.RetailLabel = Definition.Label;
-    Object.userData.RetailPrice = Definition.Price;
-    Object.userData.Source = Definition.Source;
-    Object.userData.DecorationNoCollision = false;
-    Chunk.Group.add(Object);
-    Object.updateWorldMatrix(true, true);
-    const FinalBounds = BoundsOf(Object);
-    Occupied.push(FinalBounds.clone());
-    Chunk.ReservedBounds.push(FinalBounds.clone());
-    return Object;
-  }
-  return null;
-}
-
-function SalePlans(Chunk) {
-  const Theme = String(Chunk.Theme || "").toUpperCase();
-  const Flip = Chunk.Index % 2 === 0 ? 0 : Math.PI * 0.5;
-  if (Theme === "LIVING ROOM") return [
-    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip },
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
-    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip + Math.PI * 0.5 }
-  ];
-  if (Theme === "SHOWROOM" || Theme === "CLEARANCE") return [
-    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip },
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
-    { Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: Math.PI * 0.5 }
-  ];
-  if (Theme === "BEDROOMS") return [
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: Math.PI },
-    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip }
-  ];
-  if (Theme === "KITCHENS") return [
-    { Key: "DiningTable", Name: "RetailDiningTableR84", RotationY: Flip },
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
-    { Key: "DiningTable", Name: "RetailDiningTableR84", RotationY: Flip + Math.PI * 0.5 }
-  ];
-  if (Theme === "STORAGE" || Theme === "WAREHOUSE") return [
-    { Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: Math.PI * 0.5 },
-    { Key: "BoxShelf", Name: "RetailBoxShelfR84", RotationY: -Math.PI * 0.5 },
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 }
-  ];
-  return [
-    { Key: "SideTable", Name: "RetailSideTableR84", RotationY: 0 },
-    { Key: "CoffeeTable", Name: "RetailCoffeeTableR84", RotationY: Flip }
-  ];
-}
-
 function ExistingSaleItems(Chunk) {
   return (Chunk.Group?.children || []).filter(Object => Object?.parent === Chunk.Group && Object.userData?.RetailSellableR84);
 }
 
-function RemoveReservationsForObjects(Chunk, Objects) {
-  const ObjectBounds = Objects.map(BoundsOf).filter(Box => !Box.isEmpty());
-  for (let Index = Chunk.ReservedBounds.length - 1; Index >= 0; Index -= 1) {
-    const Box = Chunk.ReservedBounds[Index];
-    if (ObjectBounds.some(ObjectBox => OverlapXZ(Box, ObjectBox, -0.01))) Chunk.ReservedBounds.splice(Index, 1);
-  }
+async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
+  const Definition = Assets[Entry.AssetKey];
+  if (!Definition) return null;
+  const Object = await CloneAsset(Entry.AssetKey);
+  if (!Object || !NormalizeAsset(Object, Definition, Number(Entry.Rotation) || 0)) return null;
+  Object.position.x += Entry.X;
+  Object.position.z += Entry.Z;
+  Object.name = `${Entry.Name}-${Index}`;
+  Object.userData.ChunkId = Chunk.Id;
+  Object.userData.LayoutSlot = Entry.Slot;
+  Object.userData.LayoutAuthority = Chunk.Layout?.Authority;
+  Object.userData.RetailImportedR84 = true;
+  Object.userData.RetailSellableR84 = true;
+  Object.userData.RetailLabel = Definition.Label;
+  Object.userData.RetailPrice = Definition.Price;
+  Object.userData.Source = Definition.Source;
+  Object.userData.DecorationNoCollision = false;
+  Chunk.Group.add(Object);
+  Object.updateWorldMatrix(true, true);
+  return Object;
 }
 
 async function EnsureSaleItems(Chunk) {
   if (!Chunk.Group.userData?.RetailShowroomR79) return false;
-  const Plans = SalePlans(Chunk);
-  const MinimumRequired = Math.min(2, Plans.length);
+  const Planned = Chunk.Layout?.Sale || [];
   const Existing = ExistingSaleItems(Chunk);
+  const ExistingSlots = new Set(Existing.map(Object => String(Object.userData?.LayoutSlot || "")));
 
-  if (Chunk.Group.userData?.RetailSaleAttemptedR85 && Existing.length >= MinimumRequired) {
-    Chunk.Group.userData.RetailSaleItemsR84 = true;
-    return true;
-  }
-  if (Existing.length === Plans.length) {
-    Chunk.Group.userData.RetailSaleAttemptedR85 = true;
-    Chunk.Group.userData.RetailSaleItemsR84 = true;
-    return true;
-  }
-
-  RemoveReservationsForObjects(Chunk, Existing);
-  for (const Object of Existing) Object.parent?.remove(Object);
-
-  const Occupied = OccupiedBounds(Chunk);
-  let Added = 0;
-  for (let Index = 0; Index < Plans.length; Index += 1) {
-    const Plan = Plans[Index];
+  for (let Index = 0; Index < Planned.length; Index += 1) {
+    const Entry = Planned[Index];
+    if (ExistingSlots.has(Entry.Slot)) continue;
     try {
-      const Object = await PlaceSaleAsset(Chunk, Plan.Key, `${Plan.Name}-${Index}`, Math.abs(Chunk.Index) * 5 + Index * 3, Plan.RotationY, Occupied);
-      if (Object) Added += 1;
+      await PlacePlannedSaleAsset(Chunk, Entry, Index);
     } catch (Error) {
-      console.warn(`Retail sale asset ${Plan.Key} unavailable`, Error);
+      console.warn(`Planned sale asset unavailable for ${Entry.Slot}`, Error);
     }
   }
 
+  const CurrentSlots = new Set(ExistingSaleItems(Chunk).map(Object => String(Object.userData?.LayoutSlot || "")));
+  const Ready = Planned.every(Entry => CurrentSlots.has(Entry.Slot));
   Chunk.Group.userData.RetailSaleAttemptedR85 = true;
-  Chunk.Group.userData.RetailSaleItemsR84 = Added >= MinimumRequired;
-  return Added >= MinimumRequired;
-}
-
-function CouchSignature(Model) {
-  const Bounds = BoundsOf(Model);
-  if (Bounds.isEmpty()) return "";
-  const Center = Bounds.getCenter(new THREE.Vector3());
-  const Size = Bounds.getSize(new THREE.Vector3());
-  return `${Center.x.toFixed(3)}:${Center.z.toFixed(3)}:${Size.x.toFixed(3)}:${Size.z.toFixed(3)}`;
-}
-
-function ExistingCouchRugs(Chunk) {
-  return (Chunk.Group?.children || []).filter(Object => Object?.parent === Chunk.Group && Object.userData?.CouchDisplayRugR84);
-}
-
-async function EnsureCouchRugs(Chunk) {
-  const Couches = (Chunk.Models || []).filter(Model => Model?.parent && CouchNames.has(Model.name));
-  const Rugs = ExistingCouchRugs(Chunk);
-  const CouchIds = new Set(Couches.map(Model => Model.uuid));
-  for (const Rug of Rugs) {
-    const Source = Couches.find(Model => Model.uuid === Rug.userData.CouchSourceUUIDR84);
-    if (Source && Rug.userData.CouchSourceSignatureR84 === CouchSignature(Source)) continue;
-    Rug.parent?.remove(Rug);
-  }
-  const CurrentRugs = ExistingCouchRugs(Chunk);
-  for (let Index = 0; Index < Couches.length; Index += 1) {
-    const Couch = Couches[Index];
-    const Signature = CouchSignature(Couch);
-    if (CurrentRugs.some(Rug => Rug.userData.CouchSourceUUIDR84 === Couch.uuid && Rug.userData.CouchSourceSignatureR84 === Signature)) continue;
-    try {
-      const Rug = await CreateOnlineRug(Couch, Math.abs(Chunk.Index) + Index);
-      if (!Rug) continue;
-      Rug.name = `CouchDisplayRugR84-${Index}`;
-      Rug.userData.ChunkId = Chunk.Id;
-      Rug.userData.CouchDisplayRugR84 = true;
-      Rug.userData.CouchSourceUUIDR84 = Couch.uuid;
-      Rug.userData.CouchSourceSignatureR84 = Signature;
-      Rug.userData.DecorationNoCollision = false;
-      Chunk.Group.add(Rug);
-    } catch (Error) {
-      console.warn("Couch showroom rug unavailable", Error);
-    }
-  }
-  const FinishedRugs = ExistingCouchRugs(Chunk).filter(Rug => CouchIds.has(Rug.userData.CouchSourceUUIDR84));
-  Chunk.Group.userData.CouchRugsR84 = FinishedRugs.length >= Couches.length;
-  return FinishedRugs.length >= Couches.length;
+  Chunk.Group.userData.RetailSaleItemsR84 = Ready;
+  return Ready;
 }
 
 export async function ProcessChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Processing.has(Chunk) || Chunk.Group.userData?.PresentationReadyR83) return;
   Processing.add(Chunk);
   try {
-    const RugsReady = await EnsureCouchRugs(Chunk);
     const SaleReady = await EnsureSaleItems(Chunk);
-    Chunk.Group.userData.RetailSaleDisplaysR84 = Boolean(RugsReady && SaleReady);
+    Chunk.Group.userData.RetailSaleDisplaysR84 = SaleReady;
   } finally {
     Processing.delete(Chunk);
   }
@@ -294,10 +144,9 @@ export async function ProcessChunk(Chunk) {
 
 export function Ready(Chunk) {
   if (!Chunk?.Group) return false;
-  const Couches = (Chunk.Models || []).filter(Model => Model?.parent && CouchNames.has(Model.name));
-  const Rugs = ExistingCouchRugs(Chunk);
-  const RugsReady = Couches.every(Couch => Rugs.some(Rug => Rug.userData.CouchSourceUUIDR84 === Couch.uuid && Rug.userData.CouchSourceSignatureR84 === CouchSignature(Couch)));
-  return Boolean(RugsReady && Chunk.Group.userData?.RetailSaleItemsR84);
+  const Planned = Chunk.Layout?.Sale || [];
+  const CurrentSlots = new Set(ExistingSaleItems(Chunk).map(Object => String(Object.userData?.LayoutSlot || "")));
+  return Planned.every(Entry => CurrentSlots.has(Entry.Slot));
 }
 
 export async function Preload() {
@@ -316,4 +165,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.23.1-R85";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.0";
