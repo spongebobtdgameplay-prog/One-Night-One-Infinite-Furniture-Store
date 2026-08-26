@@ -1,5 +1,5 @@
 const STORE_HALF_WIDTH = 17;
-const CENTRAL_AISLE_HALF_WIDTH = 3.6;
+const CENTRAL_AISLE_HALF_WIDTH = 3.4;
 const DISPLAY_INNER_EDGE = 5.25;
 const DISPLAY_OUTER_EDGE = 15.45;
 const MERCHANDISE_Z_LIMIT = 10.45;
@@ -133,7 +133,6 @@ function LivingRoomTemplateB() {
     for (const Entry of Plan[GroupName]) {
       Entry.Z *= -1;
       if ("Rotation" in Entry) Entry.Rotation = -Entry.Rotation;
-      Entry.Slot = Entry.Slot.replace(".Left.", ".Temp.").replace(".Right.", ".Left.").replace(".Temp.", ".Right.");
     }
   }
   return Plan;
