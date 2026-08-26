@@ -4,7 +4,6 @@ import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-
 import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-93";
 import {
   CreateOnlineSurfaceDecoration,
-  CreateOnlineWallDecoration,
   OnlineDecorationKeys,
   PreloadOnlineDecorations
 } from "./online-decoration-library-r75.js?v=20260824-93";
@@ -84,7 +83,7 @@ function DecorationPlans(Model, Index) {
   }
   if (Model.name === "Bed_Single") return [{ Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.15, HeightRatio: 0.43, OffsetX: 0, OffsetZ: -0.14, RotationY: 0.08 * Flip }];
   if (Model.name === "NightStand_2") return [{ Key: OnlineDecorationKeys.TableLamp, TargetHeight: 0.44, OffsetX: -0.10 * Flip, OffsetZ: 0.02, RotationY: 0 }];
-  if (Model.name === "Table_RoundLarge") return [{ Key: OnlineDecorationKeys.StandingFrame, TargetHeight: 0.27, OffsetX: -0.15 * Flip, OffsetZ: -0.10, RotationY: 0.22 * Flip }];
+  if (Model.name === "Table_RoundLarge") return [];
   return [];
 }
 
@@ -110,26 +109,19 @@ async function AddFurnitureDecorations(Chunk) {
   Chunk.Group.userData.StableFurnitureDecorR83 = true;
 }
 
-async function AddWallDecorations(Chunk) {
-  if (Chunk.Group.userData?.StableWallDecorR83) return;
-  const CenterZ = Chunk.CenterZ;
-  const Plans = [
-    { Key: OnlineDecorationKeys.WallFrameLarge, X: -16.86, Y: 2.00, Z: CenterZ + 6.1, Height: 0.86, RotationY: Math.PI * 0.5 },
-    { Key: OnlineDecorationKeys.WallFrameMedium, X: 16.86, Y: 1.92, Z: CenterZ - 6.1, Height: 0.72, RotationY: -Math.PI * 0.5 }
-  ];
-  for (let Index = 0; Index < Plans.length; Index += 1) {
-    const Plan = Plans[Index];
-    try {
-      const Decoration = await CreateOnlineWallDecoration(Plan.Key, Plan.X, Plan.Y, Plan.Z, Plan.Height, Plan.RotationY);
-      if (!Decoration) continue;
-      Decoration.name = `OnlineWallDecorationR76-StableR83-${Index}`;
-      Decoration.userData.ChunkId = Chunk.Id;
-      Decoration.userData.DecorationNoCollision = false;
-      Chunk.Group.add(Decoration);
-    } catch (Error) {
-      console.warn("Stable wall decoration unavailable", Error);
-    }
-  }
+function RemoveWindowLikeDecorations(Chunk) {
+  const Remove = [];
+  Chunk.Group?.traverse?.(Object => {
+    const Name = String(Object?.name || "");
+    if (
+      Name === "Window_Large1" ||
+      Object?.userData?.WallDecorationR76 ||
+      Name.startsWith("OnlineWallDecorationR76-StableR83-") ||
+      Name.startsWith("OnlineWallDecorationR76-PartitionR80-") ||
+      Name.startsWith("OnlineWallDecorationR76-RearR80-")
+    ) Remove.push(Object);
+  });
+  for (const Object of Remove) Object.parent?.remove(Object);
   Chunk.Group.userData.StableWallDecorR83 = true;
 }
 
@@ -149,6 +141,7 @@ export async function ProcessChunk(Chunk) {
   if (Chunk.Group.userData?.VisualRedesignR83) {
     RemoveNamed(Chunk);
     RemoveTerminalSpheres(Chunk);
+    RemoveWindowLikeDecorations(Chunk);
     return;
   }
   Processing.add(Chunk);
@@ -158,7 +151,7 @@ export async function ProcessChunk(Chunk) {
     for (const Task of Chunk.TaskRecords || []) await ReplaceTaskTerminal(Chunk, Task);
     RemoveTerminalSpheres(Chunk);
     await AddFurnitureDecorations(Chunk);
-    await AddWallDecorations(Chunk);
+    RemoveWindowLikeDecorations(Chunk);
     Chunk.Group.userData.VisualRedesignR83 = true;
     Chunk.Group.userData.VisualRedesignR76 = true;
   } finally {
@@ -193,4 +186,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
 window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.23.1-R85";
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.26.0-R88";
