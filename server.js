@@ -13,7 +13,7 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.3.1";
+const SERVER_VERSION = "0.3.2";
 const NETWORK_PROTOCOL = 1;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
@@ -312,7 +312,8 @@ App.post("/api/auth/register", AuthLimiter, async (Request, Response) => {
       ok: true,
       token: Session.Token,
       expiresAt: Session.ExpiresAt,
-      account: { id: UserId, username: Username, createdAt: new Date().toISOString() }
+      account: { id: UserId, username: Username, createdAt: new Date().toISOString() },
+      profile: { games_played: 0, tasks_completed: 0, best_aisle: 0, settings: {} }
     });
   } catch (Error) {
     if (Error?.code === "23505") return Response.status(409).json({ ok: false, error: "USERNAME_TAKEN" });
@@ -337,13 +338,20 @@ App.post("/api/auth/login", AuthLimiter, async (Request, Response) => {
     const Valid = await argon2.verify(Row.password_hash, Password);
     if (!Valid) return Response.status(401).json({ ok: false, error: "INVALID_LOGIN" });
 
-    await Database.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [Row.id]);
-    const Session = await CreateSession(Row.id, Request.headers["user-agent"]);
+    const [Session, ProfileResult] = await Promise.all([
+      CreateSession(Row.id, Request.headers["user-agent"]),
+      Database.query(
+        "SELECT games_played, tasks_completed, best_aisle, settings FROM player_profiles WHERE user_id = $1",
+        [Row.id]
+      ),
+      Database.query("UPDATE users SET last_login_at = NOW() WHERE id = $1", [Row.id])
+    ]);
     return Response.json({
       ok: true,
       token: Session.Token,
       expiresAt: Session.ExpiresAt,
-      account: PublicAccount(Row)
+      account: PublicAccount(Row),
+      profile: ProfileResult.rows[0] || { games_played: 0, tasks_completed: 0, best_aisle: 0, settings: {} }
     });
   } catch (Error) {
     console.error("Login failed", Error);
