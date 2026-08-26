@@ -13,7 +13,7 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.3.2";
+const SERVER_VERSION = "0.3.3";
 const NETWORK_PROTOCOL = 1;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
@@ -28,6 +28,20 @@ const MOVEMENT_BASE_ALLOWANCE = 0.42;
 const DISCONNECT_GRACE_MS = 45_000;
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const SOCKET_AUTH_WINDOW_MS = 60_000;
+const SOCKET_AUTH_LIMIT = 24;
+const SOCKET_ROOM_ACTION_WINDOW_MS = 10_000;
+const SOCKET_ROOM_ACTION_LIMIT = 18;
+const SOCKET_MOVEMENT_WINDOW_MS = 1_000;
+const SOCKET_MOVEMENT_LIMIT = 120;
+const SOCKET_TASK_WINDOW_MS = 10_000;
+const SOCKET_TASK_LIMIT = 20;
+const SOCKET_PROFILE_WINDOW_MS = 60_000;
+const SOCKET_PROFILE_LIMIT = 60;
+const SOCKET_SETTINGS_WINDOW_MS = 60_000;
+const SOCKET_SETTINGS_LIMIT = 12;
+const SOCKET_PING_WINDOW_MS = 60_000;
+const SOCKET_PING_LIMIT = 30;
 
 if (!DATABASE_URL) {
   throw new Error("DATABASE_URL is required. Add the Render Postgres Internal Database URL to the web service environment.");
@@ -140,6 +154,10 @@ function SessionTokenHash(Token) {
   return crypto.createHash("sha256").update(String(Token || "")).digest("hex");
 }
 
+function ValidSessionTokenShape(Token) {
+  return /^[A-Za-z0-9_-]{43}$/.test(String(Token || ""));
+}
+
 function NewSessionToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
@@ -173,7 +191,7 @@ async function CreateSession(UserId, UserAgent = "") {
 }
 
 async function AccountFromToken(Token, Touch = true) {
-  if (!Token || String(Token).length < 20) return null;
+  if (!ValidSessionTokenShape(Token)) return null;
   const TokenHash = SessionTokenHash(Token);
   const Result = await Database.query(
     `SELECT u.id, u.username, u.created_at, s.id AS session_id, s.last_seen_at, s.expires_at
@@ -246,6 +264,14 @@ App.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
+const ApiLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 180,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { ok: false, error: "RATE_LIMITED" }
+});
+
 const AuthLimiter = rateLimit({
   windowMs: 60_000,
   limit: 12,
@@ -254,7 +280,17 @@ const AuthLimiter = rateLimit({
   message: { ok: false, error: "TOO_MANY_ATTEMPTS" }
 });
 
-App.get("/", (_Request, Response) => {
+const PublicInfoLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { ok: false, error: "RATE_LIMITED" }
+});
+
+App.use("/api", ApiLimiter);
+
+App.get("/", PublicInfoLimiter, (_Request, Response) => {
   Response.json({
     service: "The Infinity Store multiplayer server",
     status: "online",
@@ -414,8 +450,36 @@ const IO = new SocketIOServer(HttpServer, {
 
 const Rooms = new Map();
 const SocketPlayers = new Map();
+const SocketAuthWindows = new Map();
 
-App.get("/health", async (_Request, Response) => {
+function ClientAddressFromSocket(Socket) {
+  const Forwarded = String(Socket.handshake.headers?.["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  return (Forwarded || String(Socket.handshake.address || "unknown")).slice(0, 128);
+}
+
+function ConsumeRateWindow(MapValue, Key, Limit, WindowMs) {
+  const Now = Date.now();
+  const Existing = MapValue.get(Key);
+  if (!Existing || Now - Existing.startedAt >= WindowMs) {
+    MapValue.set(Key, { startedAt: Now, count: 1 });
+    return true;
+  }
+  Existing.count += 1;
+  return Existing.count <= Limit;
+}
+
+function AllowSocketEvent(Socket, Scope, Limit, WindowMs) {
+  if (!Socket.data.rateWindows) Socket.data.rateWindows = new Map();
+  return ConsumeRateWindow(Socket.data.rateWindows, Scope, Limit, WindowMs);
+}
+
+function RateLimitAck(Ack) {
+  if (typeof Ack === "function") Ack({ ok: false, error: "RATE_LIMITED" });
+}
+
+App.get("/health", PublicInfoLimiter, async (_Request, Response) => {
   try {
     await Database.query("SELECT 1");
     Response.status(200).json({
@@ -843,7 +907,14 @@ IO.use(async (Socket, Next) => {
   try {
     const Protocol = Number(Socket.handshake.auth?.protocol);
     if (Protocol !== NETWORK_PROTOCOL) return Next(new Error("SESSION_OUTDATED"));
+
+    const Address = ClientAddressFromSocket(Socket);
+    if (!ConsumeRateWindow(SocketAuthWindows, Address, SOCKET_AUTH_LIMIT, SOCKET_AUTH_WINDOW_MS)) {
+      return Next(new Error("RATE_LIMITED"));
+    }
+
     const Token = String(Socket.handshake.auth?.token || "");
+    if (!ValidSessionTokenShape(Token)) return Next(new Error("AUTH_REQUIRED"));
     const Account = await AccountFromToken(Token);
     if (!Account) return Next(new Error("AUTH_REQUIRED"));
     Socket.data.account = Account;
@@ -878,33 +949,43 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("room:quickJoin", (_Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "room-action", SOCKET_ROOM_ACTION_LIMIT, SOCKET_ROOM_ACTION_WINDOW_MS)) return RateLimitAck(Ack);
     Ack(QuickJoinRoom(Socket));
   });
 
   Socket.on("room:create", (Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "room-action", SOCKET_ROOM_ACTION_LIMIT, SOCKET_ROOM_ACTION_WINDOW_MS)) return RateLimitAck(Ack);
     Ack(CreateOrReuseRoom(Socket, Payload));
   });
 
   Socket.on("room:join", (Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "room-action", SOCKET_ROOM_ACTION_LIMIT, SOCKET_ROOM_ACTION_WINDOW_MS)) return RateLimitAck(Ack);
     const Code = CleanRoomCode(Payload.code);
     if (Code.length !== ROOM_CODE_LENGTH) return Ack({ ok: false, error: "ROOM_CODE_REQUIRED" });
     return Ack(JoinRoom(Socket, Rooms.get(Code)));
   });
 
   Socket.on("room:leave", (_Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "room-action", SOCKET_ROOM_ACTION_LIMIT, SOCKET_ROOM_ACTION_WINDOW_MS)) return RateLimitAck(Ack);
     LeaveCurrentRoom(Socket);
     Ack({ ok: true });
   });
 
   Socket.on("room:updateSettings", (Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "room-action", SOCKET_ROOM_ACTION_LIMIT, SOCKET_ROOM_ACTION_WINDOW_MS)) return RateLimitAck(Ack);
     Ack(UpdateRoomSettings(Socket, Payload));
   });
 
   Socket.on("room:start", (_Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "room-action", SOCKET_ROOM_ACTION_LIMIT, SOCKET_ROOM_ACTION_WINDOW_MS)) return RateLimitAck(Ack);
     Ack(StartRoom(Socket));
   });
 
   Socket.on("movement:update", Payload => {
+    if (!AllowSocketEvent(Socket, "movement", SOCKET_MOVEMENT_LIMIT, SOCKET_MOVEMENT_WINDOW_MS)) {
+      Socket.disconnect(true);
+      return;
+    }
     const Player = SocketPlayers.get(Socket.id);
     if (!Player?.roomCode || Player.connected === false) return;
     const Room = Rooms.get(Player.roomCode);
@@ -931,6 +1012,7 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("task:complete", (Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "task", SOCKET_TASK_LIMIT, SOCKET_TASK_WINDOW_MS)) return RateLimitAck(Ack);
     const Player = SocketPlayers.get(Socket.id);
     const Room = Player ? Rooms.get(Player.roomCode) : null;
     if (!Player || Player.connected === false || !Room?.started) return Ack({ ok: false, error: "NOT_IN_ACTIVE_ROOM" });
@@ -955,6 +1037,7 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("profile:aisle", Payload => {
+    if (!AllowSocketEvent(Socket, "profile", SOCKET_PROFILE_LIMIT, SOCKET_PROFILE_WINDOW_MS)) return;
     const Aisle = Math.max(0, Math.min(1_000_000, Math.floor(CleanFinite(Payload?.aisle))));
     if (!Aisle) return;
     Database.query(
@@ -966,6 +1049,7 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("profile:updateSettings", async (Payload = {}, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "settings", SOCKET_SETTINGS_LIMIT, SOCKET_SETTINGS_WINDOW_MS)) return RateLimitAck(Ack);
     const Settings = CleanProfileSettings(Payload.settings);
     try {
       await Database.query(
@@ -982,6 +1066,7 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("ping:client", (ClientTime, Ack = () => {}) => {
+    if (!AllowSocketEvent(Socket, "ping", SOCKET_PING_LIMIT, SOCKET_PING_WINDOW_MS)) return RateLimitAck(Ack);
     Ack({ clientTime: CleanFinite(ClientTime), serverTime: Date.now() });
   });
 
@@ -1009,6 +1094,14 @@ const SessionCleanupInterval = setInterval(() => {
 }, 60 * 60 * 1000);
 SessionCleanupInterval.unref?.();
 
+const AbuseCleanupInterval = setInterval(() => {
+  const Now = Date.now();
+  for (const [Key, Window] of SocketAuthWindows) {
+    if (Now - Window.startedAt > SOCKET_AUTH_WINDOW_MS * 2) SocketAuthWindows.delete(Key);
+  }
+}, 60_000);
+AbuseCleanupInterval.unref?.();
+
 await InitializeDatabase();
 
 HttpServer.listen(PORT, "0.0.0.0", () => {
@@ -1018,6 +1111,8 @@ HttpServer.listen(PORT, "0.0.0.0", () => {
 async function Shutdown(Signal) {
   console.log(`${Signal} received; shutting down.`);
   clearInterval(SessionCleanupInterval);
+  clearInterval(AbuseCleanupInterval);
+  SocketAuthWindows.clear();
   for (const Player of SocketPlayers.values()) ClearDisconnectTimer(Player);
   IO.close();
   HttpServer.close(async () => {
