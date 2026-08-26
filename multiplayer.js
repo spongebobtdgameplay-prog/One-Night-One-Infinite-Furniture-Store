@@ -9,6 +9,10 @@ const PLAYER_HEIGHT = 1.76;
 const SEND_INTERVAL_MS = 50;
 const INTERPOLATION_DELAY_MS = 115;
 const MAX_SNAPSHOT_AGE_MS = 5000;
+const SERVER_WAKE_TIMEOUT_MS = 45_000;
+const COMPATIBILITY_CACHE_MS = 60_000;
+const STORE_TIME_RATE = 14;
+const DAY_SECONDS = 24 * 60 * 60;
 
 let SessionToken = localStorage.getItem(TOKEN_KEY) || "";
 let DesiredRoomCode = localStorage.getItem(ROOM_KEY) || "";
@@ -19,7 +23,11 @@ let SocketIo = null;
 let ConnectFlight = null;
 let CreateRoomFlight = null;
 let JoinFlight = null;
+let CompatibilityFlight = null;
+let CompatibilityResult = null;
+let CompatibilityCheckedAt = 0;
 let CurrentRoom = null;
+let CurrentRoomServerTime = 0;
 let CurrentPlayers = [];
 let Status = "offline";
 let ServerClockOffset = 0;
@@ -145,20 +153,32 @@ async function Api(Path, Options = {}) {
   }
 }
 
-async function CheckCompatibility() {
-  const Result = await Api("/api/client-info", { auth: false, timeout: 15_000 });
-  if (!Result?.ok) {
-    if (Result?.error === "HTTP_404") {
+async function CheckCompatibility(Force = false) {
+  const Now = Date.now();
+  if (!Force && CompatibilityResult?.ok && Now - CompatibilityCheckedAt < COMPATIBILITY_CACHE_MS) return CompatibilityResult;
+  if (CompatibilityFlight) return CompatibilityFlight;
+
+  CompatibilityFlight = (async () => {
+    const Result = await Api("/api/client-info", { auth: false, timeout: SERVER_WAKE_TIMEOUT_MS });
+    if (!Result?.ok) {
+      if (Result?.error === "HTTP_404") {
+        ShowOutdated();
+        return { ok: false, error: "SESSION_OUTDATED" };
+      }
+      return Result;
+    }
+    if (Number(Result.protocol) !== CLIENT_PROTOCOL) {
       ShowOutdated();
       return { ok: false, error: "SESSION_OUTDATED" };
     }
+    CompatibilityResult = Result;
+    CompatibilityCheckedAt = Date.now();
     return Result;
-  }
-  if (Number(Result.protocol) !== CLIENT_PROTOCOL) {
-    ShowOutdated();
-    return { ok: false, error: "SESSION_OUTDATED" };
-  }
-  return Result;
+  })().finally(() => {
+    CompatibilityFlight = null;
+  });
+
+  return CompatibilityFlight;
 }
 
 function ErrorText(Error) {
@@ -646,9 +666,9 @@ async function Register(Username, Password, RepeatPassword = Password) {
 }
 
 async function RestoreSession() {
+  if (!SessionToken) return { ok: false, error: "NO_SESSION" };
   const Compatibility = await CheckCompatibility();
   if (!Compatibility?.ok) return Compatibility;
-  if (!SessionToken) return { ok: false, error: "NO_SESSION" };
   SetStatus("waking");
   const Result = await RefreshAccount();
   if (!Result?.ok) {
@@ -672,6 +692,7 @@ async function Logout(ShowAccount = true) {
   Account = null;
   Profile = null;
   CurrentRoom = null;
+  CurrentRoomServerTime = 0;
   CurrentPlayers = [];
   RemoveAllRemotePlayers();
   SetStatus("offline");
@@ -696,7 +717,7 @@ function DisconnectSocket() {
   Socket.removeAllListeners();
   Socket.disconnect();
   Socket = null;
-  SetStatus(Account ? "offline" : "offline");
+  SetStatus("offline");
 }
 
 function SocketAck(EventName, Payload = {}, Timeout = 10_000) {
@@ -720,6 +741,7 @@ function BindSocketEvents(Target) {
       if (!Result?.ok && ["ROOM_NOT_FOUND", "LATE_JOIN_DISABLED"].includes(Result?.error)) {
         SaveDesiredRoom("");
         CurrentRoom = null;
+        CurrentRoomServerTime = 0;
         CurrentPlayers = [];
         RemoveAllRemotePlayers();
         Dispatch("store-room-change", GetState());
@@ -759,7 +781,7 @@ function BindSocketEvents(Target) {
 
   Target.on("room:state", Payload => {
     if (!Payload?.room) return;
-    ApplyRoomState(Payload.room, Payload.players || []);
+    ApplyRoomState(Payload.room, Payload.players || [], Payload.serverTime);
   });
 
   Target.on("room:host", Payload => {
@@ -772,7 +794,7 @@ function BindSocketEvents(Target) {
 
   Target.on("room:started", Payload => {
     if (!Payload?.room) return;
-    ApplyRoomState(Payload.room, Payload.players || []);
+    ApplyRoomState(Payload.room, Payload.players || [], Payload.serverTime);
     StartGameFromRoom();
   });
 
@@ -863,11 +885,22 @@ async function ConnectSocket() {
   return ConnectFlight;
 }
 
-function ApplyRoomState(Room, Players) {
+function ApplyRoomClock(Room = CurrentRoom, ReferenceServerTime = CurrentRoomServerTime) {
+  if (!Room?.started || !Game?.SetStoreSeconds) return;
+  const BaseSeconds = Number(Room.storeSeconds);
+  if (!Number.isFinite(BaseSeconds)) return;
+  const Reference = Number(ReferenceServerTime) || ServerNow();
+  const TransitSeconds = Math.max(0, (ServerNow() - Reference) / 1000);
+  Game.SetStoreSeconds((BaseSeconds + TransitSeconds * STORE_TIME_RATE) % DAY_SECONDS);
+}
+
+function ApplyRoomState(Room, Players, ServerTime = Date.now()) {
   CurrentRoom = Room;
+  CurrentRoomServerTime = Number(ServerTime) || Date.now();
   CurrentPlayers = Array.isArray(Players) ? Players : [];
   SaveDesiredRoom(Room?.code || "");
   if (Array.isArray(Room?.completedTasks)) ApplyCompletedTasks(Room.completedTasks);
+  ApplyRoomClock(Room, CurrentRoomServerTime);
   ReconcileRemotePlayers(CurrentPlayers);
   RenderLobby();
   Dispatch("store-room-change", GetState());
@@ -876,7 +909,7 @@ function ApplyRoomState(Room, Players) {
 
 function ApplyJoinResult(Result) {
   if (!Result?.ok) return Result;
-  ApplyRoomState(Result.room, Result.players || []);
+  ApplyRoomState(Result.room, Result.players || [], Result.serverTime);
   ShowNetworkView("lobby");
   if (Result.room?.started) StartGameFromRoom();
   return Result;
@@ -936,6 +969,7 @@ async function JoinRoom(Code, Remember = true) {
 async function LeaveRoom() {
   const Result = Socket?.connected ? await SocketAck("room:leave", {}) : { ok: true };
   CurrentRoom = null;
+  CurrentRoomServerTime = 0;
   CurrentPlayers = [];
   SaveDesiredRoom("");
   RemoveAllRemotePlayers();
@@ -954,6 +988,8 @@ async function UpdateRoomSettings(Settings) {
   });
   if (Result?.ok && Result.room) {
     CurrentRoom = { ...CurrentRoom, ...Result.room };
+    CurrentRoomServerTime = Number(Result.serverTime) || Date.now();
+    ApplyRoomClock(CurrentRoom, CurrentRoomServerTime);
     RenderLobby();
   }
   return Result;
@@ -965,6 +1001,8 @@ async function StartRoom() {
   const Result = await SocketAck("room:start", {});
   if (Result?.ok && Result.room) {
     CurrentRoom = { ...CurrentRoom, ...Result.room };
+    CurrentRoomServerTime = Number(Result.serverTime) || Date.now();
+    ApplyRoomClock(CurrentRoom, CurrentRoomServerTime);
     RenderLobby();
     StartGameFromRoom();
   }
@@ -1205,6 +1243,8 @@ async function AttachGame() {
   TempPositionB = new THREE.Vector3();
   LastSentPosition = new THREE.Vector3();
   GameAttached = true;
+  ApplyRoomClock();
+  if (Array.isArray(CurrentRoom?.completedTasks)) ApplyCompletedTasks(CurrentRoom.completedTasks);
   StartRealtimeGameRuntime();
   ReconcileRemotePlayers(CurrentPlayers);
   return { ok: true };
@@ -1495,8 +1535,9 @@ function SendMovement(Now) {
 
 function ApplyCompletedTask(TaskId) {
   const Id = String(TaskId || "");
-  if (!Id || SharedCompletedTasks.has(Id)) return;
+  if (!Id) return;
   SharedCompletedTasks.add(Id);
+  Game?.SetCompletedTaskCount?.(SharedCompletedTasks.size);
 
   const Task = Game?.Tasks?.get?.(Id);
   if (!Task) {
@@ -1504,7 +1545,9 @@ function ApplyCompletedTask(TaskId) {
     return;
   }
 
-  if (!Task.Completed) {
+  if (typeof Game?.CompleteSharedTask === "function") {
+    Game.CompleteSharedTask(Id, SharedCompletedTasks.size);
+  } else if (!Task.Completed) {
     Task.Completed = true;
     if (Task.Screen?.material) {
       Task.Screen.material = Task.Screen.material.clone();
@@ -1521,8 +1564,6 @@ function ApplyCompletedTask(TaskId) {
   }
 
   PendingCompletedTasks.delete(Id);
-  const TaskCounter = document.getElementById("TaskCounter");
-  if (TaskCounter) TaskCounter.textContent = String(SharedCompletedTasks.size);
 }
 
 function ApplyCompletedTasks(Ids) {
@@ -1534,10 +1575,12 @@ function DetectLocalTaskCompletions() {
   for (const Task of Game.Tasks.values()) {
     if (!Task?.Completed || SharedCompletedTasks.has(Task.Id)) continue;
     SharedCompletedTasks.add(Task.Id);
+    Game?.SetCompletedTaskCount?.(SharedCompletedTasks.size);
     Socket.timeout(6000).emit("task:complete", { taskId: Task.Id }, (Error, Response) => {
-      if (Error || !Response?.ok) SharedCompletedTasks.delete(Task.Id);
-      const TaskCounter = document.getElementById("TaskCounter");
-      if (TaskCounter) TaskCounter.textContent = String(SharedCompletedTasks.size);
+      if (Error || !Response?.ok) {
+        SharedCompletedTasks.delete(Task.Id);
+        Game?.SetCompletedTaskCount?.(SharedCompletedTasks.size);
+      }
     });
   }
   for (const Id of [...PendingCompletedTasks]) ApplyCompletedTask(Id);
@@ -1623,7 +1666,7 @@ document.getElementById("StoreAccountForm").addEventListener("submit", async Eve
 
 document.getElementById("StoreAccountRetry").addEventListener("click", async () => {
   SetMessage(AccountStatus, "Checking server...");
-  const Result = await CheckCompatibility();
+  const Result = await CheckCompatibility(true);
   if (!Result?.ok) {
     SetMessage(AccountStatus, ErrorText(Result?.error), true);
     return;
@@ -1767,7 +1810,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.0";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.2";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
