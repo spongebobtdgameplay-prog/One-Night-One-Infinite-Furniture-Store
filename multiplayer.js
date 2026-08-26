@@ -243,12 +243,13 @@ Style.textContent = `
 .StoreNetworkHead{position:sticky;top:0;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:clamp(16px,2.6vw,22px) clamp(17px,3vw,24px);border-bottom:1px solid rgba(255,255,255,.09);background:rgba(18,20,21,.97)}
 .StoreNetworkHead small{display:block;color:#c99358;font-size:clamp(.52rem,1.4vw,.59rem);font-weight:900;letter-spacing:.18em}
 .StoreNetworkHead h2{margin:5px 0 0;font-size:clamp(.88rem,2.4vw,1.08rem);letter-spacing:.10em}
-.StoreNetworkClose{flex:0 0 42px;width:42px;height:42px;border:1px solid rgba(255,255,255,.22);background:#242826;color:#fff;font-size:1.28rem;cursor:pointer}
+.StoreNetworkClose{flex:0 0 42px;width:42px;height:42px;border:1px solid rgba(255,255,255,.22);background:#242826;color:#fff;font-size:1.28rem;cursor:pointer;transition:transform .14s ease,background .14s ease,border-color .14s ease}
+.StoreNetworkClose:hover{transform:scale(1.06);border-color:#d0a36b;background:#3a3026}
 .StoreNetworkBody{padding:clamp(16px,3vw,24px)}
 .StoreNetworkView[hidden],.StoreAccountStep[hidden]{display:none}
 .StoreNetworkGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:9px}
-.StoreNetworkChoice{min-height:112px;padding:16px;border:1px solid rgba(255,255,255,.13);background:#171a19;color:#f4efe6;text-align:left;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease}
-.StoreNetworkChoice:hover{transform:translateY(-1px);border-color:rgba(201,147,88,.7);background:#202421}
+.StoreNetworkChoice{min-height:112px;padding:16px;border:1px solid rgba(255,255,255,.13);background:#171a19;color:#f4efe6;text-align:left;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
+.StoreNetworkChoice:hover{transform:translateY(-3px);border-color:#d0a36b;background:#29231d;box-shadow:0 10px 24px rgba(0,0,0,.28)}
 .StoreNetworkChoice strong{display:block;font-size:.72rem;letter-spacing:.08em}
 .StoreNetworkChoice span{display:block;margin-top:8px;color:rgba(244,239,230,.52);font-size:.62rem;line-height:1.45}
 .StoreNetworkForm{display:grid;gap:12px}
@@ -268,10 +269,9 @@ Style.textContent = `
 .StoreNetworkButton:disabled{opacity:.38;cursor:not-allowed}
 .StoreNetworkStatus{min-height:18px;margin:12px 0 0;color:rgba(244,239,230,.55);font-size:.64rem;line-height:1.45}
 .StoreNetworkStatus.Error{color:#ffafa4}
-.StoreNetworkTabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:16px}
 .StoreAccountModeTitle{margin:0 0 16px;color:#f4efe6;font-size:.8rem;font-weight:900;letter-spacing:.13em}
 .StoreAccountLoginSwitch{width:100%;margin:3px 0 0;border:0;background:transparent;color:#c99358;font-size:.58rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:4px;transition:color .14s ease,background .14s ease}
-.StoreAccountLoginSwitch:hover{color:#f2c491;background:rgba(201,147,88,.08)}
+.StoreAccountLoginSwitch:hover{color:#fff;background:rgba(201,147,88,.16)}
 .StoreAccountSectionTitle{margin-bottom:11px;color:#c99358;font-size:.61rem;font-weight:900;letter-spacing:.18em}
 .StoreAccountChoices{display:grid;gap:8px}
 .StoreAccountChoice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:54px;width:100%;padding:0 15px;border:1px solid rgba(255,255,255,.15);background:#151817;color:#fff;text-align:left;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
