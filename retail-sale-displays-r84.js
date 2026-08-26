@@ -9,12 +9,25 @@ const Templates = new Map();
 const Processing = new WeakSet();
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
+const PolyHavenCardboardBox = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/cardboard_box_01/cardboard_box_01_1k.gltf";
+const MicrosoftCardboardBox = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb";
 
 const Assets = Object.freeze({
   CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   SideTable: { Url: `${KayKitBase}table_small.gltf`, Label: "SIDE TABLE", Price: "89.99", Height: 0.62, MaxWidth: 0.95, MaxDepth: 0.95, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
-  BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" }
+  BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" },
+  CardboardBox: {
+    Urls: [PolyHavenCardboardBox, MicrosoftCardboardBox],
+    Label: "CARDBOARD BOX",
+    Description: "WORN CORRUGATED SHIPPING BOX",
+    Price: "4.99",
+    Height: 0.46,
+    MaxWidth: 0.70,
+    MaxDepth: 0.70,
+    Source: "https://polyhaven.com/a/cardboard_box_01",
+    FallbackSource: "https://github.com/microsoft/experimental-pcf-control-assets"
+  }
 });
 
 function BoundsOf(Object) {
@@ -42,13 +55,24 @@ async function LoadTemplate(Key) {
   const Definition = Assets[Key];
   if (!Definition) return null;
   if (!Templates.has(Key)) {
-    Templates.set(Key, Loader.loadAsync(Definition.Url).then(Data => {
-      const Root = Data.scene;
-      Root.name = `RetailSaleTemplateR84-${Key}`;
-      CloneMaterials(Root);
-      Root.userData.Source = Definition.Source;
-      return Root;
-    }).catch(Error => {
+    Templates.set(Key, (async () => {
+      const Urls = Array.isArray(Definition.Urls) ? Definition.Urls : [Definition.Url];
+      let LastError = null;
+      for (let Index = 0; Index < Urls.length; Index += 1) {
+        try {
+          const Data = await Loader.loadAsync(Urls[Index]);
+          const Root = Data.scene;
+          Root.name = `RetailSaleTemplateR84-${Key}`;
+          CloneMaterials(Root);
+          Root.userData.Source = Index === 0 ? Definition.Source : (Definition.FallbackSource || Definition.Source);
+          Root.userData.AssetUrl = Urls[Index];
+          return Root;
+        } catch (Error) {
+          LastError = Error;
+        }
+      }
+      throw LastError || new Error(`No asset source available for ${Key}`);
+    })().catch(Error => {
       Templates.delete(Key);
       throw Error;
     }));
@@ -83,7 +107,7 @@ function NormalizeAsset(Object, Definition, RotationY = 0) {
 }
 
 function ExistingSaleItems(Chunk) {
-  return (Chunk.Group?.children || []).filter(Object => Object?.parent === Chunk.Group && Object.userData?.RetailSellableR84);
+  return (Chunk.Group?.children || []).filter(Object => Object?.parent === Chunk.Group && Object.userData?.RetailImportedR84);
 }
 
 async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
@@ -98,10 +122,11 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   Object.userData.LayoutSlot = Entry.Slot;
   Object.userData.LayoutAuthority = Chunk.Layout?.Authority;
   Object.userData.RetailImportedR84 = true;
-  Object.userData.RetailSellableR84 = true;
+  Object.userData.RetailSellableR84 = Entry.Sellable !== false;
   Object.userData.RetailLabel = Definition.Label;
   Object.userData.RetailPrice = Definition.Price;
-  Object.userData.Source = Definition.Source;
+  Object.userData.RetailDescription = Definition.Description || "";
+  Object.userData.Source = Object.userData.Source || Definition.Source;
   Object.userData.DecorationNoCollision = false;
   Chunk.Group.add(Object);
   Object.updateWorldMatrix(true, true);
@@ -165,4 +190,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.0";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.2";
