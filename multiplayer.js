@@ -597,8 +597,9 @@ function SetAccountMode(Mode) {
     Tab.classList.toggle("Active", Tab.dataset.accountTab === AccountMode);
   }
   AccountRepeatWrap.hidden = AccountMode !== "create";
+  SetMaskedSecret(AccountPassword, "");
+  SetMaskedSecret(AccountRepeat, "");
   AccountSubmit.textContent = AccountMode === "create" ? "CREATE ACCOUNT" : "LOGIN";
-  AccountRepeat.value = "";
   SetMessage(AccountStatus, "");
 }
 
