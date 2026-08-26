@@ -994,7 +994,10 @@ function ApplyTaskCompletionVisuals(Task) {
   Task.Screen.material.emissiveIntensity = 1.9;
   const Chunk = ActiveChunks.get(Task.ChunkIndex);
   if (Task.Type === "breaker" && Chunk) {
-    for (const Light of Chunk.Lights) Light.userData.BaseIntensity = Math.max(Light.userData.BaseIntensity, 2.0);
+    for (const Light of Chunk.Lights) {
+      if (!Number.isFinite(Light.userData.TaskBaseIntensity)) Light.userData.TaskBaseIntensity = Light.userData.BaseIntensity;
+      Light.userData.BaseIntensity = Math.max(Light.userData.BaseIntensity, 2.0);
+    }
   }
   if (Task.Type === "scanner") Task.Object.rotation.y += Math.PI * 2;
   return true;
@@ -1015,6 +1018,36 @@ function CompleteSharedTask(TaskId, TotalCompleted = CompletedTasks) {
   ApplyTaskCompletionVisuals(Task);
   if (CurrentTask === Task) CurrentTask = null;
   UpdateObjective();
+  return true;
+}
+
+function ResetTaskProgress() {
+  SetCompletedTaskCount(0);
+  CurrentTask = null;
+  const SeenChunks = new Set();
+  const ResetChunk = Chunk => {
+    if (!Chunk || SeenChunks.has(Chunk)) return;
+    SeenChunks.add(Chunk);
+    for (const Task of Chunk.TaskRecords || []) {
+      Task.Completed = false;
+      if (Task.Screen?.material) {
+        Task.Screen.material.dispose?.();
+        Task.Screen.material = TaskGlowMaterial.clone();
+      }
+      if (Task.Type === "breaker") {
+        for (const Light of Chunk.Lights || []) {
+          if (!Number.isFinite(Light.userData.TaskBaseIntensity)) continue;
+          Light.userData.BaseIntensity = Light.userData.TaskBaseIntensity;
+          delete Light.userData.TaskBaseIntensity;
+        }
+      }
+      if (Task.Type === "scanner") Task.Object.rotation.y = 0;
+    }
+  };
+  for (const Chunk of ActiveChunks.values()) ResetChunk(Chunk);
+  for (const Chunk of PreparedChunks.values()) ResetChunk(Chunk);
+  UpdateObjective();
+  UpdateInteractionPrompt();
   return true;
 }
 
@@ -1168,6 +1201,7 @@ window.__STORE_GAME__ = {
   SetStoreSeconds,
   SetCompletedTaskCount,
   CompleteSharedTask,
+  ResetTaskProgress,
   Placement: PlacementApi,
   Version: "0.12.0"
 };
