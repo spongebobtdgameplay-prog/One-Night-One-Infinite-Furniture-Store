@@ -91,19 +91,62 @@ function ViolatesCentralAisle(Chunk, Object) {
     Bounds.max.z > Aisle.MinZ && Bounds.min.z < Aisle.MaxZ;
 }
 
+function OverlapXZ(A, B, Padding = 0.04) {
+  return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding &&
+    A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
+}
+
+function ViolatesStructure(Chunk, Bounds) {
+  for (const Structure of Chunk.StructureBounds || []) {
+    if (OverlapXZ(Bounds, Structure, 0.035)) return true;
+  }
+  return false;
+}
+
+function OutsideChunk(Chunk, Bounds) {
+  return Bounds.min.x < -16.55 || Bounds.max.x > 16.55 ||
+    Bounds.min.z < Chunk.BottomZ + 0.35 || Bounds.max.z > Chunk.TopZ - 0.35;
+}
+
 function ValidatePlannedObjects(Chunk) {
   const PlannedSlots = Chunk.Layout?.Slots || {};
-  for (const Object of [...ManagedRoots(Chunk)]) {
+  const Accepted = [];
+  const Roots = [...ManagedRoots(Chunk)].sort((A, B) =>
+    String(A.userData?.LayoutSlot || "").localeCompare(String(B.userData?.LayoutSlot || ""))
+  );
+
+  for (const Object of Roots) {
     const Slot = String(Object.userData?.LayoutSlot || "");
     if (!Slot || !PlannedSlots[Slot]) {
       RemoveUnplannedObject(Chunk, Object, "no authoritative layout slot");
+      continue;
+    }
+
+    const Bounds = BoundsOf(Object);
+    if (Bounds.isEmpty()) {
+      RemoveUnplannedObject(Chunk, Object, "empty model bounds");
       continue;
     }
     if (ViolatesCentralAisle(Chunk, Object)) {
       RemoveUnplannedObject(Chunk, Object, "intrudes into protected central aisle");
       continue;
     }
+    if (OutsideChunk(Chunk, Bounds)) {
+      RemoveUnplannedObject(Chunk, Object, "extends outside the chunk display envelope");
+      continue;
+    }
+    if (ViolatesStructure(Chunk, Bounds)) {
+      RemoveUnplannedObject(Chunk, Object, "intersects a structural wall or partition");
+      continue;
+    }
+    const Conflict = Accepted.find(Entry => OverlapXZ(Bounds, Entry.Bounds, 0.04));
+    if (Conflict) {
+      RemoveUnplannedObject(Chunk, Object, `overlaps planned slot ${Conflict.Slot}`);
+      continue;
+    }
+
     TightenLegacyCollision(Chunk, Object);
+    Accepted.push({ Slot, Bounds });
   }
 }
 
