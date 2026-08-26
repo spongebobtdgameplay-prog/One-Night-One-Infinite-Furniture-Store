@@ -67,24 +67,24 @@ async function ReplaceTaskTerminal(Chunk, Task) {
   Task.Screen = Terminal.Screen;
 }
 
-function DecorationPlans(Model, Index) {
-  const Flip = Index % 2 === 0 ? 1 : -1;
-  if (Model.name === "Couch_Large1" || Model.name === "Couch_L") {
-    return [
-      { Key: OnlineDecorationKeys.PillowA, TargetHeight: 0.18, HeightRatio: 0.47, OffsetX: -0.18, OffsetZ: 0.03, RotationY: 0.12 * Flip },
-      { Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.17, HeightRatio: 0.47, OffsetX: 0.18, OffsetZ: 0.02, RotationY: -0.18 * Flip }
-    ];
+function DecorationPlanFor(Key, Model) {
+  const IsBed = Model.name === "Bed_King" || Model.name === "Bed_Single";
+  if (Key === "PillowA") {
+    return { Key: OnlineDecorationKeys.PillowA, TargetHeight: IsBed ? 0.16 : 0.18, HeightRatio: IsBed ? 0.43 : 0.47, OffsetX: -0.18, OffsetZ: IsBed ? -0.14 : 0.03, RotationY: 0.10 };
   }
-  if (Model.name === "Bed_King") {
-    return [
-      { Key: OnlineDecorationKeys.PillowA, TargetHeight: 0.16, HeightRatio: 0.43, OffsetX: -0.19, OffsetZ: -0.14, RotationY: 0.08 },
-      { Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.16, HeightRatio: 0.43, OffsetX: 0.19, OffsetZ: -0.14, RotationY: -0.08 }
-    ];
+  if (Key === "PillowB") {
+    return { Key: OnlineDecorationKeys.PillowB, TargetHeight: IsBed ? 0.16 : 0.17, HeightRatio: IsBed ? 0.43 : 0.47, OffsetX: 0.18, OffsetZ: IsBed ? -0.14 : 0.02, RotationY: -0.10 };
   }
-  if (Model.name === "Bed_Single") return [{ Key: OnlineDecorationKeys.PillowB, TargetHeight: 0.15, HeightRatio: 0.43, OffsetX: 0, OffsetZ: -0.14, RotationY: 0.08 * Flip }];
-  if (Model.name === "NightStand_2") return [{ Key: OnlineDecorationKeys.TableLamp, TargetHeight: 0.44, OffsetX: -0.10 * Flip, OffsetZ: 0.02, RotationY: 0 }];
-  if (Model.name === "Table_RoundLarge") return [];
-  return [];
+  if (Key === "TableLamp") {
+    return { Key: OnlineDecorationKeys.TableLamp, TargetHeight: 0.44, OffsetX: -0.10, OffsetZ: 0.02, RotationY: 0 };
+  }
+  return null;
+}
+
+function DecorationPlans(Chunk, Model) {
+  const SlotName = String(Model.userData?.LayoutSlot || "");
+  const Keys = Chunk.Layout?.Decorations?.[SlotName] || [];
+  return Keys.map(Key => DecorationPlanFor(Key, Model)).filter(Boolean);
 }
 
 async function AddFurnitureDecorations(Chunk) {
@@ -92,7 +92,7 @@ async function AddFurnitureDecorations(Chunk) {
   const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name));
   let Added = 0;
   for (let Index = 0; Index < Models.length; Index += 1) {
-    for (const Plan of DecorationPlans(Models[Index], Index)) {
+    for (const Plan of DecorationPlans(Chunk, Models[Index])) {
       try {
         const Decoration = await CreateOnlineSurfaceDecoration(Plan.Key, Models[Index], Plan);
         if (!Decoration) continue;
@@ -186,4 +186,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
 window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.26.0-R88";
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.27.0";
