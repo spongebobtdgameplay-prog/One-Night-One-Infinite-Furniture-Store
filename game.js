@@ -1239,7 +1239,7 @@ const PlacementApi = {
 };
 
 window.__STORE_GAME_BUILD__ = "V0.12.1";
-window.__STORE_VERSION__ = "0.12.0";
+window.__STORE_VERSION__ = "0.12.1";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
