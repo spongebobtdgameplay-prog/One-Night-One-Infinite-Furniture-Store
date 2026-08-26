@@ -103,12 +103,6 @@ function LayoutOccupancyReady(Chunk) {
   }
   if (Chunk.Layout?.Task && !Placed.has(Chunk.Layout.Task.Slot)) return false;
 
-  const PlannedBoxCount = (Chunk.Layout?.Boxes || []).reduce((Total, Stack) => Total + Math.max(1, Math.floor(Stack.Levels || 1)), 0);
-  if (PlannedBoxCount) {
-    const Boxes = Chunk.Group?.getObjectByName?.("WarehouseBoxes");
-    if (!Boxes?.isInstancedMesh || Boxes.count !== PlannedBoxCount) return false;
-  }
-
   return true;
 }
 
@@ -228,4 +222,4 @@ const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.0";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.1";
