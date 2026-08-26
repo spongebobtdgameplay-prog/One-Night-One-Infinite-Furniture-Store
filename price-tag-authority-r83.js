@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { CreateCompactPricePlacard3D, FaceCompactPricePlacardTowardAisle } from "./price-tag-utility-r81.js?v=20260824-92";
+import { CreateCompactPricePlacard3D, CreateDescriptionPricePlacard3D, FaceCompactPricePlacardTowardAisle } from "./price-tag-utility-r81.js?v=20260826-151";
 import { FurniturePrice } from "./store-pricing-r75.js?v=20260824-92";
 import { FriendlyItemName } from "./display-layout-utility-r74.js?v=20260824-92";
 
@@ -66,7 +66,7 @@ function ItemPrice(Item, Chunk, Index) {
 function SignatureOf(Items) {
   return Items.map(Item => {
     const C = BoundsOf(Item).getCenter(new THREE.Vector3());
-    return `${Item.uuid}:${C.x.toFixed(2)}:${C.z.toFixed(2)}:${ItemLabel(Item)}:${Item.userData?.RetailPrice || ""}`;
+    return `${Item.uuid}:${C.x.toFixed(2)}:${C.z.toFixed(2)}:${ItemLabel(Item)}:${Item.userData?.RetailPrice || ""}:${Item.userData?.RetailDescription || ""}`;
   }).join("|");
 }
 
@@ -122,11 +122,17 @@ export async function RebuildChunk(Chunk) {
       const Anchor = Chunk.Layout?.PriceAnchors?.[SlotName];
       if (!Anchor) continue;
       const Price = ItemPrice(Item, Chunk, Index);
-      const Sign = await CreateCompactPricePlacard3D(ItemLabel(Item), Price, {
-        Name: `CompactPriceTagR83-${Index}`,
-        AccentColor: AccentColors[0]
-      });
-      Sign.scale.setScalar(0.76);
+      const Description = String(Item.userData?.RetailDescription || "").trim();
+      const Sign = Description
+        ? await CreateDescriptionPricePlacard3D(ItemLabel(Item), Description, Price, {
+            Name: `CompactPriceTagR83-${Index}`,
+            AccentColor: AccentColors[0]
+          })
+        : await CreateCompactPricePlacard3D(ItemLabel(Item), Price, {
+            Name: `CompactPriceTagR83-${Index}`,
+            AccentColor: AccentColors[0]
+          });
+      Sign.scale.setScalar(Description ? 0.82 : 0.76);
       Sign.position.set(Anchor.X, 0, Anchor.Z);
       FaceCompactPricePlacardTowardAisle(Sign, Anchor.X, Anchor.Z);
       Sign.userData.ChunkId = Chunk.Id;
@@ -164,4 +170,4 @@ const Interval = setInterval(Discover, 1000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.0";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.2";
