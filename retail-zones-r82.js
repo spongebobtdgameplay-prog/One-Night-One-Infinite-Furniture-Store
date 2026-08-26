@@ -188,12 +188,13 @@ async function AddPlannedZoneHeaders(Chunk) {
     if ((Chunk.Group?.children || []).some(Object => Object?.userData?.LayoutSlot === HeaderPlan.Slot)) continue;
     try {
       const Header = await MakeZoneHeader(HeaderPlan.Text);
-      Header.position.set(HeaderPlan.X, 2.08, HeaderPlan.Z);
+      Header.position.set(HeaderPlan.X, 2.30, HeaderPlan.Z);
       Header.rotation.y = Number(HeaderPlan.Rotation) || 0;
       Header.userData.ChunkId = Chunk.Id;
       Header.userData.LayoutSlot = HeaderPlan.Slot;
       Header.userData.LayoutAuthority = Chunk.Layout?.Authority;
       Header.userData.RetailZoneR82 = true;
+      Header.userData.WallMountedR82 = HeaderPlan.WallMounted === true;
       Chunk.Group.add(Header);
       AddCollision(
         Chunk,
@@ -248,4 +249,4 @@ const Interval = setInterval(Discover, 700);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ZONES_R82__ = { ProcessChunk, Discover, PreloadRetailZoneAssets };
-window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.0";
+window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.2";

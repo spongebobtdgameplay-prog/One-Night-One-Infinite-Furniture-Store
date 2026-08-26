@@ -128,29 +128,24 @@ function CreateDepartmentHeader(Chunk) {
   if (Chunk.Group.getObjectByName?.("DepartmentHeaderR72")) return;
   RemoveNamed(Chunk, new Set(["SectionSign", "SignMount", "DepartmentHeaderV13"]));
 
+  const Side = Chunk.Index % 2 === 0 ? -1 : 1;
   const Group = new THREE.Group();
   Group.name = "DepartmentHeaderR72";
   Group.userData.ChunkId = Chunk.Id;
+  Group.userData.WallMountedR72 = true;
 
-  const Frame = new THREE.Mesh(new THREE.BoxGeometry(6.35, 0.92, 0.18), HeaderFrameMaterial);
+  const Frame = new THREE.Mesh(new THREE.BoxGeometry(6.35, 0.92, 0.10), HeaderFrameMaterial);
   Frame.name = "DepartmentHeaderFrameR72";
-  const Board = new THREE.Mesh(new THREE.BoxGeometry(6.12, 0.72, 0.21), HeaderBoardMaterial);
+  const Board = new THREE.Mesh(new THREE.BoxGeometry(6.12, 0.72, 0.115), HeaderBoardMaterial);
   Board.name = "DepartmentHeaderBoardR72";
 
   const FaceMaterial = new THREE.MeshBasicMaterial({ map: HeaderTexture(Chunk.Theme), side: THREE.FrontSide, toneMapped: false });
   const Front = new THREE.Mesh(new THREE.PlaneGeometry(5.94, 0.60), FaceMaterial);
-  Front.position.z = 0.108;
-  const Back = new THREE.Mesh(new THREE.PlaneGeometry(5.94, 0.60), FaceMaterial.clone());
-  Back.position.z = -0.108;
-  Back.rotation.y = Math.PI;
+  Front.position.z = 0.064;
 
-  const HangerLeft = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.46, 0.045), HeaderFrameMaterial);
-  HangerLeft.position.set(-2.02, 0.68, 0);
-  const HangerRight = HangerLeft.clone();
-  HangerRight.position.x = 2.02;
-
-  Group.add(Frame, Board, Front, Back, HangerLeft, HangerRight);
-  Group.position.set(0, 2.94, Chunk.TopZ - 2.65);
+  Group.add(Frame, Board, Front);
+  Group.position.set(Side * 16.84, 2.62, Chunk.TopZ - 3.75);
+  Group.rotation.y = Side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
   Chunk.Group.add(Group);
 }
 
@@ -353,4 +348,4 @@ const Interval = setInterval(DiscoverChunks, 420);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_WORLD_POLISH_R72__ = { DiscoverChunks, ProcessChunk };
-window.__STORE_WORLD_POLISH_BUILD__ = "V0.27.0";
+window.__STORE_WORLD_POLISH_BUILD__ = "V0.27.2";
