@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260826-149";
+import { CreateChunkLayout } from "./store-layout.js?v=20260826-150";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -249,7 +249,6 @@ const PaintedGreenTexture = CreateSurfaceTexture("#43544b", "#a2b3a7", "wood");
 const SteelTexture = CreateSurfaceTexture("#6d7374", "#d8dddc", "metal");
 const DarkSteelTexture = CreateSurfaceTexture("#282d30", "#8d999d", "metal");
 const CeramicTexture = CreateSurfaceTexture("#d5d0c3", "#857f74", "ceramic");
-const CardboardTexture = CreateSurfaceTexture("#92704c", "#caa477", "wood");
 
 function Pbr(Map, Color, Roughness, Metalness = 0) {
   return new THREE.MeshStandardMaterial({ map: Map, color: Color, roughness: Roughness, metalness: Metalness });
@@ -261,7 +260,6 @@ const CeilingMaterial = Pbr(CeilingTexture, 0xb4b2aa, 0.98, 0);
 const TrimMaterial = new THREE.MeshStandardMaterial({ color: 0x2f2c28, roughness: 0.82, metalness: 0.16 });
 const LightHousingMaterial = new THREE.MeshStandardMaterial({ color: 0x242628, roughness: 0.68, metalness: 0.62 });
 const PanelGlowMaterial = new THREE.MeshBasicMaterial({ color: 0xffe8bd });
-const CardboardMaterial = Pbr(CardboardTexture, 0xd8b98f, 0.95, 0);
 const TaskMetalMaterial = new THREE.MeshStandardMaterial({ color: 0x323a3b, roughness: 0.55, metalness: 0.72 });
 const TaskGlowMaterial = new THREE.MeshStandardMaterial({ color: 0x5a6a51, emissive: 0x7bc76f, emissiveIntensity: 1.2, roughness: 0.5 });
 
@@ -662,29 +660,6 @@ function AddTask(Chunk, Entry) {
   return Task;
 }
 
-function AddWarehouseBoxes(Chunk) {
-  const Stacks = Chunk.Layout?.Boxes || [];
-  if (!Stacks.length) return;
-  const Levels = Stacks.reduce((Total, Stack) => Total + Math.max(1, Math.floor(Stack.Levels || 1)), 0);
-  const BoxGeometry = new THREE.BoxGeometry(0.72, 0.56, 0.9);
-  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, Levels);
-  Boxes.name = "WarehouseBoxes";
-  Boxes.userData.ChunkId = Chunk.Id;
-  Boxes.userData.LayoutAuthority = Chunk.Layout.Authority;
-  const Matrix = new THREE.Matrix4();
-  let BoxIndex = 0;
-  for (const Stack of Stacks) {
-    const StackLevels = Math.max(1, Math.floor(Stack.Levels || 1));
-    for (let Level = 0; Level < StackLevels; Level += 1) {
-      Matrix.makeTranslation(Stack.X, 0.28 + Level * 0.56, Stack.Z);
-      Boxes.setMatrixAt(BoxIndex, Matrix);
-      BoxIndex += 1;
-    }
-  }
-  Boxes.instanceMatrix.needsUpdate = true;
-  Chunk.Group.add(Boxes);
-}
-
 function ApplyLayoutReservations(Chunk) {
   Chunk.ReservedBounds.length = 0;
   for (const Reservation of Chunk.Layout?.Reservations || []) {
@@ -702,7 +677,6 @@ function ApplyLayoutReservations(Chunk) {
 function PopulateFromLayout(Chunk) {
   for (const Rug of Chunk.Layout?.Rugs || []) AddPlannedRug(Chunk, Rug);
   for (const Entry of Chunk.Layout?.Base || []) SpawnLayoutModel(Chunk, Entry);
-  AddWarehouseBoxes(Chunk);
   if (Chunk.Layout?.Task) AddTask(Chunk, Chunk.Layout.Task);
 }
 
@@ -1202,8 +1176,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.0";
-window.__STORE_VERSION__ = "0.13.0";
+window.__STORE_GAME_BUILD__ = "V0.13.1";
+window.__STORE_VERSION__ = "0.13.1";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1223,6 +1197,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.0"
+  Version: "0.13.1"
 };
 Animate();
