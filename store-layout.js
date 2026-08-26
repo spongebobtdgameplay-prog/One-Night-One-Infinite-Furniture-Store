@@ -275,15 +275,7 @@ function WarehouseTemplateA() {
       Slot("Warehouse.Left.RetailShelf", "RetailStorageShelfR79", -14.10, 8.50, Math.PI / 2, { Kind: "Retail", AssetKey: "ShelfSmallDecorated", Name: "RetailStorageShelfR79", TargetHeight: 1.52, MaximumWidth: 1.35, MaximumDepth: 0.78, StockStyle: "Books" }),
       Slot("Warehouse.Right.RetailCabinet", "RetailStorageCabinetR79", 14.10, -8.50, -Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailStorageCabinetR79", TargetHeight: 1.18, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
     ],
-    Partitions: [],
-    Boxes: [
-      { Slot: "Warehouse.BoxStack.0", X: -6.25, Z: -6.20, Levels: 2 },
-      { Slot: "Warehouse.BoxStack.1", X: -6.25, Z: 0, Levels: 2 },
-      { Slot: "Warehouse.BoxStack.2", X: -6.25, Z: 6.20, Levels: 2 },
-      { Slot: "Warehouse.BoxStack.3", X: 6.25, Z: -6.20, Levels: 2 },
-      { Slot: "Warehouse.BoxStack.4", X: 6.25, Z: 0, Levels: 2 },
-      { Slot: "Warehouse.BoxStack.5", X: 6.25, Z: 6.20, Levels: 2 }
-    ]
+    Partitions: []
   };
 }
 
@@ -292,7 +284,6 @@ function WarehouseTemplateB() {
   Plan.Name = "WarehouseTemplateB";
   for (const Entry of Plan.Base) Entry.Z *= -1;
   for (const Entry of Plan.Retail) Entry.Z *= -1;
-  for (const Entry of Plan.Boxes) Entry.Z *= -1;
   return Plan;
 }
 
@@ -446,7 +437,6 @@ function ReserveEntranceTransition(Layout, Index) {
   Layout.Retail = (Layout.Retail || []).filter(KeepSlot);
   Layout.Sale = (Layout.Sale || []).filter(KeepSlot);
   Layout.Partitions = (Layout.Partitions || []).filter(Entry => Entry.Z + Entry.Length * 0.5 <= FrontLimit);
-  Layout.Boxes = (Layout.Boxes || []).filter(Entry => Entry.Z + 0.48 <= FrontLimit);
   Layout.Rugs = (Layout.Rugs || []).filter(Entry => Entry.Z + Entry.Depth * 0.5 <= FrontLimit);
 }
 
@@ -470,28 +460,11 @@ function AddTask(Layout, Index, Seed) {
 function FinalizeLayout(Layout, Seed, CenterZ) {
   const Accepted = [];
   const ReservationEntries = [];
-  const BoxEntries = (Layout.Boxes || []).map(Box => ({
-    Slot: Box.Slot,
-    Model: "WarehouseBoxStack",
-    X: Box.X,
-    Z: Box.Z,
-    Rotation: 0,
-    Width: 0.78,
-    Depth: 0.96,
-    Required: true,
-    Sellable: false,
-    AssetKey: "",
-    Name: "WarehouseBoxStack",
-    Decorations: [],
-    Kind: "Box",
-    Chance: 1
-  }));
   const All = [
     ...Layout.Base,
     ...Layout.Retail,
     ...Layout.Sale,
     ...Layout.Zones,
-    ...BoxEntries,
     ...(Layout.Task ? [Layout.Task] : [])
   ];
 
@@ -531,7 +504,6 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
   Layout.Retail = FilterGroup(Layout.Retail);
   Layout.Sale = FilterGroup(Layout.Sale);
   Layout.Zones = FilterGroup(Layout.Zones);
-  Layout.Boxes = (Layout.Boxes || []).filter(Entry => Layout.Slots[Entry.Slot]);
   if (Layout.Task && !Layout.Slots[Layout.Task.Slot]) Layout.Task = null;
 
   for (const Entry of Layout.Partitions) {
@@ -622,7 +594,6 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
     Zones: [],
     ZoneHeaders: [],
     Partitions: Template.Partitions || [],
-    Boxes: Template.Boxes || [],
     Task: null
   };
 
@@ -654,4 +625,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.0";
+window.__STORE_LAYOUT_BUILD__ = "V0.27.1";
