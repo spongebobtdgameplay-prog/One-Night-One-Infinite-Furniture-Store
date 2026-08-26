@@ -144,7 +144,7 @@ function CreateDepartmentHeader(Chunk) {
   Front.position.z = 0.064;
 
   Group.add(Frame, Board, Front);
-  Group.position.set(Side * 16.80, 2.62, Chunk.TopZ - 3.75);
+  Group.position.set(Side * 16.84, 2.62, Chunk.TopZ - 3.75);
   Group.rotation.y = Side < 0 ? Math.PI * 0.5 : -Math.PI * 0.5;
   Chunk.Group.add(Group);
 }
