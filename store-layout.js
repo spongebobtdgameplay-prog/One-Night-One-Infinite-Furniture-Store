@@ -425,18 +425,30 @@ function AddRetailZone(Layout, Index, Seed) {
   const Side = SeedRoll(Seed, "EntranceRetailZoneSide") < 0.5 ? -1 : 1;
   const Facing = Side < 0 ? Math.PI / 2 : -Math.PI / 2;
   Layout.Zones.push(
-    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 7.40, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.1", "Cart", Side * 14.25, 8.55, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.2", "Cart", Side * 14.25, 9.70, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.60, -Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.0", "Basket", -Side * 12.75, 7.45, -Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.1", "Basket", -Side * 12.75, 8.60, -Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.2", "Basket", -Side * 12.75, 9.75, -Facing, { Kind: "Zone", Sellable: false })
+    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.80, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.1", "Cart", Side * 14.25, 8.30, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.2", "Cart", Side * 14.25, 9.80, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.30, -Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.0", "Basket", -Side * 12.75, 6.90, -Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.1", "Basket", -Side * 12.75, 8.30, -Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.2", "Basket", -Side * 12.75, 9.70, -Facing, { Kind: "Zone", Sellable: false })
   );
   Layout.ZoneHeaders.push(
     { Slot: "Entrance.CartHeader", Text: "CART RETURN", X: Side * 15.45, Z: 8.55, Rotation: Facing },
     { Slot: "Entrance.BagHeader", Text: "BAGS + BASKETS", X: -Side * 15.45, Z: 8.60, Rotation: -Facing }
   );
+}
+
+function ReserveEntranceTransition(Layout, Index) {
+  if (Index !== 0) return;
+  const FrontLimit = 5.65;
+  const KeepSlot = Entry => BoundsFor(Entry).MaxZ <= FrontLimit;
+  Layout.Base = (Layout.Base || []).filter(KeepSlot);
+  Layout.Retail = (Layout.Retail || []).filter(KeepSlot);
+  Layout.Sale = (Layout.Sale || []).filter(KeepSlot);
+  Layout.Partitions = (Layout.Partitions || []).filter(Entry => Entry.Z + Entry.Length * 0.5 <= FrontLimit);
+  Layout.Boxes = (Layout.Boxes || []).filter(Entry => Entry.Z + 0.48 <= FrontLimit);
+  Layout.Rugs = (Layout.Rugs || []).filter(Entry => Entry.Z + Entry.Depth * 0.5 <= FrontLimit);
 }
 
 function AddTask(Layout, Index, Seed) {
@@ -615,6 +627,7 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
     Task: null
   };
 
+  ReserveEntranceTransition(Layout, Index);
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
