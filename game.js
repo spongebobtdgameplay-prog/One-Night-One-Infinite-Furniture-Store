@@ -934,34 +934,37 @@ async function SetWorldSeed(Value) {
   SeedResetFlight = (async () => {
     const WasStarted = Started;
     Started = false;
-    await Promise.allSettled([...PreparingChunks.values()]);
+    try {
+      await Promise.allSettled([...PreparingChunks.values()]);
 
-    for (const Index of [...ActiveChunks.keys()]) DeactivateChunk(Index, false);
-    for (const Index of [...PreparedChunks.keys()]) DropPreparedChunk(Index);
+      for (const Index of [...ActiveChunks.keys()]) DeactivateChunk(Index, false);
+      for (const Index of [...PreparedChunks.keys()]) DropPreparedChunk(Index);
 
-    PreparingChunks.clear();
-    CollisionBoxes.length = 0;
-    Tasks.clear();
-    LoadedDisplays = 0;
-    CompletedTasks = 0;
-    CurrentTask = null;
-    LastChunkIndex = 0;
-    LastObjectiveText = "";
+      PreparingChunks.clear();
+      CollisionBoxes.length = 0;
+      Tasks.clear();
+      LoadedDisplays = 0;
+      CompletedTasks = 0;
+      CurrentTask = null;
+      LastChunkIndex = 0;
+      LastObjectiveText = "";
 
-    WorldSeed = NextSeed;
-    window.__STORE_WORLD_SEED__ = WorldSeed;
-    if (window.__STORE_GAME__) window.__STORE_GAME__.WorldSeed = WorldSeed;
+      WorldSeed = NextSeed;
+      window.__STORE_WORLD_SEED__ = WorldSeed;
+      if (window.__STORE_GAME__) window.__STORE_GAME__.WorldSeed = WorldSeed;
 
-    Camera.position.set(0, PlayerEyeHeight, 8);
-    await PrepareInitialWorld();
-    ResetTaskProgress();
-    window.__STORE_VISUAL_REDESIGN_R73__?.Discover?.();
-    window.__STORE_RETAIL_SHOWROOM_R79__?.Discover?.();
-    window.__STORE_PRESENTATION_READY_R83__?.Discover?.();
+      Camera.position.set(0, PlayerEyeHeight, 8);
+      await PrepareInitialWorld();
+      ResetTaskProgress();
+      window.__STORE_VISUAL_REDESIGN_R73__?.Discover?.();
+      window.__STORE_RETAIL_SHOWROOM_R79__?.Discover?.();
+      window.__STORE_PRESENTATION_READY_R83__?.Discover?.();
 
-    if (BootStatus) BootStatus.textContent = `Store ready — synchronized seed ${WorldSeed}.`;
-    Started = WasStarted;
-    return true;
+      if (BootStatus) BootStatus.textContent = `Store ready — synchronized seed ${WorldSeed}.`;
+      return true;
+    } finally {
+      Started = WasStarted;
+    }
   })().finally(() => {
     SeedResetFlight = null;
   });
