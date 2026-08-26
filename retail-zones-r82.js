@@ -109,7 +109,7 @@ function CanPlace(Chunk, Bounds, Extra = []) {
   return true;
 }
 
-function AddCollision(Chunk, Object, Type, Reserve = true) {
+function AddCollision(Chunk, Object, Type, Reserve = false) {
   const Bounds = BoundsOf(Object);
   if (Bounds.isEmpty()) return null;
   const Size = Bounds.getSize(new THREE.Vector3());
@@ -159,6 +159,8 @@ const PlannedZoneAssets = Object.freeze({
 });
 
 async function PlacePlannedZoneAsset(Chunk, Entry, Index) {
+  const Existing = (Chunk.Group?.children || []).find(Object => Object?.userData?.LayoutSlot === Entry.Slot);
+  if (Existing) return Existing;
   const Definition = PlannedZoneAssets[Entry.Model];
   if (!Definition) return null;
   const Object = await CloneAsset(Definition.Key);
@@ -183,6 +185,7 @@ async function PlacePlannedZoneAsset(Chunk, Entry, Index) {
 
 async function AddPlannedZoneHeaders(Chunk) {
   for (const HeaderPlan of Chunk.Layout?.ZoneHeaders || []) {
+    if ((Chunk.Group?.children || []).some(Object => Object?.userData?.LayoutSlot === HeaderPlan.Slot)) continue;
     try {
       const Header = await MakeZoneHeader(HeaderPlan.Text);
       Header.position.set(HeaderPlan.X, 2.08, HeaderPlan.Z);
@@ -219,7 +222,10 @@ export async function ProcessChunk(Chunk) {
       Index += 1;
     }
     await AddPlannedZoneHeaders(Chunk);
-    Chunk.Group.userData.RetailZonesR82 = true;
+    const PlacedSlots = new Set((Chunk.Group?.children || []).map(Object => String(Object?.userData?.LayoutSlot || "")).filter(Boolean));
+    const ZonesReady = (Chunk.Layout?.Zones || []).every(Entry => PlacedSlots.has(Entry.Slot));
+    const HeadersReady = (Chunk.Layout?.ZoneHeaders || []).every(Entry => PlacedSlots.has(Entry.Slot));
+    Chunk.Group.userData.RetailZonesR82 = ZonesReady && HeadersReady;
   } finally {
     Processing.delete(Chunk);
   }
