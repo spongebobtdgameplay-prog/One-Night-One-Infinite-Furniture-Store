@@ -13,12 +13,11 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.3.3";
+const SERVER_VERSION = "0.3.4";
 const NETWORK_PROTOCOL = 1;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 const DEFAULT_MAX_PLAYERS = 4;
-const WORLD_SEED = 1000;
 const STORE_START_SECONDS = 23 * 60 * 60 + 57 * 60;
 const STORE_TIME_RATE = 14;
 const SESSION_DAYS = 30;
@@ -519,6 +518,10 @@ function GenerateRoomCode() {
   return crypto.randomBytes(8).toString("hex").toUpperCase().slice(0, ROOM_CODE_LENGTH);
 }
 
+function RandomWorldSeed() {
+  return crypto.randomInt(1, 0x100000000);
+}
+
 function CleanRoomSettings(Value = {}, Existing = null) {
   const RequestedMax = Math.floor(Number(Value.maxPlayers));
   const MaxPlayers = Number.isFinite(RequestedMax)
@@ -537,7 +540,7 @@ function CreateRoom(HostAccount, Settings = {}) {
   const Room = {
     code: Code,
     hostUserId: HostAccount.id,
-    seed: WORLD_SEED,
+    seed: RandomWorldSeed(),
     maxPlayers: Clean.maxPlayers,
     allowLateJoin: Clean.allowLateJoin,
     allowRandomJoin: Clean.allowRandomJoin,

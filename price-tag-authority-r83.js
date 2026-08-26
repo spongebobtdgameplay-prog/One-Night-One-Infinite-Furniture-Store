@@ -20,7 +20,7 @@ const RetailLabels = new Map([
   ["RetailStorageCabinetR79", "STORAGE CABINET"],
   ["RetailDisplayCabinetR79", "DISPLAY CABINET"]
 ]);
-const AccentColors = [0xb85f47, 0x708c72, 0x6f87a0, 0xb58d48, 0x9a708f, 0x5f918d];
+const AccentColors = [0xb77b43];
 const Rebuilding = new WeakSet();
 const Signatures = new WeakMap();
 
@@ -106,8 +106,8 @@ function Candidates(Chunk, Item, Index) {
   if (Bounds.isEmpty()) return [];
   const Center = Bounds.getCenter(new THREE.Vector3());
   const Size = Bounds.getSize(new THREE.Vector3());
-  const TowardAisleX = Center.x < 0 ? Bounds.max.x + 0.18 : Bounds.min.x - 0.18;
-  const AwayX = Center.x < 0 ? Bounds.min.x - 0.18 : Bounds.max.x + 0.18;
+  const TowardAisleX = Center.x < 0 ? Bounds.max.x + 0.24 : Bounds.min.x - 0.24;
+  const AwayX = Center.x < 0 ? Bounds.min.x - 0.24 : Bounds.max.x + 0.24;
   const Quarter = Math.max(0.12, Math.min(0.46, Size.z * 0.23));
   const Order = Index % 2 === 0 ? [-Quarter, Quarter] : [Quarter, -Quarter];
   const Raw = [
@@ -163,7 +163,7 @@ export async function RebuildChunk(Chunk) {
         Name: `CompactPriceTagR83-${Index}`,
         AccentColor: AccentColors[Index % AccentColors.length]
       });
-      Sign.scale.setScalar(0.88);
+      Sign.scale.setScalar(0.76);
       Sign.position.set(Position.X, 0, Position.Z);
       FaceCompactPricePlacardTowardAisle(Sign, Position.X, Position.Z);
       Sign.userData.ChunkId = Chunk.Id;
@@ -200,4 +200,4 @@ const Interval = setInterval(Discover, 1000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.23.1-R85";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.26.0-R88";

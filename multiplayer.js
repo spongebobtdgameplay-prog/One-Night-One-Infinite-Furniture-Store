@@ -13,6 +13,7 @@ const SERVER_WAKE_TIMEOUT_MS = 45_000;
 const COMPATIBILITY_CACHE_MS = 60_000;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
+const SINGLEPLAYER_WORLD_SEED = 1000;
 
 let SessionToken = localStorage.getItem(TOKEN_KEY) || "";
 let DesiredRoomCode = localStorage.getItem(ROOM_KEY) || "";
@@ -53,6 +54,8 @@ let TempPosition = null;
 let TempPositionB = null;
 let LastSentPosition = null;
 let NavigationObserver = null;
+let RoomSeedFlight = null;
+let StartGameFlight = null;
 
 const RemotePlayers = new Map();
 const SharedCompletedTasks = new Set();
@@ -721,6 +724,40 @@ function ResetSharedRoomState() {
   Game?.ResetTaskProgress?.();
 }
 
+function NormalizeRoomSeed(Value) {
+  const NumberValue = Number(Value);
+  if (!Number.isFinite(NumberValue)) return 0;
+  return (Math.trunc(NumberValue) >>> 0) || 1;
+}
+
+async function SyncRoomSeed(Room = CurrentRoom) {
+  const Seed = NormalizeRoomSeed(Room?.seed);
+  if (!Seed) return { ok: false, error: "ROOM_SEED_REQUIRED" };
+
+  window.__STORE_WORLD_SEED__ = Seed;
+  if (!GameAttached || !Game?.SetWorldSeed) return { ok: true, seed: Seed };
+  if ((Number(Game.WorldSeed) >>> 0) === Seed) return { ok: true, seed: Seed };
+
+  if (RoomSeedFlight) {
+    await RoomSeedFlight.catch(() => {});
+    if ((Number(Game.WorldSeed) >>> 0) === Seed) return { ok: true, seed: Seed };
+  }
+
+  RoomSeedFlight = Promise.resolve(Game.SetWorldSeed(Seed))
+    .then(Result => ({ ok: Result !== false, seed: Seed }))
+    .finally(() => {
+      RoomSeedFlight = null;
+    });
+  return RoomSeedFlight;
+}
+
+function RestoreSinglePlayerSeed() {
+  window.__STORE_WORLD_SEED__ = SINGLEPLAYER_WORLD_SEED;
+  if (!GameAttached || !Game?.SetWorldSeed) return;
+  if ((Number(Game.WorldSeed) >>> 0) === SINGLEPLAYER_WORLD_SEED) return;
+  Promise.resolve(Game.SetWorldSeed(SINGLEPLAYER_WORLD_SEED)).catch(() => {});
+}
+
 function ClearRoomState() {
   const HadRoom = Boolean(CurrentRoom?.code || DesiredRoomCode);
   if (HadRoom) ResetSharedRoomState();
@@ -739,6 +776,7 @@ function ClearRoomState() {
   RemoveAllRemotePlayers();
   RenderLobby();
   Dispatch("store-room-change", GetState());
+  RestoreSinglePlayerSeed();
 }
 
 async function RefreshAccount() {
@@ -962,7 +1000,6 @@ function BindSocketEvents(Target) {
   Target.on("room:started", Payload => {
     if (!Payload?.room) return;
     ApplyRoomState(Payload.room, Payload.players || [], Payload.serverTime);
-    StartGameFromRoom();
   });
 
   Target.on("player:joined", Data => {
@@ -1070,19 +1107,19 @@ function ApplyRoomState(Room, Players, ServerTime = Date.now()) {
   CurrentRoomServerTime = Number(ServerTime) || Date.now();
   CurrentPlayers = Array.isArray(Players) ? Players : [];
   SaveDesiredRoom(NextRoomCode);
+  SyncRoomSeed(Room).catch(Error => console.warn("Room seed sync failed", Error));
   if (Array.isArray(Room?.completedTasks)) ApplyCompletedTasks(Room.completedTasks);
   ApplyRoomClock(Room, CurrentRoomServerTime);
   ReconcileRemotePlayers(CurrentPlayers);
   RenderLobby();
   Dispatch("store-room-change", GetState());
-  if (Room?.started) StartGameFromRoom();
+  if (Room?.started) StartGameFromRoom().catch(() => {});
 }
 
 function ApplyJoinResult(Result) {
   if (!Result?.ok) return Result;
   ApplyRoomState(Result.room, Result.players || [], Result.serverTime);
   ShowNetworkView("lobby");
-  if (Result.room?.started) StartGameFromRoom();
   return Result;
 }
 
@@ -1169,7 +1206,7 @@ async function StartRoom() {
     CurrentRoomServerTime = Number(Result.serverTime) || Date.now();
     ApplyRoomClock(CurrentRoom, CurrentRoomServerTime);
     RenderLobby();
-    StartGameFromRoom();
+    StartGameFromRoom().catch(() => {});
   }
   return Result;
 }
@@ -1319,13 +1356,29 @@ function RenderLobby() {
 }
 
 function StartGameFromRoom() {
-  if (!CurrentRoom?.started || !CoreReady) return;
-  CloseNetworkOverlay();
-  const Hud = document.getElementById("Hud");
-  if (Hud && !Hud.classList.contains("Hidden")) return;
-  const StartButton = document.getElementById("StartButton");
-  if (!StartButton || StartButton.disabled) return;
-  StartButton.click();
+  if (!CurrentRoom?.started || !CoreReady) return Promise.resolve();
+  if (StartGameFlight) return StartGameFlight;
+
+  StartGameFlight = (async () => {
+    const SeedResult = await SyncRoomSeed(CurrentRoom);
+    if (!SeedResult?.ok) return;
+    ApplyCompletedTasks(CurrentRoom?.completedTasks || []);
+    const Finalizer = window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk;
+    if (typeof Finalizer === "function") {
+      const Chunks = [...Game.ActiveChunks.values()].filter(Chunk => Chunk?.Ready && !Chunk.Cancelled);
+      await Promise.allSettled(Chunks.map(Chunk => Finalizer(Chunk)));
+    }
+    CloseNetworkOverlay();
+    const Hud = document.getElementById("Hud");
+    if (Hud && !Hud.classList.contains("Hidden")) return;
+    const StartButton = document.getElementById("StartButton");
+    if (!StartButton || StartButton.disabled) return;
+    StartButton.click();
+  })().finally(() => {
+    StartGameFlight = null;
+  });
+
+  return StartGameFlight;
 }
 
 function CreateNavigationButton(Id, Text, Handler, ClassName = "StoreNavButton") {
@@ -1404,6 +1457,7 @@ async function AttachGame() {
   TempPositionB = new THREE.Vector3();
   LastSentPosition = new THREE.Vector3();
   GameAttached = true;
+  if (CurrentRoom?.seed) await SyncRoomSeed(CurrentRoom);
   ApplyRoomClock();
   if (Array.isArray(CurrentRoom?.completedTasks)) ApplyCompletedTasks(CurrentRoom.completedTasks);
   StartRealtimeGameRuntime();
@@ -1782,7 +1836,7 @@ async function SyncSettings(Settings) {
 function NotifyCoreReady() {
   CoreReady = true;
   MountNavigation();
-  if (CurrentRoom?.started) StartGameFromRoom();
+  if (CurrentRoom?.started) StartGameFromRoom().catch(() => {});
 }
 
 async function WaitForAccount() {
@@ -1991,7 +2045,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.9";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.26.0";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");

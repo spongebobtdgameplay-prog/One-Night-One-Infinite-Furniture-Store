@@ -1,9 +1,4 @@
 import * as THREE from "three";
-import {
-  CreateOnlineWallDecoration,
-  OnlineDecorationKeys
-} from "./online-decoration-library-r75.js?v=20260824-79";
-
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) {
   throw new Error("The Infinity Store game must load before store finishing.");
@@ -15,6 +10,19 @@ const RearWork = new WeakSet();
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
   return new THREE.Box3().setFromObject(Object);
+}
+
+function RemoveLegacyDisplayFrames(Chunk) {
+  const Remove = [];
+  Chunk.Group?.traverse?.(Object => {
+    const Name = String(Object?.name || "");
+    if (
+      Object?.userData?.WallDecorationR76 ||
+      Name.startsWith("OnlineWallDecorationR76-PartitionR80-") ||
+      Name.startsWith("OnlineWallDecorationR76-RearR80-")
+    ) Remove.push(Object);
+  });
+  for (const Object of Remove) Object.parent?.remove(Object);
 }
 
 function BrightPartitionMaterial(Material, Color) {
@@ -31,6 +39,7 @@ async function FinishPartitions(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || PartitionWork.has(Chunk) || Chunk.Group.userData?.PresentationReadyR83) return;
   PartitionWork.add(Chunk);
   try {
+    RemoveLegacyDisplayFrames(Chunk);
     const Partitions = [];
     Chunk.Group?.traverse?.(Object => {
       if (Object?.name === "ShowroomPartition" && Object.isMesh) Partitions.push(Object);
@@ -48,30 +57,6 @@ async function FinishPartitions(Chunk) {
       }
       Partition.userData.MerchandisingWallR80 = true;
 
-      const FrameName = `OnlineWallDecorationR76-PartitionR80-${Index}`;
-      if (Chunk.Group.getObjectByName(FrameName)) continue;
-      const Bounds = BoundsOf(Partition);
-      const Center = Bounds.getCenter(new THREE.Vector3());
-      const TowardAisle = Center.x > 0 ? -1 : 1;
-      const X = Center.x + TowardAisle * (Bounds.getSize(new THREE.Vector3()).x * 0.5 + 0.035);
-      try {
-        const Frame = await CreateOnlineWallDecoration(
-          Index % 2 === 0 ? OnlineDecorationKeys.WallFrameMedium : OnlineDecorationKeys.WallFrameLarge,
-          X,
-          1.62,
-          Center.z,
-          Index % 2 === 0 ? 0.62 : 0.76,
-          Center.x > 0 ? -Math.PI * 0.5 : Math.PI * 0.5
-        );
-        if (Frame) {
-          Frame.name = FrameName;
-          Frame.userData.ChunkId = Chunk.Id;
-          Frame.userData.DecorationNoCollision = false;
-          Chunk.Group.add(Frame);
-        }
-      } catch (Error) {
-        console.warn("Partition display frame unavailable", Error);
-      }
     }
   } finally {
     PartitionWork.delete(Chunk);
@@ -103,6 +88,7 @@ async function EnsureRearClosure() {
   if (!Chunk?.Ready || !Chunk.Group || RearWork.has(Chunk) || Chunk.Group.userData?.PresentationReadyR83) return;
   RearWork.add(Chunk);
   try {
+    RemoveLegacyDisplayFrames(Chunk);
     let Group = Chunk.Group.getObjectByName("RearStoreClosureR80");
     const RearZ = Chunk.TopZ + 0.08;
     if (!Group) {
@@ -125,25 +111,6 @@ async function EnsureRearClosure() {
       AddRearCollision(Chunk, BoundsOf(Wall));
     }
 
-    const RearFrames = [
-      { X: -7.2, Key: OnlineDecorationKeys.WallFrameLarge, Height: 0.92 },
-      { X: 7.2, Key: OnlineDecorationKeys.WallFrameLarge, Height: 0.92 }
-    ];
-    for (let Index = 0; Index < RearFrames.length; Index += 1) {
-      const Name = `OnlineWallDecorationR76-RearR80-${Index}`;
-      if (Chunk.Group.getObjectByName(Name)) continue;
-      const Plan = RearFrames[Index];
-      try {
-        const Frame = await CreateOnlineWallDecoration(Plan.Key, Plan.X, 1.82, RearZ - 0.13, Plan.Height, 0);
-        if (!Frame) continue;
-        Frame.name = Name;
-        Frame.userData.ChunkId = Chunk.Id;
-        Frame.userData.DecorationNoCollision = false;
-        Chunk.Group.add(Frame);
-      } catch (Error) {
-        console.warn("Rear wall decoration unavailable", Error);
-      }
-    }
   } finally {
     RearWork.delete(Chunk);
   }
@@ -151,6 +118,7 @@ async function EnsureRearClosure() {
 
 function ProcessChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || Chunk.Group.userData?.PresentationReadyR83) return;
+  RemoveLegacyDisplayFrames(Chunk);
   FinishPartitions(Chunk).catch(Error => console.warn("Partition finish failed", Error));
 }
 
@@ -165,4 +133,4 @@ const Interval = setInterval(ProcessAll, 1400);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_FINISH_R80__ = { ProcessAll, ProcessChunk, EnsureRearClosure };
-window.__STORE_FINISH_BUILD__ = "V0.22.1-R83";
+window.__STORE_FINISH_BUILD__ = "V0.26.0-R88";
