@@ -48,7 +48,7 @@ try {
   await import(`./multiplayer.js?v=${Cache}`);
   await window.__STORE_MULTIPLAYER__.WaitForAccount();
 
-  await import("./loading-prewarm-r38.js?v=20260823-33");
+  await import(`./loading-prewarm-r38.js?v=${Cache}`);
   await OptionalImport("./three-text-utility-r73.js", "3D text utility");
   await import(`./idle-budget-r72.js?v=${Cache}`);
   await import(`./single-menu-pre-r24.js?v=${Cache}`);
