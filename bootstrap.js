@@ -1,7 +1,6 @@
-const Cache = "20260825-98";
-const Version = "0.25.1";
+const Cache = "20260826-99";
+const Version = "0.25.2";
 const FaviconVersion = "20260824-4";
-const MultiplayerServerUrl = "https://the-infinity-store-vh88.onrender.com";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
   { rel: "icon", type: "image/png", sizes: "16x16", href: `favicon_io/favicon-16x16.png?v=${FaviconVersion}` },
@@ -27,54 +26,6 @@ const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
 
-function InstallMultiplayerTransportGuard() {
-  if (window.__STORE_MULTIPLAYER_TRANSPORT_GUARD__) return;
-  window.__STORE_MULTIPLAYER_TRANSPORT_GUARD__ = true;
-  const NativeFetch = window.fetch.bind(window);
-  let WakeStarted = false;
-
-  function WakeServer() {
-    if (WakeStarted) return;
-    WakeStarted = true;
-    const Controller = new AbortController();
-    const Timeout = setTimeout(() => Controller.abort(), 45_000);
-    NativeFetch(`${MultiplayerServerUrl}/api/client-info`, {
-      method: "GET",
-      cache: "no-store",
-      signal: Controller.signal
-    }).catch(() => {}).finally(() => clearTimeout(Timeout));
-  }
-
-  window.fetch = async (Input, Init = {}) => {
-    const Url = typeof Input === "string" ? Input : String(Input?.url || "");
-    if (!Url.startsWith(MultiplayerServerUrl)) return NativeFetch(Input, Init);
-
-    if (Url === `${MultiplayerServerUrl}/api/client-info`) {
-      WakeServer();
-      return new Response(JSON.stringify({
-        ok: true,
-        serverVersion: "deferred",
-        protocol: 1,
-        minPlayers: 2,
-        maxPlayers: 6
-      }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" }
-      });
-    }
-
-    const Controller = new AbortController();
-    const Timeout = setTimeout(() => Controller.abort(), 45_000);
-    try {
-      return await NativeFetch(Input, { ...Init, signal: Controller.signal });
-    } finally {
-      clearTimeout(Timeout);
-    }
-  };
-
-  WakeServer();
-}
-
 async function OptionalImport(Path, Label) {
   try {
     return await import(`${Path}?v=${Cache}`);
@@ -94,7 +45,6 @@ function ShowBootError(Error) {
 let CoreReady = false;
 
 try {
-  InstallMultiplayerTransportGuard();
   await import(`./multiplayer.js?v=${Cache}`);
   await window.__STORE_MULTIPLAYER__.WaitForAccount();
 
