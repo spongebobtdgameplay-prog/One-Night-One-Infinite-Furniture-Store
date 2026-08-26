@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260826-150";
+import { CreateChunkLayout } from "./store-layout.js?v=20260826-151";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -426,43 +426,6 @@ function Box(Name, Size, Position, Material, Chunk, Collidable = false) {
   return Mesh;
 }
 
-function CreateLabelTexture(Text) {
-  const LabelCanvas = document.createElement("canvas");
-  LabelCanvas.width = 768;
-  LabelCanvas.height = 192;
-  const Context = LabelCanvas.getContext("2d");
-  Context.fillStyle = "#c89b62";
-  Context.fillRect(0, 0, LabelCanvas.width, LabelCanvas.height);
-  Context.strokeStyle = "#4b3421";
-  Context.lineWidth = 14;
-  Context.strokeRect(7, 7, LabelCanvas.width - 14, LabelCanvas.height - 14);
-  Context.fillStyle = "#211a14";
-  Context.font = "800 68px Arial";
-  Context.textAlign = "center";
-  Context.textBaseline = "middle";
-  Context.fillText(Text, LabelCanvas.width / 2, LabelCanvas.height / 2 + 3);
-  const Texture = new THREE.CanvasTexture(LabelCanvas);
-  Texture.colorSpace = THREE.SRGBColorSpace;
-  return Texture;
-}
-
-function AddSectionSign(Chunk, Text, Z) {
-  const Texture = CreateLabelTexture(Text);
-  const Group = new THREE.Group();
-  Group.name = "SectionSign";
-  Group.userData.ChunkId = Chunk.Id;
-  const Front = new THREE.Mesh(new THREE.PlaneGeometry(4.7, 1.14), new THREE.MeshBasicMaterial({ map: Texture, side: THREE.FrontSide }));
-  Front.position.z = 0.012;
-  Group.add(Front);
-  const Back = new THREE.Mesh(new THREE.PlaneGeometry(4.7, 1.14), new THREE.MeshBasicMaterial({ map: Texture, side: THREE.FrontSide }));
-  Back.position.z = -0.012;
-  Back.rotation.y = Math.PI;
-  Group.add(Back);
-  Group.position.set(0, 2.87, Z);
-  Chunk.Group.add(Group);
-  Box("SignMount", new THREE.Vector3(4.95, 0.06, 0.09), new THREE.Vector3(0, 3.48, Z), TrimMaterial, Chunk);
-}
-
 function AddPartition(Chunk, X, Z, Length = 3.3) {
   Box("ShowroomPartition", new THREE.Vector3(0.15, 2.25, Length), new THREE.Vector3(X, 1.125, Z), WallMaterial, Chunk, true);
   Box("PartitionCap", new THREE.Vector3(0.23, 0.07, Length + 0.08), new THREE.Vector3(X, 2.285, Z), TrimMaterial, Chunk);
@@ -717,8 +680,6 @@ function CreatePreparedChunk(Index) {
       Object.userData.LayoutAuthority = Layout.Authority;
     }
   }
-
-  AddSectionSign(Chunk, Theme, TopZ - 3.1);
 
   for (const Offset of [-9.0, 0, 9.0]) AddLightFixture(Chunk, 0, CenterZ + Offset, SeededRandom(Seed + Offset * 3) > 0.88);
   for (const Offset of [-7.5, 7.5]) {
@@ -1176,8 +1137,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.1";
-window.__STORE_VERSION__ = "0.13.1";
+window.__STORE_GAME_BUILD__ = "V0.13.2";
+window.__STORE_VERSION__ = "0.13.2";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1197,6 +1158,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.1"
+  Version: "0.13.2"
 };
 Animate();
