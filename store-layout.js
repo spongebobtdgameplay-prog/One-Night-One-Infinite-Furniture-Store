@@ -34,7 +34,7 @@ const Footprints = Object.freeze({
   RetailDiningTableR84: [2.30, 1.25],
   RetailBoxShelfR84: [1.55, 0.95],
   Cart: [1.20, 1.55],
-  Basket: [0.58, 0.58],
+  Basket: [0.75, 0.75],
   BagShelf: [1.55, 0.95],
   StoreTask: [0.74, 0.58],
   Partition: [0.15, 4.0]
