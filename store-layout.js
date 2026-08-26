@@ -473,6 +473,7 @@ function AddDenseDepartmentSlots(Layout, Theme) {
     );
   }
 
+  for (const Entry of Extra) Entry.Required = false;
   Layout.Base.push(...Extra);
 }
 
@@ -508,7 +509,8 @@ function AddCardboardBoxScatter(Layout, Theme, Index, Seed) {
         Kind: "Sale",
         AssetKey: "CardboardBox",
         Name: "RetailCardboardBoxR84",
-        Sellable: Added === 0,
+        Sellable: true,
+        Required: false,
         Footprint: [0.70, 0.62]
       }
     ));
@@ -583,12 +585,12 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
     if (!IncludeOptional(Seed, Entry)) continue;
     const Bounds = BoundsFor(Entry);
     if (!ValidDisplayBounds(Bounds)) {
-      Layout.ValidationErrors.push(`${Entry.Slot}: outside approved display zones`);
+      if (Entry.Required !== false) Layout.ValidationErrors.push(`${Entry.Slot}: outside approved display zones`);
       continue;
     }
     const Conflict = Accepted.find(Item => Overlap(Bounds, Item.Bounds));
     if (Conflict) {
-      Layout.ValidationErrors.push(`${Entry.Slot}: overlaps ${Conflict.Entry.Slot}`);
+      if (Entry.Required !== false) Layout.ValidationErrors.push(`${Entry.Slot}: overlaps ${Conflict.Entry.Slot}`);
       continue;
     }
     Accepted.push({ Entry, Bounds });
@@ -609,6 +611,12 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
   Layout.Base = FilterGroup(Layout.Base);
   Layout.Retail = FilterGroup(Layout.Retail);
   Layout.Sale = FilterGroup(Layout.Sale);
+  const CardboardBoxes = Layout.Sale.filter(Entry => Entry.AssetKey === "CardboardBox");
+  for (let Index = 0; Index < CardboardBoxes.length; Index += 1) {
+    const Entry = CardboardBoxes[Index];
+    Entry.Sellable = Index === 0;
+    if (Index > 0) delete Layout.PriceAnchors[Entry.Slot];
+  }
   Layout.Zones = FilterGroup(Layout.Zones);
   if (Layout.Task && !Layout.Slots[Layout.Task.Slot]) Layout.Task = null;
 
