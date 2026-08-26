@@ -558,6 +558,36 @@ function RenderProfile() {
   RenderNetworkStatus();
 }
 
+function ResetSharedRoomState() {
+  SharedCompletedTasks.clear();
+  PendingCompletedTasks.clear();
+  Sequence = 0;
+  LastSendAt = 0;
+  HasLastSentPosition = false;
+  LastAisleReport = 0;
+  Game?.ResetTaskProgress?.();
+}
+
+function ClearRoomState() {
+  const HadRoom = Boolean(CurrentRoom?.code || DesiredRoomCode);
+  if (HadRoom) ResetSharedRoomState();
+  else {
+    SharedCompletedTasks.clear();
+    PendingCompletedTasks.clear();
+    Sequence = 0;
+    LastSendAt = 0;
+    HasLastSentPosition = false;
+    LastAisleReport = 0;
+  }
+  CurrentRoom = null;
+  CurrentRoomServerTime = 0;
+  CurrentPlayers = [];
+  SaveDesiredRoom("");
+  RemoveAllRemotePlayers();
+  RenderLobby();
+  Dispatch("store-room-change", GetState());
+}
+
 async function RefreshAccount() {
   if (!SessionToken) return { ok: false, error: "AUTH_REQUIRED" };
   const Result = await Api("/api/auth/me");
@@ -567,6 +597,7 @@ async function RefreshAccount() {
       Account = null;
       Profile = null;
       DisconnectSocket();
+      ClearRoomState();
       Dispatch("store-account-change", GetState());
     }
     return Result;
@@ -688,16 +719,11 @@ async function Logout(ShowAccount = true) {
   }
   DisconnectSocket();
   StoreSession("");
-  SaveDesiredRoom("");
+  ClearRoomState();
   Account = null;
   Profile = null;
-  CurrentRoom = null;
-  CurrentRoomServerTime = 0;
-  CurrentPlayers = [];
-  RemoveAllRemotePlayers();
   SetStatus("offline");
   Dispatch("store-account-change", GetState());
-  Dispatch("store-room-change", GetState());
   NetworkOverlay.hidden = true;
   if (ShowAccount) ShowAccountScreen("Sign in with another account.");
   return { ok: true };
@@ -739,12 +765,7 @@ function BindSocketEvents(Target) {
     if (DesiredRoomCode) {
       const Result = await JoinRoom(DesiredRoomCode, false);
       if (!Result?.ok && ["ROOM_NOT_FOUND", "LATE_JOIN_DISABLED"].includes(Result?.error)) {
-        SaveDesiredRoom("");
-        CurrentRoom = null;
-        CurrentRoomServerTime = 0;
-        CurrentPlayers = [];
-        RemoveAllRemotePlayers();
-        Dispatch("store-room-change", GetState());
+        ClearRoomState();
       }
     }
   });
@@ -756,13 +777,16 @@ function BindSocketEvents(Target) {
   Target.on("connect_error", Error => {
     const Message = String(Error?.message || "");
     if (/SESSION_OUTDATED/i.test(Message)) {
+      Target.disconnect();
       ShowOutdated();
       return;
     }
     if (/AUTH_REQUIRED/i.test(Message)) {
+      Target.disconnect();
       StoreSession("");
       Account = null;
       Profile = null;
+      ClearRoomState();
       SetStatus("offline");
       ShowAccountScreen("Your session expired. Sign in again.");
       Dispatch("store-account-change", GetState());
@@ -773,6 +797,7 @@ function BindSocketEvents(Target) {
 
   Target.on("server:ready", Data => {
     if (Number(Data?.protocol) !== CLIENT_PROTOCOL) {
+      Target.disconnect();
       ShowOutdated();
       return;
     }
@@ -895,10 +920,13 @@ function ApplyRoomClock(Room = CurrentRoom, ReferenceServerTime = CurrentRoomSer
 }
 
 function ApplyRoomState(Room, Players, ServerTime = Date.now()) {
+  const PreviousRoomCode = String(CurrentRoom?.code || "");
+  const NextRoomCode = String(Room?.code || "");
+  if (NextRoomCode && NextRoomCode !== PreviousRoomCode) ResetSharedRoomState();
   CurrentRoom = Room;
   CurrentRoomServerTime = Number(ServerTime) || Date.now();
   CurrentPlayers = Array.isArray(Players) ? Players : [];
-  SaveDesiredRoom(Room?.code || "");
+  SaveDesiredRoom(NextRoomCode);
   if (Array.isArray(Room?.completedTasks)) ApplyCompletedTasks(Room.completedTasks);
   ApplyRoomClock(Room, CurrentRoomServerTime);
   ReconcileRemotePlayers(CurrentPlayers);
@@ -968,13 +996,7 @@ async function JoinRoom(Code, Remember = true) {
 
 async function LeaveRoom() {
   const Result = Socket?.connected ? await SocketAck("room:leave", {}) : { ok: true };
-  CurrentRoom = null;
-  CurrentRoomServerTime = 0;
-  CurrentPlayers = [];
-  SaveDesiredRoom("");
-  RemoveAllRemotePlayers();
-  RenderLobby();
-  Dispatch("store-room-change", GetState());
+  ClearRoomState();
   return Result;
 }
 
@@ -1810,7 +1832,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.2";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.3";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
