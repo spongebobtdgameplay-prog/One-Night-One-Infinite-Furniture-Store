@@ -114,7 +114,7 @@ function SaveAccountName(Name) {
   const Existing = ReadSavedAccounts().filter(Item => Item.toLowerCase() !== Username.toLowerCase());
   Existing.unshift(Username);
   localStorage.setItem(SAVED_ACCOUNTS_KEY, JSON.stringify(Existing.slice(0, 8)));
-  RenderSavedAccounts();
+  RenderAccountChoices();
 }
 
 function ApplyProfileSettings() {
@@ -235,64 +235,75 @@ function ValidateClientPassword(Value) {
 const Style = document.createElement("style");
 Style.id = "StoreMultiplayerStyle";
 Style.textContent = `
-.StoreNetworkOverlay{position:fixed;inset:0;z-index:2500;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at 50% 8%,rgba(79,88,76,.24),transparent 42%),rgba(5,7,6,.96);color:#f1ede4;font-family:Arial,Helvetica,sans-serif}
+.StoreNetworkOverlay{position:fixed;inset:0;z-index:2500;display:grid;place-items:center;padding:calc(var(--safe-top,10px) + 12px) calc(var(--safe-right,10px) + 12px) calc(var(--safe-bottom,10px) + 12px) calc(var(--safe-left,10px) + 12px);background:linear-gradient(90deg,rgba(4,5,6,.94),rgba(4,5,6,.82));backdrop-filter:blur(10px);color:#f4efe6;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,sans-serif}
 .StoreNetworkOverlay[hidden]{display:none}
-.StoreNetworkCard{width:min(880px,calc(100vw - 28px));max-height:calc(100dvh - 28px);overflow:auto;border:1px solid rgba(239,232,216,.22);background:rgba(17,20,18,.98);box-shadow:0 32px 110px rgba(0,0,0,.68)}
-.StoreNetworkHead{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:22px 24px;border-bottom:1px solid rgba(239,232,216,.12)}
-.StoreNetworkHead small{display:block;color:#aa825d;font-size:.56rem;font-weight:900;letter-spacing:.18em}
-.StoreNetworkHead h2{margin:6px 0 0;font-size:1.05rem;letter-spacing:.12em}
-.StoreNetworkClose{width:42px;height:42px;border:1px solid rgba(255,255,255,.18);background:#242a27;color:#fff;font-size:1.3rem;cursor:pointer}
-.StoreNetworkBody{padding:24px}
-.StoreNetworkView[hidden]{display:none}
-.StoreNetworkGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.StoreNetworkChoice{min-height:122px;padding:18px;border:1px solid rgba(255,255,255,.14);background:#1b211e;color:#f4efe6;text-align:left;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease}
-.StoreNetworkChoice:hover{transform:translateY(-2px);border-color:rgba(197,146,91,.72);background:#242b27}
-.StoreNetworkChoice strong{display:block;font-size:.74rem;letter-spacing:.09em}
-.StoreNetworkChoice span{display:block;margin-top:9px;color:rgba(244,239,230,.52);font-size:.62rem;line-height:1.45}
-.StoreNetworkForm{display:grid;gap:13px}
-.StoreNetworkLabel{display:grid;gap:7px;color:rgba(244,239,230,.66);font-size:.58rem;font-weight:900;letter-spacing:.12em}
-.StoreNetworkInput,.StoreNetworkSelect{box-sizing:border-box;width:100%;min-height:46px;border:1px solid rgba(255,255,255,.20);background:#0f1311;color:#fff;padding:0 13px;font:700 .78rem Arial,Helvetica,sans-serif;outline:none}
-.StoreNetworkInput:focus,.StoreNetworkSelect:focus{border-color:#bf8b56}
-.StoreNetworkActions{display:flex;gap:9px;flex-wrap:wrap;margin-top:6px}
-.StoreNetworkButton{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border:1px solid rgba(255,255,255,.26);background:#2a312d;color:#fff;font-size:.62rem;font-weight:900;letter-spacing:.11em;text-transform:uppercase;cursor:pointer}
-.StoreNetworkButton.Primary{border-color:#d8bd9b;background:#e7ddcf;color:#141715}
-.StoreNetworkButton.Danger{border-color:rgba(194,92,77,.6);color:#ffc5bc}
-.StoreNetworkButton:disabled{opacity:.36;cursor:not-allowed}
-.StoreNetworkStatus{min-height:18px;margin:14px 0 0;color:rgba(244,239,230,.62);font-size:.65rem;line-height:1.45}
+.StoreNetworkCard{width:min(760px,100%);max-height:calc(100dvh - var(--safe-top,10px) - var(--safe-bottom,10px) - 24px);overflow:auto;border:1px solid rgba(255,255,255,.11);background:linear-gradient(160deg,rgba(20,22,24,.98),rgba(9,10,12,.96));box-shadow:0 30px 80px rgba(0,0,0,.54)}
+.StoreAccountCard{width:min(560px,100%)}
+.StoreNetworkHead{position:sticky;top:0;z-index:2;display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:clamp(16px,2.6vw,22px) clamp(17px,3vw,24px);border-bottom:1px solid rgba(255,255,255,.09);background:rgba(18,20,21,.97)}
+.StoreNetworkHead small{display:block;color:#c99358;font-size:clamp(.52rem,1.4vw,.59rem);font-weight:900;letter-spacing:.18em}
+.StoreNetworkHead h2{margin:5px 0 0;font-size:clamp(.88rem,2.4vw,1.08rem);letter-spacing:.10em}
+.StoreNetworkClose{flex:0 0 42px;width:42px;height:42px;border:1px solid rgba(255,255,255,.22);background:#242826;color:#fff;font-size:1.28rem;cursor:pointer}
+.StoreNetworkBody{padding:clamp(16px,3vw,24px)}
+.StoreNetworkView[hidden],.StoreAccountStep[hidden]{display:none}
+.StoreNetworkGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:9px}
+.StoreNetworkChoice{min-height:112px;padding:16px;border:1px solid rgba(255,255,255,.13);background:#171a19;color:#f4efe6;text-align:left;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease}
+.StoreNetworkChoice:hover{transform:translateY(-1px);border-color:rgba(201,147,88,.7);background:#202421}
+.StoreNetworkChoice strong{display:block;font-size:.72rem;letter-spacing:.08em}
+.StoreNetworkChoice span{display:block;margin-top:8px;color:rgba(244,239,230,.52);font-size:.62rem;line-height:1.45}
+.StoreNetworkForm{display:grid;gap:12px}
+.StoreNetworkLabel{display:grid;gap:7px;color:rgba(244,239,230,.64);font-size:.58rem;font-weight:900;letter-spacing:.11em}
+.StoreNetworkInput,.StoreNetworkSelect{box-sizing:border-box;width:100%;min-height:46px;border:1px solid rgba(255,255,255,.20);background:#0e1110;color:#fff;padding:0 13px;font:750 .8rem Inter,system-ui,sans-serif;outline:none;border-radius:0}
+.StoreNetworkInput:focus,.StoreNetworkSelect:focus{border-color:#c99358}
+.StoreNetworkActions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:8px;margin-top:5px}
+.StoreNetworkButton{display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.24);background:#252a27;color:#fff;font-size:.61rem;font-weight:900;letter-spacing:.10em;text-transform:uppercase;cursor:pointer}
+.StoreNetworkButton.Primary{border-color:#d09a60;background:#b77b43;color:#100c08}
+.StoreNetworkButton.Danger{border-color:rgba(194,92,77,.58);color:#ffc5bc}
+.StoreNetworkButton:disabled{opacity:.38;cursor:not-allowed}
+.StoreNetworkStatus{min-height:18px;margin:12px 0 0;color:rgba(244,239,230,.55);font-size:.64rem;line-height:1.45}
 .StoreNetworkStatus.Error{color:#ffafa4}
-.StoreNetworkTabs{display:flex;gap:7px;margin-bottom:18px}
-.StoreNetworkTab{min-height:38px;padding:0 13px;border:1px solid rgba(255,255,255,.15);background:#171c19;color:rgba(255,255,255,.62);font-size:.58rem;font-weight:900;letter-spacing:.11em;cursor:pointer}
-.StoreNetworkTab.Active{background:#e7ddcf;color:#141715}
-.StoreSavedAccounts{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0 18px}
-.StoreSavedAccount{min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.14);background:#161b18;color:#d9d2c7;font-size:.58rem;font-weight:800;cursor:pointer}
-.StoreNetworkSubtle{color:rgba(244,239,230,.46);font-size:.61rem;line-height:1.5}
-.StoreToggleRow{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:48px;border:1px solid rgba(255,255,255,.12);padding:0 13px;background:#151a17}
+.StoreNetworkTabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:16px}
+.StoreNetworkTab{min-height:40px;padding:0 12px;border:1px solid rgba(255,255,255,.14);background:#161918;color:rgba(255,255,255,.60);font-size:.58rem;font-weight:900;letter-spacing:.10em;cursor:pointer}
+.StoreNetworkTab.Active{border-color:#d0a36b;background:#2a2119;color:#f4e4d2}
+.StoreAccountSectionTitle{margin-bottom:11px;color:#c99358;font-size:.61rem;font-weight:900;letter-spacing:.18em}
+.StoreAccountChoices{display:grid;gap:8px}
+.StoreAccountChoice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:54px;width:100%;padding:0 15px;border:1px solid rgba(255,255,255,.15);background:#151817;color:#fff;text-align:left;cursor:pointer}
+.StoreAccountChoice:hover{border-color:rgba(201,147,88,.72);background:#1f2321}
+.StoreAccountChoice strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.76rem;letter-spacing:.06em}
+.StoreAccountChoice span{flex:0 0 auto;color:#c99358;font-size:.54rem;font-weight:900;letter-spacing:.10em}
+.StoreAccountOther{width:100%;margin-top:9px}
+.StoreAccountBack{margin-bottom:14px;min-height:36px;padding:0 10px;border:0;background:transparent;color:rgba(244,239,230,.58);font-size:.58rem;font-weight:900;letter-spacing:.10em;cursor:pointer}
+.StoreSelectedAccount{margin-bottom:16px;padding:15px;border:1px solid rgba(255,255,255,.12);background:#121513}
+.StoreSelectedAccount small{display:block;color:rgba(244,239,230,.43);font-size:.52rem;font-weight:900;letter-spacing:.13em}
+.StoreSelectedAccount strong{display:block;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1rem;letter-spacing:.07em}
+.StoreNetworkSubtle{color:rgba(244,239,230,.45);font-size:.61rem;line-height:1.5}
+.StoreToggleRow{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:48px;border:1px solid rgba(255,255,255,.11);padding:0 13px;background:#141715}
 .StoreToggleRow span{font-size:.62rem;font-weight:850;letter-spacing:.07em}
-.StoreToggleRow input{width:20px;height:20px;accent-color:#c89966}
-.StoreLobbyTop{display:grid;grid-template-columns:1.2fr .8fr;gap:10px;margin-bottom:14px}
-.StoreLobbyCode,.StoreLobbyInfo{padding:16px;border:1px solid rgba(255,255,255,.13);background:#141916}
-.StoreLobbyCode small,.StoreLobbyInfo small,.StoreProfileStat small{display:block;color:rgba(255,255,255,.46);font-size:.52rem;font-weight:900;letter-spacing:.13em}
-.StoreLobbyCode strong{display:block;margin-top:7px;font:900 1.55rem ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.22em}
+.StoreToggleRow input{width:20px;height:20px;accent-color:#c99358}
+.StoreLobbyTop{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:9px;margin-bottom:13px}
+.StoreLobbyCode,.StoreLobbyInfo{padding:15px;border:1px solid rgba(255,255,255,.12);background:#131614}
+.StoreLobbyCode small,.StoreLobbyInfo small,.StoreProfileStat small{display:block;color:rgba(255,255,255,.44);font-size:.51rem;font-weight:900;letter-spacing:.12em}
+.StoreLobbyCode strong{display:block;margin:7px 0 10px;font:900 clamp(1.15rem,5vw,1.5rem) ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.18em}
 .StoreLobbyInfo strong{display:block;margin-top:7px;font-size:.78rem;letter-spacing:.08em}
-.StorePlayers{display:grid;gap:7px;margin:14px 0}
-.StorePlayerRow{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:1px solid rgba(255,255,255,.10);background:#121613}
-.StorePlayerName{font-size:.67rem;font-weight:850;letter-spacing:.06em}
+.StorePlayers{display:grid;gap:7px;margin:13px 0}
+.StorePlayerRow{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:1px solid rgba(255,255,255,.09);background:#111412}
+.StorePlayerName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.67rem;font-weight:850;letter-spacing:.05em}
 .StoreHostBadge{margin-left:auto;padding:4px 7px;border:1px solid rgba(200,153,101,.55);color:#d9a875;font-size:.48rem;font-weight:900;letter-spacing:.10em}
-.StoreLobbySettings{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}
-.StoreLobbySetting{padding:11px;border:1px solid rgba(255,255,255,.10);background:#141916}
-.StoreLobbySetting small{display:block;color:rgba(255,255,255,.42);font-size:.48rem;font-weight:900;letter-spacing:.1em}
-.StoreLobbySetting strong{display:block;margin-top:5px;font-size:.62rem}
-.StoreProfileName{font-size:1.2rem;font-weight:900;letter-spacing:.10em}
-.StoreProfileStats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0}
-.StoreProfileStat{padding:15px;border:1px solid rgba(255,255,255,.11);background:#141916}
-.StoreProfileStat strong{display:block;margin-top:7px;font-size:.9rem}
-.StoreAccountBadge{display:inline-flex;align-items:center;gap:7px;margin-top:12px;padding:7px 9px;border:1px solid rgba(255,255,255,.12);background:rgba(10,12,11,.45);color:#d9d1c4;font-size:.55rem;font-weight:900;letter-spacing:.1em}
+.StoreLobbySettings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:11px}
+.StoreLobbySetting{min-width:0;padding:10px;border:1px solid rgba(255,255,255,.09);background:#131614}
+.StoreLobbySetting small{display:block;color:rgba(255,255,255,.40);font-size:.46rem;font-weight:900;letter-spacing:.09em}
+.StoreLobbySetting strong{display:block;margin-top:5px;font-size:.61rem}
+.StoreProfileName{font-size:clamp(1rem,4vw,1.25rem);font-weight:900;letter-spacing:.09em}
+.StoreProfileStats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin:16px 0}
+.StoreProfileStat{min-width:0;padding:13px;border:1px solid rgba(255,255,255,.10);background:#131614}
+.StoreProfileStat strong{display:block;margin-top:7px;font-size:.86rem}
+.StoreAccountBadge{display:inline-flex;align-items:center;gap:7px;margin-top:11px;padding:7px 9px;border:1px solid rgba(255,255,255,.11);background:rgba(10,12,11,.45);color:#d9d1c4;font-size:.55rem;font-weight:900;letter-spacing:.1em}
 .StoreAccountBadge:before{content:"";width:6px;height:6px;border-radius:50%;background:#74bb7b}
 .StoreOutdated{animation:StoreOutdatedPulse 1.1s ease-in-out infinite alternate}
 @keyframes StoreOutdatedPulse{from{box-shadow:0 0 0 rgba(214,132,86,0)}to{box-shadow:0 0 42px rgba(214,132,86,.22)}}
 .StoreNavButton{display:inline-flex;align-items:center;justify-content:center;min-height:47px;padding:0 18px;border:1px solid rgba(255,255,255,.8);background:rgba(255,255,255,.035);color:#fff;font-size:.7rem;font-weight:850;letter-spacing:.11em;text-transform:uppercase;cursor:pointer}
 .StoreNavButton:hover{background:#fff;color:#0a0c0d}
-@media(max-width:700px){.StoreNetworkGrid{grid-template-columns:1fr}.StoreLobbyTop,.StoreLobbySettings{grid-template-columns:1fr}.StoreProfileStats{grid-template-columns:1fr}.StoreNetworkBody{padding:16px}.StoreNetworkHead{padding:17px}.StoreNetworkActions{display:grid}.StoreNetworkActions button{width:100%}}
+@media(max-width:520px){.StoreNetworkHead{padding:15px 16px}.StoreNetworkBody{padding:15px}.StoreLobbySettings,.StoreProfileStats{grid-template-columns:repeat(3,minmax(0,1fr))}.StoreNetworkButton{font-size:.56rem;padding:0 9px}}
+@media(max-height:600px){.StoreNetworkCard{max-height:calc(100dvh - 12px)}.StoreNetworkHead{padding-top:12px;padding-bottom:12px}.StoreNetworkBody{padding-top:13px;padding-bottom:13px}.StoreNetworkChoice{min-height:92px}}
 `;
 document.head.appendChild(Style);
 
@@ -300,43 +311,57 @@ const AccountOverlay = document.createElement("section");
 AccountOverlay.id = "StoreAccountOverlay";
 AccountOverlay.className = "StoreNetworkOverlay";
 AccountOverlay.innerHTML = `
-  <div class="StoreNetworkCard">
+  <div class="StoreNetworkCard StoreAccountCard">
     <div class="StoreNetworkHead">
-      <div><small>GREAT OLD GAMES ACCOUNT</small><h2 id="StoreAccountTitle">SIGN IN TO THE INFINITY STORE</h2></div>
+      <div><small>GREAT OLD GAMES ACCOUNT</small><h2 id="StoreAccountTitle">ACCOUNT</h2></div>
     </div>
     <div class="StoreNetworkBody">
       <div id="StoreAccountNormal">
-        <div class="StoreNetworkTabs">
-          <button class="StoreNetworkTab Active" type="button" data-account-tab="login">LOGIN</button>
-          <button class="StoreNetworkTab" type="button" data-account-tab="create">CREATE ACCOUNT</button>
-        </div>
-        <div>
-          <div class="StoreNetworkSubtle">Saved accounts on this device</div>
-          <div id="StoreSavedAccounts" class="StoreSavedAccounts"></div>
-        </div>
-        <form id="StoreAccountForm" class="StoreNetworkForm" autocomplete="on">
-          <label class="StoreNetworkLabel">USERNAME
-            <input id="StoreAccountUsername" class="StoreNetworkInput" maxlength="20" autocomplete="username" spellcheck="false">
-          </label>
-          <label class="StoreNetworkLabel">PASSWORD
-            <input id="StoreAccountPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="current-password">
-          </label>
-          <label id="StoreAccountRepeatWrap" class="StoreNetworkLabel" hidden>RETYPE PASSWORD
-            <input id="StoreAccountRepeat" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="new-password">
-          </label>
-          <div class="StoreNetworkActions">
-            <button id="StoreAccountSubmit" class="StoreNetworkButton Primary" type="submit">LOGIN</button>
-            <button id="StoreAccountRetry" class="StoreNetworkButton" type="button">RETRY SERVER</button>
+        <section id="StoreAccountChooser" class="StoreAccountStep">
+          <div class="StoreAccountSectionTitle">CONTINUE WITH</div>
+          <div id="StoreAccountChoices" class="StoreAccountChoices"></div>
+          <button id="StoreAccountOther" class="StoreNetworkButton StoreAccountOther" type="button">NOT ANY OF THESE ACCOUNTS</button>
+          <p id="StoreAccountChooserStatus" class="StoreNetworkStatus"></p>
+        </section>
+        <section id="StoreQuickAccount" class="StoreAccountStep" hidden>
+          <button id="StoreQuickBack" class="StoreAccountBack" type="button">← BACK</button>
+          <div class="StoreSelectedAccount"><small>CONTINUE WITH</small><strong id="StoreQuickAccountName">PLAYER</strong></div>
+          <form id="StoreQuickAccountForm" class="StoreNetworkForm" autocomplete="off">
+            <label class="StoreNetworkLabel">PASSWORD
+              <input id="StoreQuickPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="off" name="infinity-store-quick-secret-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+            </label>
+            <div class="StoreNetworkActions"><button id="StoreQuickSubmit" class="StoreNetworkButton Primary" type="submit">CONTINUE</button></div>
+          </form>
+          <p id="StoreQuickStatus" class="StoreNetworkStatus"></p>
+        </section>
+        <section id="StoreManualAccount" class="StoreAccountStep" hidden>
+          <button id="StoreManualBack" class="StoreAccountBack" type="button">← BACK TO ACCOUNTS</button>
+          <div class="StoreNetworkTabs">
+            <button class="StoreNetworkTab Active" type="button" data-account-tab="login">LOGIN</button>
+            <button class="StoreNetworkTab" type="button" data-account-tab="create">CREATE ACCOUNT</button>
           </div>
-        </form>
-        <p id="StoreAccountStatus" class="StoreNetworkStatus">Checking account server...</p>
+          <form id="StoreAccountForm" class="StoreNetworkForm" autocomplete="off">
+            <label class="StoreNetworkLabel">USERNAME
+              <input id="StoreAccountUsername" class="StoreNetworkInput" maxlength="20" autocomplete="off" name="infinity-store-account-name-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+            </label>
+            <label class="StoreNetworkLabel">PASSWORD
+              <input id="StoreAccountPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="off" name="infinity-store-login-secret-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+            </label>
+            <label id="StoreAccountRepeatWrap" class="StoreNetworkLabel" hidden>RETYPE PASSWORD
+              <input id="StoreAccountRepeat" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="off" name="infinity-store-create-secret-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+            </label>
+            <div class="StoreNetworkActions">
+              <button id="StoreAccountSubmit" class="StoreNetworkButton Primary" type="submit">LOGIN</button>
+              <button id="StoreAccountRetry" class="StoreNetworkButton" type="button">RETRY SERVER</button>
+            </div>
+          </form>
+          <p id="StoreAccountStatus" class="StoreNetworkStatus"></p>
+        </section>
       </div>
       <div id="StoreAccountOutdated" class="StoreOutdated" hidden>
         <div class="StoreProfileName">SESSION OUTDATED</div>
         <p class="StoreNetworkSubtle">This page is using a different multiplayer protocol than the server. Refresh before continuing.</p>
-        <div class="StoreNetworkActions">
-          <button id="StoreAccountRefresh" class="StoreNetworkButton Primary" type="button">REFRESH</button>
-        </div>
+        <div class="StoreNetworkActions"><button id="StoreAccountRefresh" class="StoreNetworkButton Primary" type="button">REFRESH</button></div>
       </div>
     </div>
   </div>
@@ -440,13 +465,21 @@ document.body.appendChild(NetworkOverlay);
 
 const AccountNormal = document.getElementById("StoreAccountNormal");
 const AccountOutdated = document.getElementById("StoreAccountOutdated");
+const AccountChooser = document.getElementById("StoreAccountChooser");
+const AccountChoices = document.getElementById("StoreAccountChoices");
+const AccountChooserStatus = document.getElementById("StoreAccountChooserStatus");
+const QuickAccount = document.getElementById("StoreQuickAccount");
+const QuickAccountName = document.getElementById("StoreQuickAccountName");
+const QuickPassword = document.getElementById("StoreQuickPassword");
+const QuickSubmit = document.getElementById("StoreQuickSubmit");
+const QuickStatus = document.getElementById("StoreQuickStatus");
+const ManualAccount = document.getElementById("StoreManualAccount");
 const AccountUsername = document.getElementById("StoreAccountUsername");
 const AccountPassword = document.getElementById("StoreAccountPassword");
 const AccountRepeatWrap = document.getElementById("StoreAccountRepeatWrap");
 const AccountRepeat = document.getElementById("StoreAccountRepeat");
 const AccountSubmit = document.getElementById("StoreAccountSubmit");
 const AccountStatus = document.getElementById("StoreAccountStatus");
-const SavedAccounts = document.getElementById("StoreSavedAccounts");
 const MenuStatus = document.getElementById("StoreNetworkMenuStatus");
 const JoinStatus = document.getElementById("StoreJoinStatus");
 const JoinCode = document.getElementById("StoreJoinCode");
@@ -459,6 +492,7 @@ const LobbyStart = document.getElementById("StoreLobbyStart");
 const ProfileStatus = document.getElementById("StoreProfileStatus");
 
 let AccountMode = "login";
+let SelectedAccountName = "";
 
 function SetMessage(Element, Message, Error = false) {
   if (!Element) return;
@@ -472,54 +506,60 @@ function SetAccountMode(Mode) {
     Tab.classList.toggle("Active", Tab.dataset.accountTab === AccountMode);
   }
   AccountRepeatWrap.hidden = AccountMode !== "create";
-  AccountPassword.autocomplete = AccountMode === "create" ? "new-password" : "current-password";
   AccountSubmit.textContent = AccountMode === "create" ? "CREATE ACCOUNT" : "LOGIN";
   AccountRepeat.value = "";
   SetMessage(AccountStatus, "");
 }
 
-function RenderSavedAccounts() {
+function ShowAccountStep(Name) {
+  AccountChooser.hidden = Name !== "chooser";
+  QuickAccount.hidden = Name !== "quick";
+  ManualAccount.hidden = Name !== "manual";
+}
+
+function RenderAccountChoices() {
   const Accounts = ReadSavedAccounts();
-  const Existing = new Map([...SavedAccounts.querySelectorAll("[data-saved-account]")].map(Button => [Button.dataset.savedAccount.toLowerCase(), Button]));
-  const Seen = new Set();
-
+  AccountChoices.replaceChildren();
   for (const Name of Accounts) {
-    const Key = Name.toLowerCase();
-    Seen.add(Key);
-    let Button = Existing.get(Key);
-    if (!Button) {
-      Button = document.createElement("button");
-      Button.type = "button";
-      Button.className = "StoreSavedAccount";
-      Button.dataset.savedAccount = Name;
-      Button.addEventListener("click", () => {
-        SetAccountMode("login");
-        AccountUsername.value = Button.dataset.savedAccount || "";
-        AccountPassword.value = "";
-        AccountPassword.focus();
-      });
-      SavedAccounts.appendChild(Button);
-    }
-    Button.dataset.savedAccount = Name;
-    Button.textContent = Name;
+    const Button = document.createElement("button");
+    Button.type = "button";
+    Button.className = "StoreAccountChoice";
+    Button.dataset.accountName = Name;
+    const Label = document.createElement("strong");
+    Label.textContent = Name;
+    const Continue = document.createElement("span");
+    Continue.textContent = "CONTINUE";
+    Button.append(Label, Continue);
+    Button.addEventListener("click", () => {
+      SelectedAccountName = Name;
+      QuickAccountName.textContent = Name;
+      QuickPassword.value = "";
+      SetMessage(QuickStatus, "");
+      ShowAccountStep("quick");
+      requestAnimationFrame(() => QuickPassword.focus());
+    });
+    AccountChoices.appendChild(Button);
   }
+}
 
-  for (const [Key, Button] of Existing) {
-    if (!Seen.has(Key)) Button.remove();
-  }
+function ShowManualAccount(Mode = "login") {
+  SelectedAccountName = "";
+  SetAccountMode(Mode);
+  AccountPassword.value = "";
+  AccountRepeat.value = "";
+  SetMessage(AccountStatus, "");
+  ShowAccountStep("manual");
+  requestAnimationFrame(() => AccountUsername.focus());
+}
 
-  if (!Accounts.length) {
-    let Empty = SavedAccounts.querySelector("[data-empty]");
-    if (!Empty) {
-      Empty = document.createElement("span");
-      Empty.dataset.empty = "1";
-      Empty.className = "StoreNetworkSubtle";
-      SavedAccounts.appendChild(Empty);
-    }
-    Empty.textContent = "No saved account names yet.";
-  } else {
-    SavedAccounts.querySelector("[data-empty]")?.remove();
-  }
+function ShowAccountChooser(Message = "") {
+  RenderAccountChoices();
+  SelectedAccountName = "";
+  QuickPassword.value = "";
+  AccountPassword.value = "";
+  AccountRepeat.value = "";
+  ShowAccountStep("chooser");
+  SetMessage(AccountChooserStatus, Message);
 }
 
 function ShowOutdated() {
@@ -533,10 +573,7 @@ function ShowAccountScreen(Message = "") {
   AccountOverlay.hidden = false;
   AccountNormal.hidden = false;
   AccountOutdated.hidden = true;
-  SetAccountMode("login");
-  RenderSavedAccounts();
-  if (Account?.username) AccountUsername.value = Account.username;
-  SetMessage(AccountStatus, Message);
+  ShowAccountChooser(Message);
 }
 
 function HideAccountScreen() {
@@ -590,7 +627,7 @@ function ClearRoomState() {
 
 async function RefreshAccount() {
   if (!SessionToken) return { ok: false, error: "AUTH_REQUIRED" };
-  const Result = await Api("/api/auth/me");
+  const Result = await Api("/api/auth/me", { timeout: SERVER_WAKE_TIMEOUT_MS });
   if (!Result?.ok) {
     if (Result?.error === "AUTH_REQUIRED") {
       StoreSession("");
@@ -634,15 +671,10 @@ async function Login(Username, Password) {
   if (PasswordError) return { ok: false, error: PasswordError };
 
   SetStatus("authenticating");
-  const Compatibility = await CheckCompatibility();
-  if (!Compatibility?.ok) {
-    SetStatus(Compatibility?.error === "SESSION_OUTDATED" ? "outdated" : "offline");
-    return Compatibility;
-  }
-
   const Result = await Api("/api/auth/login", {
     method: "POST",
     auth: false,
+    timeout: SERVER_WAKE_TIMEOUT_MS,
     body: { username: String(Username).trim(), password: String(Password) }
   });
   if (!Result?.ok) {
@@ -653,10 +685,9 @@ async function Login(Username, Password) {
   DisconnectSocket();
   StoreSession(Result.token);
   Account = Result.account;
-  Profile = null;
-  SaveDesiredRoom("");
-  const Refreshed = await RefreshAccount();
-  if (!Refreshed?.ok) return Refreshed;
+  Profile = Result.profile || { games_played: 0, tasks_completed: 0, best_aisle: 0, settings: {} };
+  ClearRoomState();
+  ApplyProfileSettings();
   FinishAuthentication();
   return Result;
 }
@@ -669,15 +700,10 @@ async function Register(Username, Password, RepeatPassword = Password) {
   if (Password !== RepeatPassword) return { ok: false, error: "PASSWORDS_DO_NOT_MATCH" };
 
   SetStatus("authenticating");
-  const Compatibility = await CheckCompatibility();
-  if (!Compatibility?.ok) {
-    SetStatus(Compatibility?.error === "SESSION_OUTDATED" ? "outdated" : "offline");
-    return Compatibility;
-  }
-
   const Result = await Api("/api/auth/register", {
     method: "POST",
     auth: false,
+    timeout: SERVER_WAKE_TIMEOUT_MS,
     body: { username: String(Username).trim(), password: String(Password) }
   });
   if (!Result?.ok) {
@@ -688,18 +714,15 @@ async function Register(Username, Password, RepeatPassword = Password) {
   DisconnectSocket();
   StoreSession(Result.token);
   Account = Result.account;
-  Profile = null;
-  SaveDesiredRoom("");
-  const Refreshed = await RefreshAccount();
-  if (!Refreshed?.ok) return Refreshed;
+  Profile = Result.profile || { games_played: 0, tasks_completed: 0, best_aisle: 0, settings: {} };
+  ClearRoomState();
+  ApplyProfileSettings();
   FinishAuthentication();
   return Result;
 }
 
 async function RestoreSession() {
   if (!SessionToken) return { ok: false, error: "NO_SESSION" };
-  const Compatibility = await CheckCompatibility();
-  if (!Compatibility?.ok) return Compatibility;
   SetStatus("waking");
   const Result = await RefreshAccount();
   if (!Result?.ok) {
@@ -730,11 +753,7 @@ async function Logout(ShowAccount = true) {
 }
 
 async function SwitchAccount() {
-  const Previous = Account?.username || "";
   await Logout(true);
-  if (Previous) AccountUsername.value = Previous;
-  AccountPassword.value = "";
-  AccountPassword.focus();
 }
 
 function DisconnectSocket() {
@@ -1185,28 +1204,24 @@ function StartGameFromRoom() {
   StartButton.click();
 }
 
-function CreateNavigationButton(Id, Text, Handler) {
+function CreateNavigationButton(Id, Text, Handler, ClassName = "StoreNavButton") {
   let Button = document.getElementById(Id);
   if (Button) return Button;
   Button = document.createElement("button");
   Button.id = Id;
   Button.type = "button";
-  Button.className = "StoreNavButton";
+  Button.className = ClassName;
   Button.textContent = Text;
   Button.addEventListener("click", Handler);
   return Button;
 }
 
 function MountInitialNavigation() {
-  const Actions = document.querySelector("#BootScreen .R43Actions");
-  if (!Actions) return;
-  if (!document.getElementById("StoreMultiplayerMainButton")) {
-    Actions.appendChild(CreateNavigationButton("StoreMultiplayerMainButton", "MULTIPLAYER", OpenMultiplayer));
-  }
-  if (!document.getElementById("StoreProfileMainButton")) {
-    Actions.appendChild(CreateNavigationButton("StoreProfileMainButton", Account?.username ? `PROFILE • ${Account.username}` : "PROFILE", OpenProfile));
-  } else {
-    document.getElementById("StoreProfileMainButton").textContent = Account?.username ? `PROFILE • ${Account.username}` : "PROFILE";
+  const Actions = document.getElementById("MainMenuActions");
+  if (Actions && !document.getElementById("StoreMultiplayerMainButton")) {
+    const Button = CreateNavigationButton("StoreMultiplayerMainButton", "MULTIPLAYER", OpenMultiplayer, "MainMenuButton");
+    const SettingsButton = document.getElementById("FirstMenuSettingsButton");
+    Actions.insertBefore(Button, SettingsButton || null);
   }
 
   const StartButton = document.getElementById("StartButton");
@@ -1651,17 +1666,16 @@ async function WaitForAccount() {
 }
 
 async function InitializeAccountGate() {
-  ShowAccountScreen();
-  RenderSavedAccounts();
+  ShowAccountScreen("Choose an account to continue.");
+  if (!SessionToken) {
+    CheckCompatibility().catch(() => {});
+    return;
+  }
   const Result = await RestoreSession();
   if (Result?.ok) return;
   if (Result?.error === "SESSION_OUTDATED") return;
   if (Result?.error === "AUTH_REQUIRED") {
-    ShowAccountScreen("Your previous session expired. Sign in again.");
-    return;
-  }
-  if (Result?.error === "NO_SESSION") {
-    ShowAccountScreen("Sign in before the store loads.");
+    ShowAccountScreen("Your previous session expired. Choose an account.");
     return;
   }
   ShowAccountScreen(ErrorText(Result?.error));
@@ -1669,6 +1683,24 @@ async function InitializeAccountGate() {
 
 AccountOverlay.querySelectorAll("[data-account-tab]").forEach(Button => {
   Button.addEventListener("click", () => SetAccountMode(Button.dataset.accountTab));
+});
+
+document.getElementById("StoreAccountOther").addEventListener("click", () => ShowManualAccount("login"));
+document.getElementById("StoreManualBack").addEventListener("click", () => ShowAccountChooser());
+document.getElementById("StoreQuickBack").addEventListener("click", () => ShowAccountChooser());
+
+document.getElementById("StoreQuickAccountForm").addEventListener("submit", async Event => {
+  Event.preventDefault();
+  if (!SelectedAccountName) {
+    ShowAccountChooser();
+    return;
+  }
+  QuickSubmit.disabled = true;
+  SetMessage(QuickStatus, "Signing in...");
+  const Result = await Login(SelectedAccountName, QuickPassword.value);
+  QuickSubmit.disabled = false;
+  if (!Result?.ok) SetMessage(QuickStatus, ErrorText(Result?.error), true);
+  else QuickPassword.value = "";
 });
 
 document.getElementById("StoreAccountForm").addEventListener("submit", async Event => {
@@ -1832,7 +1864,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.3";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.4";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
