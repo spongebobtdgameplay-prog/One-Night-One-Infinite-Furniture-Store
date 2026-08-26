@@ -9,14 +9,7 @@ const ProcessedChunks = new WeakSet();
 const ProcessedModels = new WeakSet();
 const ProcessedTasks = new WeakSet();
 const HeaderTextures = new Map();
-const PriceTextures = new Map();
 const TaskTextures = new Map();
-const DensityQueued = new WeakSet();
-const DensityQueue = [];
-const TempCenter = new THREE.Vector3();
-const TempSize = new THREE.Vector3();
-const TempBox = new THREE.Box3();
-const ClaimedEntries = new WeakSet();
 const FurnitureNames = new Set([
   "Couch_Large1",
   "Couch_L",
@@ -35,7 +28,6 @@ const FurnitureNames = new Set([
   "Bathroom_Toilet",
   "Light_Floor1"
 ]);
-const DensityExcluded = new Set(["Light_Floor1", "Bathroom_Toilet", "Bathroom_Bathtub"]);
 
 const HeaderFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x171a18, roughness: 0.72, metalness: 0.42 });
 const HeaderBoardMaterial = new THREE.MeshStandardMaterial({ color: 0x232722, roughness: 0.88, metalness: 0.04 });
@@ -43,8 +35,6 @@ const TerminalMetalMaterial = new THREE.MeshStandardMaterial({ color: 0x545b59, 
 const TerminalDarkMaterial = new THREE.MeshStandardMaterial({ color: 0x171b1a, roughness: 0.68, metalness: 0.44 });
 const TerminalCreamMaterial = new THREE.MeshStandardMaterial({ color: 0xd8cfba, roughness: 0.86, metalness: 0.02 });
 const TerminalAmberMaterial = new THREE.MeshStandardMaterial({ color: 0xc98a2f, emissive: 0x4e2705, emissiveIntensity: 0.34, roughness: 0.62 });
-const PriceFrameMaterial = new THREE.MeshStandardMaterial({ color: 0x292a26, roughness: 0.78, metalness: 0.28 });
-const PriceBoardMaterial = new THREE.MeshStandardMaterial({ color: 0xd9cfb9, roughness: 0.9, metalness: 0 });
 
 function MakeCanvasTexture(Width, Height, Draw) {
   const Canvas = document.createElement("canvas");
@@ -86,44 +76,6 @@ function HeaderTexture(Theme) {
     Context.fillText(Key, Width * 0.5, Height * 0.53);
   });
   HeaderTextures.set(Key, Texture);
-  return Texture;
-}
-
-function FriendlyName(Name) {
-  return String(Name || "ITEM").replaceAll("_", " ").replace(/\d+/g, "").replace(/\s+/g, " ").trim().toUpperCase();
-}
-
-function PriceTexture(ModelName) {
-  const Key = FriendlyName(ModelName);
-  if (PriceTextures.has(Key)) return PriceTextures.get(Key);
-  const Texture = MakeCanvasTexture(768, 512, (Context, Width, Height) => {
-    Context.fillStyle = "#e8dcc0";
-    Context.fillRect(0, 0, Width, Height);
-    Context.fillStyle = "#8e2d22";
-    Context.fillRect(0, 0, Width, 92);
-    Context.fillStyle = "#fff4df";
-    Context.font = "900 47px Arial";
-    Context.textAlign = "center";
-    Context.textBaseline = "middle";
-    Context.fillText("STORE DISPLAY", Width * 0.5, 47);
-    Context.fillStyle = "#20231f";
-    let Size = 58;
-    while (Size > 34) {
-      Context.font = `900 ${Size}px Arial`;
-      if (Context.measureText(Key).width <= Width - 90) break;
-      Size -= 2;
-    }
-    Context.fillText(Key, Width * 0.5, 205);
-    Context.fillStyle = "#655b49";
-    Context.font = "800 30px Arial";
-    Context.fillText("DISPLAY MODEL", Width * 0.5, 292);
-    Context.fillStyle = "#263a2a";
-    Context.fillRect(86, 354, Width - 172, 84);
-    Context.fillStyle = "#eef1e5";
-    Context.font = "900 34px Arial";
-    Context.fillText("SEE AISLE TAG", Width * 0.5, 396);
-  });
-  PriceTextures.set(Key, Texture);
   return Texture;
 }
 
