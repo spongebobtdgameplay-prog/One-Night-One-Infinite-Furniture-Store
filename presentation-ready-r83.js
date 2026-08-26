@@ -58,25 +58,17 @@ function HasVisibleLegacyPriceSign(Chunk) {
 function PartitionsFinished(Chunk) {
   let Total = 0;
   let Finished = 0;
-  let Frames = 0;
   Chunk.Group?.traverse?.(Object => {
-    if (Object?.name === "ShowroomPartition") {
-      Total += 1;
-      if (Object.userData?.MerchandisingWallR80) Finished += 1;
-    }
-    if (String(Object?.name || "").startsWith("OnlineWallDecorationR76-PartitionR80-")) Frames += 1;
+    if (Object?.name !== "ShowroomPartition") return;
+    Total += 1;
+    if (Object.userData?.MerchandisingWallR80) Finished += 1;
   });
-  return Total === Finished && Frames >= Total;
+  return Total === Finished;
 }
 
 function RearFinished(Chunk) {
   if (Chunk.Index !== 0) return true;
-  if (!Chunk.Group.getObjectByName("RearStoreClosureR80")) return false;
-  let Frames = 0;
-  Chunk.Group.traverse(Object => {
-    if (String(Object?.name || "").startsWith("OnlineWallDecorationR76-RearR80-")) Frames += 1;
-  });
-  return Frames >= 2;
+  return Boolean(Chunk.Group.getObjectByName("RearStoreClosureR80"));
 }
 
 function RemoveTerminalBeacons(Chunk) {
@@ -205,4 +197,4 @@ const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.24.0-R86";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.26.0-R88";
