@@ -490,11 +490,11 @@ function AddCardboardBoxScatter(Layout, Theme, Index, Seed) {
 
   const Count = DenseStorage ? 6 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 4 : 3);
   const RotationChoices = [-0.20, -0.08, 0.10, 0.22];
+  const Start = Math.floor(SeedRoll(Seed, "BoxScatterStart") * Candidates.length) % Candidates.length;
   let Added = 0;
 
   for (let CandidateIndex = 0; CandidateIndex < Candidates.length && Added < Count; CandidateIndex += 1) {
-    const Shift = Math.floor(SeedRoll(Seed, `BoxScatterOrder:${CandidateIndex}`) * Candidates.length);
-    const SourceIndex = (CandidateIndex + Shift) % Candidates.length;
+    const SourceIndex = (Start + CandidateIndex) % Candidates.length;
     const [X, Z] = Candidates[SourceIndex];
     if (Index === 0 && Z > 5.20) continue;
     const Rotation = RotationChoices[Math.floor(SeedRoll(Seed, `BoxScatterRotation:${CandidateIndex}`) * RotationChoices.length)];
