@@ -60,6 +60,8 @@ const STREAM_PROMOTION_DISTANCE = 10;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
+const STORE_TIME_RATE = 14;
+const DAY_SECONDS = 24 * 60 * 60;
 const WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
@@ -915,15 +917,26 @@ async function PrepareInitialWorld() {
   RequestChunk(4).catch(() => {});
 }
 
-function UpdateClock(Delta) {
-  StoreSeconds += Delta * 14;
-  if (StoreSeconds >= 24 * 60 * 60) StoreSeconds -= 24 * 60 * 60;
+function RenderClock() {
   let Hours = Math.floor(StoreSeconds / 3600);
   const Minutes = Math.floor((StoreSeconds % 3600) / 60);
   const Suffix = Hours >= 12 ? "PM" : "AM";
   Hours %= 12;
   if (Hours === 0) Hours = 12;
   GameClock.textContent = `${Hours}:${String(Minutes).padStart(2, "0")} ${Suffix}`;
+}
+
+function UpdateClock(Delta) {
+  StoreSeconds = (StoreSeconds + Delta * STORE_TIME_RATE) % DAY_SECONDS;
+  RenderClock();
+}
+
+function SetStoreSeconds(Value) {
+  const Seconds = Number(Value);
+  if (!Number.isFinite(Seconds)) return false;
+  StoreSeconds = ((Seconds % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS;
+  RenderClock();
+  return true;
 }
 
 function FindNearestPendingTask() {
@@ -972,10 +985,9 @@ function UpdateInteractionPrompt() {
   } else InteractPrompt.classList.remove("Show");
 }
 
-function CompleteTask(Task) {
-  if (!Task || Task.Completed) return;
+function ApplyTaskCompletionVisuals(Task) {
+  if (!Task || Task.Completed) return false;
   Task.Completed = true;
-  CompletedTasks += 1;
   Task.Screen.material = Task.Screen.material.clone();
   Task.Screen.material.color.setHex(0x23522c);
   Task.Screen.material.emissive.setHex(0x36d45b);
@@ -985,6 +997,31 @@ function CompleteTask(Task) {
     for (const Light of Chunk.Lights) Light.userData.BaseIntensity = Math.max(Light.userData.BaseIntensity, 2.0);
   }
   if (Task.Type === "scanner") Task.Object.rotation.y += Math.PI * 2;
+  return true;
+}
+
+function SetCompletedTaskCount(Value) {
+  const Count = Number(Value);
+  if (!Number.isFinite(Count)) return false;
+  CompletedTasks = Math.max(0, Math.floor(Count));
+  if (TaskCounter) TaskCounter.textContent = `${CompletedTasks}`;
+  return true;
+}
+
+function CompleteSharedTask(TaskId, TotalCompleted = CompletedTasks) {
+  SetCompletedTaskCount(TotalCompleted);
+  const Task = Tasks.get(String(TaskId || ""));
+  if (!Task) return false;
+  ApplyTaskCompletionVisuals(Task);
+  if (CurrentTask === Task) CurrentTask = null;
+  UpdateObjective();
+  return true;
+}
+
+function CompleteTask(Task) {
+  if (!Task || Task.Completed) return;
+  ApplyTaskCompletionVisuals(Task);
+  SetCompletedTaskCount(CompletedTasks + 1);
   CurrentTask = null;
   UpdateObjective();
 }
@@ -1128,6 +1165,9 @@ window.__STORE_GAME__ = {
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
   PrepareChunk,
+  SetStoreSeconds,
+  SetCompletedTaskCount,
+  CompleteSharedTask,
   Placement: PlacementApi,
   Version: "0.12.0"
 };

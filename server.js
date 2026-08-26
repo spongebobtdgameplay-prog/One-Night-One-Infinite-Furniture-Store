@@ -13,7 +13,7 @@ const { Pool } = pg;
 const PORT = Number(process.env.PORT) || 3000;
 const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
 const NODE_ENV = String(process.env.NODE_ENV || "development");
-const SERVER_VERSION = "0.3.0";
+const SERVER_VERSION = "0.3.1";
 const NETWORK_PROTOCOL = 1;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
@@ -25,6 +25,7 @@ const SESSION_DAYS = 30;
 const MOVEMENT_MIN_INTERVAL_MS = 35;
 const MOVEMENT_MAX_SPEED = 8.25;
 const MOVEMENT_BASE_ALLOWANCE = 0.42;
+const DISCONNECT_GRACE_MS = 45_000;
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
@@ -398,7 +399,7 @@ const IO = new SocketIOServer(HttpServer, {
   maxHttpBufferSize: 64 * 1024,
   perMessageDeflate: false,
   connectionStateRecovery: {
-    maxDisconnectionDuration: 120_000,
+    maxDisconnectionDuration: DISCONNECT_GRACE_MS,
     skipMiddlewares: false
   }
 });
@@ -481,6 +482,11 @@ function RoomStoreSeconds(Room, Now = Date.now()) {
   return (STORE_START_SECONDS + Elapsed * STORE_TIME_RATE) % (24 * 60 * 60);
 }
 
+function ConnectedPlayers(Room) {
+  if (!Room) return [];
+  return [...Room.players.values()].filter(Player => Player.connected !== false);
+}
+
 function PublicMovement(Movement) {
   return {
     x: Movement.x,
@@ -512,7 +518,7 @@ function PublicRoom(Room) {
     seed: Room.seed,
     minPlayers: MIN_PLAYERS,
     maxPlayers: Room.maxPlayers,
-    playerCount: Room.players.size,
+    playerCount: ConnectedPlayers(Room).length,
     allowLateJoin: Room.allowLateJoin,
     allowRandomJoin: Room.allowRandomJoin,
     started: Room.started,
@@ -525,7 +531,7 @@ function PublicRoom(Room) {
 function RoomPayload(Room) {
   return {
     room: PublicRoom(Room),
-    players: [...Room.players.values()].map(PublicPlayer),
+    players: ConnectedPlayers(Room).map(PublicPlayer),
     serverTime: Date.now()
   };
 }
@@ -560,7 +566,10 @@ function PlayerRecord(Socket, Room) {
     movement: DefaultMovement(),
     lastMovementPacketAt: 0,
     lastAcceptedMovementAt: 0,
-    countedGame: false
+    countedGame: false,
+    connected: true,
+    disconnectedAt: 0,
+    disconnectTimer: null
   };
 }
 
@@ -575,6 +584,17 @@ function CountGameForPlayer(Player) {
   ).catch(() => {});
 }
 
+function ClearDisconnectTimer(Player) {
+  if (!Player?.disconnectTimer) return;
+  clearTimeout(Player.disconnectTimer);
+  Player.disconnectTimer = null;
+}
+
+function FindRoomPlayerByUserId(Room, UserId) {
+  if (!Room || !UserId) return null;
+  return [...Room.players.values()].find(Player => Player.userId === UserId) || null;
+}
+
 function ReassignHost(Room) {
   if (!Room || Room.players.size === 0) return false;
   if ([...Room.players.values()].some(Player => Player.userId === Room.hostUserId)) return false;
@@ -584,25 +604,47 @@ function ReassignHost(Room) {
   return true;
 }
 
+function RemovePlayerRecord(Player, Emit = true) {
+  if (!Player?.roomCode) return;
+  ClearDisconnectTimer(Player);
+  const Room = Rooms.get(Player.roomCode);
+  const RoomCode = Player.roomCode;
+  const SocketId = Player.socketId;
+
+  SocketPlayers.delete(SocketId);
+  if (!Room) return;
+
+  Room.players.delete(SocketId);
+  if (Emit) IO.to(RoomCode).emit("player:left", { id: SocketId, userId: Player.userId });
+  if (Room.players.size === 0) {
+    Rooms.delete(RoomCode);
+  } else {
+    ReassignHost(Room);
+    EmitRoomState(Room);
+  }
+}
+
 function LeaveCurrentRoom(Socket, Emit = true) {
   const Player = SocketPlayers.get(Socket.id);
   if (!Player?.roomCode) return;
+  Socket.leave(Player.roomCode);
+  RemovePlayerRecord(Player, Emit);
+}
+
+function ScheduleDisconnectCleanup(Socket) {
+  const Player = SocketPlayers.get(Socket.id);
+  if (!Player?.roomCode) return;
   const Room = Rooms.get(Player.roomCode);
-  const RoomCode = Player.roomCode;
-
-  if (Room) {
-    Room.players.delete(Socket.id);
-    if (Emit) Socket.to(RoomCode).emit("player:left", { id: Socket.id, userId: Player.userId });
-    if (Room.players.size === 0) {
-      Rooms.delete(RoomCode);
-    } else {
-      ReassignHost(Room);
-      EmitRoomState(Room);
-    }
-  }
-
-  Socket.leave(RoomCode);
-  SocketPlayers.delete(Socket.id);
+  Player.connected = false;
+  Player.disconnectedAt = Date.now();
+  ClearDisconnectTimer(Player);
+  Player.disconnectTimer = setTimeout(() => {
+    const Current = SocketPlayers.get(Player.socketId);
+    if (Current !== Player || Player.connected) return;
+    RemovePlayerRecord(Player, true);
+  }, DISCONNECT_GRACE_MS);
+  Player.disconnectTimer.unref?.();
+  if (Room) EmitRoomState(Room);
 }
 
 function CanJoinRoom(Room, RandomJoin = false) {
@@ -613,26 +655,64 @@ function CanJoinRoom(Room, RandomJoin = false) {
   return "";
 }
 
+function JoinResponse(Room, Player, Extra = {}) {
+  return {
+    ok: true,
+    room: PublicRoom(Room),
+    player: PublicPlayer(Player),
+    players: ConnectedPlayers(Room).map(PublicPlayer),
+    serverTime: Date.now(),
+    ...Extra
+  };
+}
+
 function JoinRoom(Socket, Room, Options = {}) {
   const RandomJoin = Boolean(Options.randomJoin);
   const Existing = SocketPlayers.get(Socket.id);
 
   if (Existing?.roomCode === Room?.code) {
-    return {
-      ok: true,
-      room: PublicRoom(Room),
-      player: PublicPlayer(Existing),
-      players: [...Room.players.values()].map(PublicPlayer)
+    Existing.connected = true;
+    Existing.disconnectedAt = 0;
+    ClearDisconnectTimer(Existing);
+    return JoinResponse(Room, Existing);
+  }
+
+  if (!Room) return { ok: false, error: "ROOM_NOT_FOUND" };
+
+  const Returning = FindRoomPlayerByUserId(Room, Socket.data.account.id);
+  if (Returning && Returning.socketId !== Socket.id) {
+    const PreviousSocket = IO.sockets.sockets.get(Returning.socketId);
+    if (Returning.connected && PreviousSocket?.connected) return { ok: false, error: "ACCOUNT_ALREADY_IN_ROOM" };
+
+    const PreviousSocketId = Returning.socketId;
+    ClearDisconnectTimer(Returning);
+    Room.players.delete(PreviousSocketId);
+    SocketPlayers.delete(PreviousSocketId);
+
+    Returning.socketId = Socket.id;
+    Returning.connected = true;
+    Returning.disconnectedAt = 0;
+    Returning.lastMovementPacketAt = 0;
+    Returning.lastAcceptedMovementAt = 0;
+    Returning.movement = {
+      ...Returning.movement,
+      sequence: 0,
+      serverTime: Date.now()
     };
+
+    Room.players.set(Socket.id, Returning);
+    SocketPlayers.set(Socket.id, Returning);
+    Socket.join(Room.code);
+    if (Room.started) CountGameForPlayer(Returning);
+
+    IO.to(Room.code).emit("player:left", { id: PreviousSocketId, userId: Returning.userId });
+    Socket.to(Room.code).emit("player:joined", PublicPlayer(Returning));
+    EmitRoomState(Room);
+    return JoinResponse(Room, Returning, { reconnected: true });
   }
 
   const Error = CanJoinRoom(Room, RandomJoin);
   if (Error) return { ok: false, error: Error };
-
-  if (Room && [...Room.players.values()].some(Player => Player.userId === Socket.data.account.id)) {
-    return { ok: false, error: "ACCOUNT_ALREADY_IN_ROOM" };
-  }
-
   if (Existing) LeaveCurrentRoom(Socket);
 
   const Player = PlayerRecord(Socket, Room);
@@ -643,13 +723,7 @@ function JoinRoom(Socket, Room, Options = {}) {
 
   Socket.to(Room.code).emit("player:joined", PublicPlayer(Player));
   EmitRoomState(Room);
-
-  return {
-    ok: true,
-    room: PublicRoom(Room),
-    player: PublicPlayer(Player),
-    players: [...Room.players.values()].map(PublicPlayer)
-  };
+  return JoinResponse(Room, Player);
 }
 
 function CreateOrReuseRoom(Socket, Settings = {}) {
@@ -657,13 +731,10 @@ function CreateOrReuseRoom(Socket, Settings = {}) {
   const ExistingRoom = ExistingPlayer ? Rooms.get(ExistingPlayer.roomCode) : null;
 
   if (ExistingRoom && !ExistingRoom.started && ExistingRoom.hostUserId === Socket.data.account.id) {
-    return {
-      ok: true,
-      room: PublicRoom(ExistingRoom),
-      player: PublicPlayer(ExistingPlayer),
-      players: [...ExistingRoom.players.values()].map(PublicPlayer),
-      reused: true
-    };
+    ExistingPlayer.connected = true;
+    ExistingPlayer.disconnectedAt = 0;
+    ClearDisconnectTimer(ExistingPlayer);
+    return JoinResponse(ExistingRoom, ExistingPlayer, { reused: true });
   }
 
   if (ExistingPlayer) LeaveCurrentRoom(Socket);
@@ -677,7 +748,7 @@ function QuickJoinRoom(Socket) {
     .filter(Room => !Room.started || Room.allowLateJoin)
     .sort((Left, Right) => {
       if (Left.started !== Right.started) return Left.started ? 1 : -1;
-      return Right.players.size - Left.players.size || Left.createdAt - Right.createdAt;
+      return ConnectedPlayers(Right).length - ConnectedPlayers(Left).length || Left.createdAt - Right.createdAt;
     })[0];
 
   if (!Candidate) return { ok: false, error: "NO_AVAILABLE_ROOM" };
@@ -697,7 +768,7 @@ function UpdateRoomSettings(Socket, Value = {}) {
   Room.allowLateJoin = Clean.allowLateJoin;
   Room.allowRandomJoin = Clean.allowRandomJoin;
   EmitRoomState(Room);
-  return { ok: true, room: PublicRoom(Room) };
+  return { ok: true, room: PublicRoom(Room), serverTime: Date.now() };
 }
 
 function StartRoom(Socket) {
@@ -705,16 +776,18 @@ function StartRoom(Socket) {
   const Room = Player ? Rooms.get(Player.roomCode) : null;
   if (!Player || !Room) return { ok: false, error: "NOT_IN_ROOM" };
   if (Room.hostUserId !== Player.userId) return { ok: false, error: "HOST_ONLY" };
-  if (Room.started) return { ok: true, room: PublicRoom(Room), alreadyStarted: true };
-  if (Room.players.size < MIN_PLAYERS) return { ok: false, error: "NOT_ENOUGH_PLAYERS" };
+  if (Room.started) return { ok: true, room: PublicRoom(Room), serverTime: Date.now(), alreadyStarted: true };
+
+  const Connected = ConnectedPlayers(Room);
+  if (Connected.length < MIN_PLAYERS) return { ok: false, error: "NOT_ENOUGH_PLAYERS" };
 
   Room.started = true;
   Room.startedAt = Date.now();
-  for (const Member of Room.players.values()) CountGameForPlayer(Member);
+  for (const Member of Connected) CountGameForPlayer(Member);
   const Payload = RoomPayload(Room);
   IO.to(Room.code).emit("room:started", Payload);
   EmitRoomState(Room);
-  return { ok: true, room: PublicRoom(Room) };
+  return { ok: true, room: PublicRoom(Room), serverTime: Date.now() };
 }
 
 function CleanFinite(Value, Fallback = 0) {
@@ -776,6 +849,15 @@ IO.use(async (Socket, Next) => {
 
 IO.on("connection", Socket => {
   const Account = Socket.data.account;
+  const PreservedPlayer = SocketPlayers.get(Socket.id);
+  if (PreservedPlayer && PreservedPlayer.userId === Account.id) {
+    PreservedPlayer.connected = true;
+    PreservedPlayer.disconnectedAt = 0;
+    ClearDisconnectTimer(PreservedPlayer);
+    if (PreservedPlayer.roomCode) Socket.join(PreservedPlayer.roomCode);
+    const PreservedRoom = Rooms.get(PreservedPlayer.roomCode);
+    if (PreservedRoom) EmitRoomState(PreservedRoom);
+  }
 
   Socket.emit("server:ready", {
     id: Socket.id,
@@ -816,7 +898,7 @@ IO.on("connection", Socket => {
 
   Socket.on("movement:update", Payload => {
     const Player = SocketPlayers.get(Socket.id);
-    if (!Player?.roomCode) return;
+    if (!Player?.roomCode || Player.connected === false) return;
     const Room = Rooms.get(Player.roomCode);
     if (!Room?.started) return;
 
@@ -843,7 +925,7 @@ IO.on("connection", Socket => {
   Socket.on("task:complete", (Payload = {}, Ack = () => {}) => {
     const Player = SocketPlayers.get(Socket.id);
     const Room = Player ? Rooms.get(Player.roomCode) : null;
-    if (!Player || !Room?.started) return Ack({ ok: false, error: "NOT_IN_ACTIVE_ROOM" });
+    if (!Player || Player.connected === false || !Room?.started) return Ack({ ok: false, error: "NOT_IN_ACTIVE_ROOM" });
     const TaskId = ValidTaskId(Payload.taskId);
     if (!TaskId) return Ack({ ok: false, error: "INVALID_TASK" });
     if (Room.completedTasks.has(TaskId)) return Ack({ ok: true, alreadyCompleted: true });
@@ -896,7 +978,7 @@ IO.on("connection", Socket => {
   });
 
   Socket.on("disconnect", () => {
-    LeaveCurrentRoom(Socket);
+    ScheduleDisconnectCleanup(Socket);
   });
 });
 
@@ -907,7 +989,7 @@ App.get("/api/rooms", RequireAccount, (_Request, Response) => {
     .filter(Room => !Room.started || Room.allowLateJoin)
     .map(Room => ({
       code: Room.code,
-      players: Room.players.size,
+      players: ConnectedPlayers(Room).length,
       maxPlayers: Room.maxPlayers,
       started: Room.started
     }));
@@ -928,6 +1010,7 @@ HttpServer.listen(PORT, "0.0.0.0", () => {
 async function Shutdown(Signal) {
   console.log(`${Signal} received; shutting down.`);
   clearInterval(SessionCleanupInterval);
+  for (const Player of SocketPlayers.values()) ClearDisconnectTimer(Player);
   IO.close();
   HttpServer.close(async () => {
     try {
