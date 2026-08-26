@@ -367,6 +367,8 @@ function ConfigureLightVariation(Chunk) {
 }
 
 async function PlacePlannedRetailAsset(Chunk, Entry) {
+  const Existing = (Chunk.Group?.children || []).find(Object => Object?.userData?.LayoutSlot === Entry.Slot);
+  if (Existing) return true;
   const Object = await CloneAsset(Entry.AssetKey);
   if (!Object) return false;
   if (!NormalizeLocalAsset(
@@ -391,15 +393,19 @@ async function PlacePlannedRetailAsset(Chunk, Entry) {
 }
 
 async function AddRealShowroomPieces(Chunk) {
-  if (DecoratedChunks.has(Chunk)) return;
-  DecoratedChunks.add(Chunk);
-  for (const Entry of Chunk.Layout?.Retail || []) {
+  if (DecoratedChunks.has(Chunk)) return true;
+  const Planned = Chunk.Layout?.Retail || [];
+  for (const Entry of Planned) {
     try {
       await PlacePlannedRetailAsset(Chunk, Entry);
     } catch (Error) {
       console.warn(`Planned retail asset unavailable for ${Entry.Slot}`, Error);
     }
   }
+  const PlacedSlots = new Set((Chunk.Group?.children || []).map(Object => String(Object?.userData?.LayoutSlot || "")).filter(Boolean));
+  const Ready = Planned.every(Entry => PlacedSlots.has(Entry.Slot));
+  if (Ready) DecoratedChunks.add(Chunk);
+  return Ready;
 }
 
 async function ProcessChunk(Chunk) {
@@ -409,8 +415,8 @@ async function ProcessChunk(Chunk) {
     await ReplaceShelves(Chunk);
     await ReplaceBreakers(Chunk);
     ConfigureLightVariation(Chunk);
-    await AddRealShowroomPieces(Chunk);
-    Chunk.Group.userData.RetailShowroomR79 = true;
+    const PlannedRetailReady = await AddRealShowroomPieces(Chunk);
+    Chunk.Group.userData.RetailShowroomR79 = PlannedRetailReady !== false;
   } finally {
     RunningChunks.delete(Chunk);
   }
