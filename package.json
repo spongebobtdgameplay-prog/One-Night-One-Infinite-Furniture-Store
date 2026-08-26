@@ -1,6 +1,6 @@
 {
   "name": "the-infinity-store-server",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "description": "Realtime authoritative multiplayer and account backend for The Infinity Store",
