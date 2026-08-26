@@ -458,11 +458,28 @@ function AddTask(Layout, Index, Seed) {
 function FinalizeLayout(Layout, Seed, CenterZ) {
   const Accepted = [];
   const ReservationEntries = [];
+  const BoxEntries = (Layout.Boxes || []).map(Box => ({
+    Slot: Box.Slot,
+    Model: "WarehouseBoxStack",
+    X: Box.X,
+    Z: Box.Z,
+    Rotation: 0,
+    Width: 0.78,
+    Depth: 0.96,
+    Required: true,
+    Sellable: false,
+    AssetKey: "",
+    Name: "WarehouseBoxStack",
+    Decorations: [],
+    Kind: "Box",
+    Chance: 1
+  }));
   const All = [
     ...Layout.Base,
     ...Layout.Retail,
     ...Layout.Sale,
     ...Layout.Zones,
+    ...BoxEntries,
     ...(Layout.Task ? [Layout.Task] : [])
   ];
 
@@ -502,6 +519,7 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
   Layout.Retail = FilterGroup(Layout.Retail);
   Layout.Sale = FilterGroup(Layout.Sale);
   Layout.Zones = FilterGroup(Layout.Zones);
+  Layout.Boxes = (Layout.Boxes || []).filter(Entry => Layout.Slots[Entry.Slot]);
   if (Layout.Task && !Layout.Slots[Layout.Task.Slot]) Layout.Task = null;
 
   for (const Entry of Layout.Partitions) {
