@@ -1,5 +1,5 @@
-const Cache = "20260826-109";
-const Version = "0.25.5";
+const Cache = "20260826-113";
+const Version = "0.25.6";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
