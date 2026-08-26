@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
+import { CreateChunkLayout } from "./store-layout.js?v=20260826-149";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -562,75 +563,78 @@ async function GetModelTemplate(Name) {
   return ModelCache.get(Name);
 }
 
-function AddModelCollision(Chunk, Name, X, Z, Rotation) {
-  const Profile = CollisionProfiles[Name];
+function AddModelCollision(Chunk, Entry) {
+  const Profile = CollisionProfiles[Entry.Model];
   if (!Profile) return;
   const [Width, Depth] = Profile;
+  const Rotation = Number(Entry.Rotation) || 0;
   const C = Math.abs(Math.cos(Rotation));
   const S = Math.abs(Math.sin(Rotation));
   const RotatedWidth = Width * C + Depth * S;
   const RotatedDepth = Width * S + Depth * C;
   const HalfX = Math.max(0.16, RotatedWidth * 0.5 - 0.055);
   const HalfZ = Math.max(0.16, RotatedDepth * 0.5 - 0.055);
-  AddChunkCollision(Chunk, new THREE.Box3(
-    new THREE.Vector3(X - HalfX, 0, Z - HalfZ),
-    new THREE.Vector3(X + HalfX, 2.5, Z + HalfZ)
-  ), Name);
+  const Collision = AddChunkCollision(Chunk, new THREE.Box3(
+    new THREE.Vector3(Entry.X - HalfX, 0, Entry.Z - HalfZ),
+    new THREE.Vector3(Entry.X + HalfX, 2.5, Entry.Z + HalfZ)
+  ), Entry.Model);
+  Collision.LayoutSlot = Entry.Slot;
 }
 
-function SpawnModel(Chunk, Name, X, Z, Rotation = 0) {
-  const Placement = ShapeCastPlacement(Chunk, Name, X, Z, Rotation, true);
-  if (!Placement) {
-    console.warn(`Skipped unsafe ${Name} spawn in ${Chunk.Id}`, { X, Z, Rotation });
-    return null;
-  }
-  const Pending = GetModelTemplate(Name)
+function SpawnLayoutModel(Chunk, Entry) {
+  const Pending = GetModelTemplate(Entry.Model)
     .then(Template => ScheduleGenerationWork(() => {
       if (Chunk.Cancelled) return null;
       const Model = Template.clone(true);
-      Model.position.x += Placement.X;
-      Model.position.z += Placement.Z;
-      Model.rotation.y = Rotation;
-      Model.name = Name;
+      Model.position.x += Entry.X;
+      Model.position.z += Entry.Z;
+      Model.rotation.y = Number(Entry.Rotation) || 0;
+      Model.name = Entry.Model;
       Model.userData.ChunkId = Chunk.Id;
+      Model.userData.LayoutSlot = Entry.Slot;
+      Model.userData.LayoutAuthority = Chunk.Layout.Authority;
       Model.userData.SpawnShapeChecked = true;
       Chunk.Group.add(Model);
       Chunk.Models.push(Model);
-      AddModelCollision(Chunk, Name, Placement.X, Placement.Z, Rotation);
+      AddModelCollision(Chunk, Entry);
       LoadedDisplays += 1;
       return Model;
     }))
     .catch(Error => {
-      console.warn(`Could not load ${Name}`, Error);
+      console.warn(`Could not load planned ${Entry.Model} in ${Entry.Slot}`, Error);
       return null;
     });
   Chunk.PendingLoads.push(Pending);
   return Pending;
 }
 
-function SpawnCactusMarker(Chunk, X, Z, Rotation = 0) {
-  const Marker = new THREE.Group();
-  Marker.name = "Houseplant_3";
-  Marker.position.set(X, 0, Z);
-  Marker.rotation.y = Rotation;
-  Marker.userData.ChunkId = Chunk.Id;
-  Chunk.ExternalObjects.push(Marker);
-  Chunk.Models.push(Marker);
-}
-
-function AddRug(Chunk, X, Z, Width, Depth, Seed) {
+function AddPlannedRug(Chunk, Entry) {
   const Colors = [0x574236, 0x37494b, 0x4a3d50, 0x4c493a, 0x3e4740, 0x493d35];
-  const Material = new THREE.MeshStandardMaterial({ color: Colors[Math.floor(SeededRandom(Seed) * Colors.length)], roughness: 1 });
-  Box("ShowroomRug", new THREE.Vector3(Width, 0.018, Depth), new THREE.Vector3(X, 0.012, Z), Material, Chunk);
+  const ColorIndex = Math.floor(SeededRandom(Chunk.Seed + Entry.Variant * 17 + 31) * Colors.length);
+  const Material = new THREE.MeshStandardMaterial({ color: Colors[ColorIndex], roughness: 1 });
+  const Rug = Box(
+    `ShowroomRug-${Entry.Slot}`,
+    new THREE.Vector3(Entry.Width, 0.018, Entry.Depth),
+    new THREE.Vector3(Entry.X, 0.012, Entry.Z),
+    Material,
+    Chunk
+  );
+  Rug.userData.LayoutSlot = Entry.Slot;
+  Rug.userData.LayoutAuthority = Chunk.Layout.Authority;
+  Rug.userData.DecorationKind = "Rug";
+  Rug.userData.DecorationNoCollision = true;
+  return Rug;
 }
 
-function AddTask(Chunk, Type, X, Z) {
-  const Placement = ResolveCustomPlacement(Chunk, X, Z, 0.70, 0.52);
-  if (!Placement) return null;
+function AddTask(Chunk, Entry) {
+  if (!Entry) return null;
   const Group = new THREE.Group();
   Group.name = "StoreTask";
-  Group.position.set(Placement.X, 0, Placement.Z);
+  Group.position.set(Entry.X, 0, Entry.Z);
+  Group.rotation.y = Number(Entry.Rotation) || 0;
   Group.userData.ChunkId = Chunk.Id;
+  Group.userData.LayoutSlot = Entry.Slot;
+  Group.userData.LayoutAuthority = Chunk.Layout.Authority;
   const Base = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.92, 0.28), TaskMetalMaterial);
   Base.position.y = 0.46;
   Group.add(Base);
@@ -644,11 +648,11 @@ function AddTask(Chunk, Type, X, Z) {
   Chunk.TaskObjects.push(Group);
   const Labels = { breaker: "Reset the breaker", manifest: "Check the stock manifest", scanner: "Scan the damaged inventory" };
   const Task = {
-    Id: `${Chunk.Id}:${Type}`,
+    Id: `${Chunk.Id}:${Entry.Type}`,
     ChunkId: Chunk.Id,
     ChunkIndex: Chunk.Index,
-    Type,
-    Label: Labels[Type],
+    Type: Entry.Type,
+    Label: Labels[Entry.Type],
     Object: Group,
     Screen,
     Completed: false
@@ -658,74 +662,21 @@ function AddTask(Chunk, Type, X, Z) {
   return Task;
 }
 
-function PopulateLivingRoom(Chunk, CenterZ, Seed) {
-  AddRug(Chunk, -9.5, CenterZ + 5.5, 5.0, 4.2, Seed + 1);
-  AddRug(Chunk, 9.3, CenterZ - 5.5, 4.8, 4.0, Seed + 2);
-  SpawnModel(Chunk, "Couch_Large1", -9.8, CenterZ + 5.6, 0);
-  SpawnModel(Chunk, "Couch_L", 9.1, CenterZ - 5.6, Math.PI);
-  SpawnModel(Chunk, "Chair_2", -7.7, CenterZ + 2.8, 0.4);
-  SpawnModel(Chunk, "Chair_2", 7.6, CenterZ - 2.5, -0.45);
-  SpawnModel(Chunk, "Table_RoundLarge", -9.5, CenterZ + 3.3, 0);
-  SpawnModel(Chunk, "Table_RoundLarge", 9.1, CenterZ - 3.3, 0);
-  SpawnModel(Chunk, "Light_Floor1", -7.2, CenterZ + 5.8, 0);
-  SpawnModel(Chunk, "Light_Floor1", 7.0, CenterZ - 5.0, 0);
-  if (Math.abs(Chunk.Index) < 2) SpawnCactusMarker(Chunk, -12.0, CenterZ + 1.0, 0);
-}
-
-function PopulateBedroom(Chunk, CenterZ, Seed) {
-  AddRug(Chunk, -9.4, CenterZ + 5.0, 5.2, 4.2, Seed + 3);
-  AddRug(Chunk, 9.4, CenterZ - 5.0, 5.0, 4.2, Seed + 4);
-  SpawnModel(Chunk, "Bed_King", -9.4, CenterZ + 4.8, 0);
-  SpawnModel(Chunk, "Bed_King", 9.4, CenterZ - 4.8, Math.PI);
-  SpawnModel(Chunk, "NightStand_2", -7.6, CenterZ + 4.8, 0);
-  SpawnModel(Chunk, "NightStand_2", -11.2, CenterZ + 4.8, 0);
-  SpawnModel(Chunk, "NightStand_2", 7.6, CenterZ - 4.8, 0);
-  SpawnModel(Chunk, "NightStand_2", 11.2, CenterZ - 4.8, 0);
-  SpawnModel(Chunk, "Bed_Single", -9.3, CenterZ - 5.0, 0);
-  SpawnModel(Chunk, "Light_Floor1", 7.0, CenterZ + 1.0, 0);
-}
-
-function PopulateKitchen(Chunk, CenterZ) {
-  for (let Offset = -2; Offset <= 2; Offset += 1) {
-    SpawnModel(Chunk, "Kitchen_Cabinet1", -10.6 + Offset * 1.1, CenterZ + 5.4, 0);
-    SpawnModel(Chunk, "Kitchen_Cabinet1", 10.6 - Offset * 1.1, CenterZ - 5.4, Math.PI);
-  }
-  SpawnModel(Chunk, "Kitchen_Fridge", -7.1, CenterZ + 5.3, 0);
-  SpawnModel(Chunk, "Kitchen_Fridge", 7.1, CenterZ - 5.3, Math.PI);
-  SpawnModel(Chunk, "Kitchen_Oven", -10.4, CenterZ + 2.4, Math.PI);
-  SpawnModel(Chunk, "Kitchen_Sink", -8.7, CenterZ + 2.4, Math.PI);
-  SpawnModel(Chunk, "Kitchen_Oven", 10.4, CenterZ - 2.4, 0);
-  SpawnModel(Chunk, "Kitchen_Sink", 8.7, CenterZ - 2.4, 0);
-}
-
-function PopulateBathroom(Chunk, CenterZ) {
-  SpawnModel(Chunk, "Bathroom_Bathtub", -10.0, CenterZ + 5.0, Math.PI / 2);
-  SpawnModel(Chunk, "Bathroom_Bathtub", 10.0, CenterZ - 5.0, -Math.PI / 2);
-  SpawnModel(Chunk, "Bathroom_Toilet", -7.8, CenterZ + 5.0, 0);
-  SpawnModel(Chunk, "Bathroom_Toilet", -11.7, CenterZ + 1.8, 0);
-  SpawnModel(Chunk, "Bathroom_Toilet", 7.8, CenterZ - 5.0, Math.PI);
-  SpawnModel(Chunk, "Bathroom_Toilet", 11.7, CenterZ - 1.8, Math.PI);
-}
-
-function PopulateWarehouse(Chunk, CenterZ, Seed) {
-  for (const X of [-11.5, -8.0, 8.0, 11.5]) SpawnModel(Chunk, "Shelf_Large", X, CenterZ + RandomRange(Seed + X * 4, -7, 7), X < 0 ? 0 : Math.PI);
-  for (const X of [-10.5, 10.5]) SpawnModel(Chunk, "Bookshelf", X, CenterZ + RandomRange(Seed + X * 3, -7, 7), X < 0 ? 0 : Math.PI);
+function AddWarehouseBoxes(Chunk) {
+  const Stacks = Chunk.Layout?.Boxes || [];
+  if (!Stacks.length) return;
+  const Levels = Stacks.reduce((Total, Stack) => Total + Math.max(1, Math.floor(Stack.Levels || 1)), 0);
   const BoxGeometry = new THREE.BoxGeometry(0.72, 0.56, 0.9);
-  const StackCount = 10;
-  const LevelsPerStack = 2;
-  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, StackCount * LevelsPerStack);
+  const Boxes = new THREE.InstancedMesh(BoxGeometry, CardboardMaterial, Levels);
   Boxes.name = "WarehouseBoxes";
   Boxes.userData.ChunkId = Chunk.Id;
+  Boxes.userData.LayoutAuthority = Chunk.Layout.Authority;
   const Matrix = new THREE.Matrix4();
   let BoxIndex = 0;
-  for (let Stack = 0; Stack < StackCount; Stack += 1) {
-    const Side = Stack % 2 === 0 ? -1 : 1;
-    const Row = Math.floor(Stack / 2);
-    const LaneOffset = Row % 2 === 0 ? 0 : 0.9;
-    const X = Side * (8.1 + LaneOffset);
-    const Z = CenterZ - 5.8 + Row * 2.7;
-    for (let Level = 0; Level < LevelsPerStack; Level += 1) {
-      Matrix.makeTranslation(X, 0.28 + Level * 0.56, Z);
+  for (const Stack of Stacks) {
+    const StackLevels = Math.max(1, Math.floor(Stack.Levels || 1));
+    for (let Level = 0; Level < StackLevels; Level += 1) {
+      Matrix.makeTranslation(Stack.X, 0.28 + Level * 0.56, Stack.Z);
       Boxes.setMatrixAt(BoxIndex, Matrix);
       BoxIndex += 1;
     }
@@ -734,15 +685,25 @@ function PopulateWarehouse(Chunk, CenterZ, Seed) {
   Chunk.Group.add(Boxes);
 }
 
-function PopulateShowroom(Chunk, CenterZ, Seed) {
-  AddRug(Chunk, -9.5, CenterZ + 5.5, 4.4, 3.6, Seed + 8);
-  AddRug(Chunk, 9.5, CenterZ - 5.5, 4.4, 3.6, Seed + 9);
-  SpawnModel(Chunk, "Couch_Large1", -9.5, CenterZ + 5.5, 0);
-  SpawnModel(Chunk, "Bed_Single", 9.5, CenterZ - 5.5, Math.PI);
-  SpawnModel(Chunk, "Bookshelf", -11.5, CenterZ - 3.0, 0);
-  SpawnModel(Chunk, "Kitchen_Fridge", 11.5, CenterZ + 2.0, Math.PI);
-  SpawnModel(Chunk, "Chair_2", -7.8, CenterZ + 1.0, 0.4);
-  SpawnModel(Chunk, "Table_RoundLarge", 8.6, CenterZ - 1.0, 0);
+function ApplyLayoutReservations(Chunk) {
+  Chunk.ReservedBounds.length = 0;
+  for (const Reservation of Chunk.Layout?.Reservations || []) {
+    const Bounds = Reservation.Bounds;
+    if (!Bounds) continue;
+    const Box = new THREE.Box3(
+      new THREE.Vector3(Bounds.MinX, 0, Bounds.MinZ),
+      new THREE.Vector3(Bounds.MaxX, 2.6, Bounds.MaxZ)
+    );
+    Box.userData = { LayoutSlot: Reservation.Slot, LayoutKind: Reservation.Kind };
+    Chunk.ReservedBounds.push(Box);
+  }
+}
+
+function PopulateFromLayout(Chunk) {
+  for (const Rug of Chunk.Layout?.Rugs || []) AddPlannedRug(Chunk, Rug);
+  for (const Entry of Chunk.Layout?.Base || []) SpawnLayoutModel(Chunk, Entry);
+  AddWarehouseBoxes(Chunk);
+  if (Chunk.Layout?.Task) AddTask(Chunk, Chunk.Layout.Task);
 }
 
 function CreatePreparedChunk(Index) {
@@ -752,11 +713,14 @@ function CreatePreparedChunk(Index) {
   const BottomZ = ChunkBottomZ(Index);
   const Seed = ChunkSeed(Index);
   const Theme = Themes[Math.floor(SeededRandom(Seed + 11.17) * Themes.length)];
+  const Layout = CreateChunkLayout({ Index, Seed, Theme, CenterZ, TopZ, BottomZ });
   const Group = new THREE.Group();
   Group.name = Id;
   Group.userData.ChunkId = Id;
+  Group.userData.LayoutTemplate = Layout.Template;
+  Group.userData.LayoutAuthority = Layout.Authority;
   const Chunk = {
-    Id, Index, Theme, Seed, CenterZ, TopZ, BottomZ, Group,
+    Id, Index, Theme, Seed, CenterZ, TopZ, BottomZ, Layout, Group,
     Models: [], Lights: [], Tasks: [], TaskObjects: [], TaskRecords: [], ExternalObjects: [],
     CollisionEntries: [], StructureBounds: [], ReservedBounds: [], PendingLoads: [],
     Ready: false, Active: false, Cancelled: false
@@ -769,8 +733,17 @@ function CreatePreparedChunk(Index) {
   Box("BaseboardLeft", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(-16.87, 0.09, CenterZ), TrimMaterial, Chunk);
   Box("BaseboardRight", new THREE.Vector3(0.25, 0.18, CHUNK_LENGTH + 0.25), new THREE.Vector3(16.87, 0.09, CenterZ), TrimMaterial, Chunk);
 
-  AddPartition(Chunk, -6.35, CenterZ + 5.2, 4.0);
-  AddPartition(Chunk, 6.35, CenterZ - 5.2, 4.0);
+  ApplyLayoutReservations(Chunk);
+  for (const Entry of Layout.Partitions || []) {
+    const Wall = Box("ShowroomPartition", new THREE.Vector3(0.15, 2.25, Entry.Length), new THREE.Vector3(Entry.X, 1.125, Entry.Z), WallMaterial, Chunk, true);
+    const Cap = Box("PartitionCap", new THREE.Vector3(0.23, 0.07, Entry.Length + 0.08), new THREE.Vector3(Entry.X, 2.285, Entry.Z), TrimMaterial, Chunk);
+    const Base = Box("PartitionBase", new THREE.Vector3(0.22, 0.11, Entry.Length + 0.06), new THREE.Vector3(Entry.X, 0.055, Entry.Z), TrimMaterial, Chunk);
+    for (const Object of [Wall, Cap, Base]) {
+      Object.userData.LayoutSlot = Entry.Slot;
+      Object.userData.LayoutAuthority = Layout.Authority;
+    }
+  }
+
   AddSectionSign(Chunk, Theme, TopZ - 3.1);
 
   for (const Offset of [-9.0, 0, 9.0]) AddLightFixture(Chunk, 0, CenterZ + Offset, SeededRandom(Seed + Offset * 3) > 0.88);
@@ -779,19 +752,10 @@ function CreatePreparedChunk(Index) {
     AddLightFixture(Chunk, 9.0, CenterZ - Offset, SeededRandom(Seed + Offset * 5) > 0.84);
   }
 
-  if (Theme === "LIVING ROOM") PopulateLivingRoom(Chunk, CenterZ, Seed);
-  else if (Theme === "BEDROOMS") PopulateBedroom(Chunk, CenterZ, Seed);
-  else if (Theme === "KITCHENS") PopulateKitchen(Chunk, CenterZ);
-  else if (Theme === "BATHROOMS") PopulateBathroom(Chunk, CenterZ);
-  else if (Theme === "WAREHOUSE" || Theme === "STORAGE") PopulateWarehouse(Chunk, CenterZ, Seed);
-  else PopulateShowroom(Chunk, CenterZ, Seed);
+  PopulateFromLayout(Chunk);
 
-  if (Index > 0) {
-    const TypeRoll = Math.floor(SeededRandom(Seed + 97.25) * 3);
-    const Type = TypeRoll === 0 ? "breaker" : TypeRoll === 1 ? "manifest" : "scanner";
-    const TaskX = SeededRandom(Seed + 98.75) < 0.5 ? -14.1 : 14.1;
-    const TaskZ = CenterZ + RandomRange(Seed + 99, -5.0, 5.0);
-    AddTask(Chunk, Type, TaskX, TaskZ);
+  if (Layout.ValidationErrors.length) {
+    console.warn(`Layout ${Layout.Template} for ${Id} skipped invalid slots`, Layout.ValidationErrors);
   }
   return Chunk;
 }
@@ -1238,8 +1202,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.12.1";
-window.__STORE_VERSION__ = "0.12.1";
+window.__STORE_GAME_BUILD__ = "V0.13.0";
+window.__STORE_VERSION__ = "0.13.0";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1259,6 +1223,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.12.1"
+  Version: "0.13.0"
 };
 Animate();

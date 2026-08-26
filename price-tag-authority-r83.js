@@ -31,20 +31,26 @@ function BoundsOf(Object) {
 
 function SellableItems(Chunk) {
   const Items = [];
-  for (const Model of Chunk.Models || []) if (Model?.parent && FurnitureNames.has(Model.name)) Items.push(Model);
+  const Add = Item => {
+    if (!Item?.parent) return;
+    const SlotName = String(Item.userData?.LayoutSlot || "");
+    const Slot = Chunk.Layout?.Slots?.[SlotName];
+    const Anchor = Chunk.Layout?.PriceAnchors?.[SlotName];
+    if (!Slot?.Sellable || !Anchor) return;
+    Items.push(Item);
+  };
+
+  for (const Model of Chunk.Models || []) {
+    if (FurnitureNames.has(Model?.name)) Add(Model);
+  }
   for (const Object of Chunk.Group?.children || []) {
     if (Object?.parent !== Chunk.Group) continue;
     const ExistingRetail = Boolean(Object.userData?.RetailImportedR79 && RetailLabels.has(Object.name));
     const NewRetail = Boolean(Object.userData?.RetailSellableR84);
-    if (!ExistingRetail && !NewRetail) continue;
-    Items.push(Object);
+    if (ExistingRetail || NewRetail) Add(Object);
   }
-  Items.sort((A, B) => {
-    const AC = BoundsOf(A).getCenter(new THREE.Vector3());
-    const BC = BoundsOf(B).getCenter(new THREE.Vector3());
-    if (Math.abs(AC.z - BC.z) > 0.001) return AC.z - BC.z;
-    return AC.x - BC.x;
-  });
+
+  Items.sort((A, B) => String(A.userData?.LayoutSlot || "").localeCompare(String(B.userData?.LayoutSlot || "")));
   return Items;
 }
 
@@ -88,49 +94,6 @@ function RemoveOldPriceObjects(Chunk) {
   for (const Object of Remove) Object.parent?.remove(Object);
 }
 
-function ClearEnough(Chunk, X, Z, Occupied, Minimum = 0.48) {
-  if (Math.abs(X) > 15.95 || Z < Chunk.BottomZ + 0.34 || Z > Chunk.TopZ - 0.34) return false;
-  for (const Structure of Chunk.StructureBounds || []) {
-    if (X > Structure.min.x - 0.12 && X < Structure.max.x + 0.12 && Z > Structure.min.z - 0.12 && Z < Structure.max.z + 0.12) return false;
-  }
-  for (const Position of Occupied) {
-    const DX = Position.x - X;
-    const DZ = Position.z - Z;
-    if (DX * DX + DZ * DZ < Minimum * Minimum) return false;
-  }
-  return true;
-}
-
-function Candidates(Chunk, Item, Index) {
-  const Bounds = BoundsOf(Item);
-  if (Bounds.isEmpty()) return [];
-  const Center = Bounds.getCenter(new THREE.Vector3());
-  const Size = Bounds.getSize(new THREE.Vector3());
-  const TowardAisleX = Center.x < 0 ? Bounds.max.x + 0.24 : Bounds.min.x - 0.24;
-  const AwayX = Center.x < 0 ? Bounds.min.x - 0.24 : Bounds.max.x + 0.24;
-  const Quarter = Math.max(0.12, Math.min(0.46, Size.z * 0.23));
-  const Order = Index % 2 === 0 ? [-Quarter, Quarter] : [Quarter, -Quarter];
-  const Raw = [
-    [TowardAisleX, Center.z + Order[0]],
-    [TowardAisleX, Center.z + Order[1]],
-    [TowardAisleX, Center.z],
-    [Center.x - Math.min(0.35, Size.x * 0.22), Bounds.min.z - 0.18],
-    [Center.x + Math.min(0.35, Size.x * 0.22), Bounds.max.z + 0.18],
-    [AwayX, Center.z]
-  ];
-  return Raw.map(([X, Z]) => ({
-    X: THREE.MathUtils.clamp(X, -15.95, 15.95),
-    Z: THREE.MathUtils.clamp(Z, Chunk.BottomZ + 0.34, Chunk.TopZ - 0.34)
-  }));
-}
-
-function FindPlacement(Chunk, Item, Index, Occupied) {
-  const Options = Candidates(Chunk, Item, Index);
-  for (const Position of Options) if (ClearEnough(Chunk, Position.X, Position.Z, Occupied)) return Position;
-  for (const Position of Options) if (ClearEnough(Chunk, Position.X, Position.Z, Occupied, 0.34)) return Position;
-  return Options[0] || null;
-}
-
 async function Yield() {
   await new Promise(Resolve => {
     if ("requestIdleCallback" in window) requestIdleCallback(() => Resolve(), { timeout: 600 });
@@ -152,27 +115,28 @@ export async function RebuildChunk(Chunk) {
     }
 
     RemoveOldPriceObjects(Chunk);
-    const Occupied = [];
     for (let Index = 0; Index < Items.length; Index += 1) {
       const Item = Items[Index];
       if (!Item?.parent) continue;
-      const Position = FindPlacement(Chunk, Item, Index, Occupied);
-      if (!Position) continue;
+      const SlotName = String(Item.userData?.LayoutSlot || "");
+      const Anchor = Chunk.Layout?.PriceAnchors?.[SlotName];
+      if (!Anchor) continue;
       const Price = ItemPrice(Item, Chunk, Index);
       const Sign = await CreateCompactPricePlacard3D(ItemLabel(Item), Price, {
         Name: `CompactPriceTagR83-${Index}`,
-        AccentColor: AccentColors[Index % AccentColors.length]
+        AccentColor: AccentColors[0]
       });
       Sign.scale.setScalar(0.76);
-      Sign.position.set(Position.X, 0, Position.Z);
-      FaceCompactPricePlacardTowardAisle(Sign, Position.X, Position.Z);
+      Sign.position.set(Anchor.X, 0, Anchor.Z);
+      FaceCompactPricePlacardTowardAisle(Sign, Anchor.X, Anchor.Z);
       Sign.userData.ChunkId = Chunk.Id;
+      Sign.userData.LayoutSlot = `${SlotName}.Price`;
+      Sign.userData.LayoutAuthority = Chunk.Layout?.Authority;
       Sign.userData.SourceModel = Item;
       Sign.userData.CompactPriceAuthorityR83 = true;
       Sign.userData.DecorationNoCollision = false;
       Sign.userData.Price = Price;
       Chunk.Group.add(Sign);
-      Occupied.push(new THREE.Vector3(Position.X, 0, Position.Z));
       if (Index % 4 === 3) await Yield();
     }
     Signatures.set(Chunk, Signature);
@@ -200,4 +164,4 @@ const Interval = setInterval(Discover, 1000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.26.0-R88";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.0";

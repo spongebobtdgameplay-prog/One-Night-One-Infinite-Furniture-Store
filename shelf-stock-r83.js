@@ -19,13 +19,17 @@ const Processing = new WeakSet();
 
 function StockTargets(Chunk) {
   const Targets = [];
-  for (const Model of Chunk.Models || []) {
-    if (Model?.parent && StockableNames.has(Model.name)) Targets.push(Model);
-  }
-  for (const Object of Chunk.Group?.children || []) {
-    if (Object?.parent === Chunk.Group && StockableNames.has(Object.name) && !Targets.includes(Object)) Targets.push(Object);
-  }
-  return Targets.slice(0, 5);
+  const Add = Object => {
+    if (!Object?.parent || !StockableNames.has(Object.name) || Targets.includes(Object)) return;
+    const SlotName = String(Object.userData?.LayoutSlot || "");
+    const Slot = Chunk.Layout?.Slots?.[SlotName];
+    if (!Slot?.StockStyle) return;
+    Targets.push(Object);
+  };
+  for (const Model of Chunk.Models || []) Add(Model);
+  for (const Object of Chunk.Group?.children || []) Add(Object);
+  Targets.sort((A, B) => String(A.userData?.LayoutSlot || "").localeCompare(String(B.userData?.LayoutSlot || "")));
+  return Targets.slice(0, 6);
 }
 
 function ExistingStock(Chunk) {
@@ -40,12 +44,14 @@ function RemoveExistingStock(Chunk) {
   for (const Object of ExistingStock(Chunk)) Object.parent?.remove(Object);
 }
 
-function PlansFor(Index) {
-  const Flip = Index % 2 === 0 ? 1 : -1;
+function PlansFor(Chunk, Target) {
+  const SlotName = String(Target.userData?.LayoutSlot || "");
+  const Slot = Chunk.Layout?.Slots?.[SlotName];
+  if (Slot?.StockStyle !== "Books") return [];
   return [
-    { Key: OnlineDecorationKeys.BookSet, TargetHeight: 0.18, HeightRatio: 0.29, OffsetX: -0.22 * Flip, OffsetZ: 0, RotationY: 0.08 * Flip },
-    { Key: OnlineDecorationKeys.BookSingle, TargetHeight: 0.14, HeightRatio: 0.56, OffsetX: 0.20 * Flip, OffsetZ: 0.01, RotationY: -0.24 * Flip },
-    { Key: Index % 3 === 0 ? OnlineDecorationKeys.StandingFrame : OnlineDecorationKeys.BookSet, TargetHeight: Index % 3 === 0 ? 0.20 : 0.16, HeightRatio: 0.80, OffsetX: -0.05 * Flip, OffsetZ: 0, RotationY: 0.12 * Flip }
+    { Key: OnlineDecorationKeys.BookSet, TargetHeight: 0.18, HeightRatio: 0.29, OffsetX: -0.22, OffsetZ: 0, RotationY: 0.08 },
+    { Key: OnlineDecorationKeys.BookSingle, TargetHeight: 0.14, HeightRatio: 0.56, OffsetX: 0.20, OffsetZ: 0.01, RotationY: -0.24 },
+    { Key: OnlineDecorationKeys.BookSet, TargetHeight: 0.16, HeightRatio: 0.80, OffsetX: -0.05, OffsetZ: 0, RotationY: 0.12 }
   ];
 }
 
@@ -71,7 +77,7 @@ export async function ProcessChunk(Chunk) {
     let DecorationIndex = 0;
     for (let TargetIndex = 0; TargetIndex < Targets.length; TargetIndex += 1) {
       const Target = Targets[TargetIndex];
-      for (const Plan of PlansFor(TargetIndex)) {
+      for (const Plan of PlansFor(Chunk, Target)) {
         try {
           const Decoration = await CreateOnlineSurfaceDecoration(Plan.Key, Target, Plan);
           if (!Decoration) continue;
@@ -111,4 +117,4 @@ const Interval = setInterval(Discover, 1200);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.22.1-R83";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.27.0";

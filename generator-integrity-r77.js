@@ -3,189 +3,71 @@ import * as THREE from "three";
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) throw new Error("Game must load before generator integrity.");
 
-const FurnitureNames = new Set([
-  "Couch_Large1",
-  "Couch_L",
-  "Chair_2",
-  "Table_RoundLarge",
-  "Bed_King",
-  "Bed_Single",
-  "NightStand_2",
-  "Shelf_Large",
-  "Bookshelf",
-  "Kitchen_Cabinet1",
-  "Kitchen_Fridge",
-  "Kitchen_Oven",
-  "Kitchen_Sink",
-  "Bathroom_Bathtub",
-  "Bathroom_Toilet",
-  "Light_Floor1",
-  "Door_3",
-  "Window_Large1"
-]);
-
 const State = new WeakMap();
-const ClaimedEntries = new Set();
 const TempCenter = new THREE.Vector3();
-const TempSize = new THREE.Vector3();
-const TempDelta = new THREE.Vector3();
-const TempMatrix = new THREE.Matrix4();
+
+const ManagedNames = new Set([
+  "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
+  "NightStand_2", "Shelf_Large", "Bookshelf", "Kitchen_Cabinet1", "Kitchen_Fridge",
+  "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1",
+  "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
+  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79"
+]);
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
   return new THREE.Box3().setFromObject(Object);
 }
 
-function HorizontalOverlap(A, B, Padding = 0.035) {
-  return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding && A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
-}
-
-function InstanceBounds(Object) {
-  const Results = [];
-  if (!Object?.isInstancedMesh || !Object.geometry) return Results;
-  Object.geometry.computeBoundingBox?.();
-  const Local = Object.geometry.boundingBox;
-  if (!Local) return Results;
-  Object.updateWorldMatrix(true, false);
-  for (let Index = 0; Index < Object.count; Index += 1) {
-    Object.getMatrixAt(Index, TempMatrix);
-    TempMatrix.premultiply(Object.matrixWorld);
-    const Bounds = Local.clone().applyMatrix4(TempMatrix);
-    if (!Bounds.isEmpty()) Results.push(Bounds);
-  }
-  return Results;
-}
-
-function StaticObstacleBounds(Chunk) {
-  const Results = [];
-  for (const Task of Chunk.TaskRecords || []) {
-    if (!Task?.Object?.parent) continue;
-    const Bounds = BoundsOf(Task.Object);
-    if (!Bounds.isEmpty()) Results.push(Bounds);
-  }
-  Chunk.Group?.traverse?.(Object => {
-    if (Object?.name !== "WarehouseBoxes" || !Object.isInstancedMesh) return;
-    Results.push(...InstanceBounds(Object));
-  });
-  return Results;
-}
-
-function GeneratedProps(Chunk) {
-  const Props = [];
-  Chunk.Group?.traverse?.(Object => {
-    const Name = String(Object?.name || "");
-    if (Name.startsWith("FurnitureItemSignR74-") || Name.startsWith("OnlineChunkDecorationR76-")) Props.push(Object);
-  });
-  Props.sort((A, B) => String(A.name).localeCompare(String(B.name)));
-  return Props;
-}
-
-function InsideChunk(Chunk, Bounds) {
-  if (Bounds.min.x < -16.52 || Bounds.max.x > 16.52) return false;
-  if (Bounds.min.z < Chunk.BottomZ + 0.40 || Bounds.max.z > Chunk.TopZ - 0.40) return false;
-  for (const Structure of Chunk.StructureBounds || []) {
-    if (HorizontalOverlap(Bounds, Structure, 0.045)) return false;
-  }
-  return true;
-}
-
-function ClearOfAccepted(Bounds, Accepted) {
-  for (const Other of Accepted) {
-    if (HorizontalOverlap(Bounds, Other, 0.045)) return false;
-  }
-  return true;
-}
-
-function CandidateOffsets() {
-  const Offsets = [[0, 0]];
-  for (let Radius = 0.35; Radius <= 7.70; Radius += 0.35) {
-    for (let Step = 0; Step < 16; Step += 1) {
-      const Angle = Step / 16 * Math.PI * 2;
-      Offsets.push([Math.cos(Angle) * Radius, Math.sin(Angle) * Radius]);
-    }
-  }
-  return Offsets;
-}
-
-const Offsets = CandidateOffsets();
-
-function FindSafePosition(Chunk, Bounds, Accepted) {
-  Bounds.getCenter(TempCenter);
-  const OriginalSide = Math.abs(TempCenter.x) > 4.3 ? Math.sign(TempCenter.x) : 0;
-
-  for (const [DX, DZ] of Offsets) {
-    const Candidate = Bounds.clone().translate(TempDelta.set(DX, 0, DZ));
-    Candidate.getCenter(TempCenter);
-    if (OriginalSide && (Math.sign(TempCenter.x) !== OriginalSide || Math.abs(TempCenter.x) < 4.05)) continue;
-    if (!InsideChunk(Chunk, Candidate)) continue;
-    if (!ClearOfAccepted(Candidate, Accepted)) continue;
-    return { DX, DZ, Bounds: Candidate };
-  }
-
-  return null;
-}
-
-function EntryBounds(Entry) {
-  return Entry?.OriginalLegacyBox || Entry?.OriginalBox || Entry?.Box || null;
-}
-
-function NearestEntry(Chunk, Model, Bounds) {
-  Bounds.getCenter(TempCenter);
-  let Best = null;
-  let BestDistance = Infinity;
-
-  for (const Entry of Chunk.CollisionEntries || []) {
-    if (!Entry || Entry.Type !== Model.name || ClaimedEntries.has(Entry)) continue;
-    const Box = EntryBounds(Entry);
-    if (!Box?.min || !Box?.max) continue;
-    const X = (Box.min.x + Box.max.x) * 0.5;
-    const Z = (Box.min.z + Box.max.z) * 0.5;
-    const DX = X - TempCenter.x;
-    const DZ = Z - TempCenter.z;
-    const Distance = DX * DX + DZ * DZ;
-    if (Distance >= BestDistance) continue;
-    BestDistance = Distance;
-    Best = Entry;
-  }
-
-  if (Best) ClaimedEntries.add(Best);
-  return Best;
-}
-
-function TranslateEntry(Entry, DX, DZ) {
-  if (!Entry || (!DX && !DZ)) return;
-  const Delta = new THREE.Vector3(DX, 0, DZ);
+function ManagedRoots(Chunk) {
+  const Roots = [];
   const Seen = new Set();
-  for (const Key of ["Box", "OriginalBox", "OriginalLegacyBox", "OriginalStructureBox"]) {
-    const Box = Entry[Key];
-    if (!Box?.translate || Seen.has(Box)) continue;
-    Seen.add(Box);
-    Box.translate(Delta);
+  for (const Model of Chunk.Models || []) {
+    if (!Model?.parent || Seen.has(Model)) continue;
+    if (!ManagedNames.has(Model.name) && !Model.userData?.LayoutSlot) continue;
+    Seen.add(Model);
+    Roots.push(Model);
   }
-
-  if (Array.isArray(Entry.PreciseTriangles)) {
-    for (const Triangle of Entry.PreciseTriangles) {
-      for (const Point of Triangle || []) {
-        if (!Point) continue;
-        Point.x += DX;
-        Point.y += DZ;
-      }
-    }
+  for (const Object of Chunk.Group?.children || []) {
+    if (!Object?.parent || Seen.has(Object)) continue;
+    if (!ManagedNames.has(Object.name) && !Object.userData?.RetailSellableR84 && !Object.userData?.LayoutSlot) continue;
+    if (/Rug|Partition|Header|Price|Task/i.test(String(Object.name || ""))) continue;
+    Seen.add(Object);
+    Roots.push(Object);
   }
+  return Roots;
+}
 
-  if (Entry.GeometryBounds?.min && Entry.GeometryBounds?.max) {
-    Entry.GeometryBounds.min.x += DX;
-    Entry.GeometryBounds.max.x += DX;
-    Entry.GeometryBounds.min.y += DZ;
-    Entry.GeometryBounds.max.y += DZ;
+function RemoveCollisionForObject(Chunk, Object) {
+  for (let Index = Chunk.CollisionEntries.length - 1; Index >= 0; Index -= 1) {
+    const Entry = Chunk.CollisionEntries[Index];
+    if (Entry?.CollisionObject !== Object && Entry?.SourceModel !== Object && Entry?.LayoutSlot !== Object.userData?.LayoutSlot) continue;
+    Entry.Active = false;
+    const GlobalIndex = Game.CollisionBoxes.indexOf(Entry);
+    if (GlobalIndex >= 0) Game.CollisionBoxes.splice(GlobalIndex, 1);
+    Chunk.CollisionEntries.splice(Index, 1);
   }
 }
 
-function TightenEntryToModel(Entry, Model) {
+function RemoveUnplannedObject(Chunk, Object, Reason) {
+  console.warn(`Removed unplanned generated object ${Object.name} from ${Chunk.Id}: ${Reason}`);
+  RemoveCollisionForObject(Chunk, Object);
+  Object.parent?.remove(Object);
+  const ModelIndex = Chunk.Models.indexOf(Object);
+  if (ModelIndex >= 0) Chunk.Models.splice(ModelIndex, 1);
+}
+
+function TightenLegacyCollision(Chunk, Object) {
+  const Slot = String(Object.userData?.LayoutSlot || "");
+  if (!Slot) return;
+  const Entry = (Chunk.CollisionEntries || []).find(Value =>
+    Value?.LayoutSlot === Slot ||
+    (Value?.Type === Object.name && !Value?.PreciseGeometry)
+  );
   if (!Entry || Entry.PreciseGeometry || typeof Entry.TestPlayerCollision === "function") return;
-  const Bounds = BoundsOf(Model);
+  const Bounds = BoundsOf(Object);
   if (Bounds.isEmpty()) return;
-  const Center = Bounds.getCenter(new THREE.Vector3());
+  const Center = Bounds.getCenter(TempCenter);
   const Size = Bounds.getSize(new THREE.Vector3());
   const HalfX = Math.max(0.10, Size.x * 0.485);
   const HalfZ = Math.max(0.10, Size.z * 0.485);
@@ -196,157 +78,107 @@ function TightenEntryToModel(Entry, Model) {
   Entry.Box = Box;
   Entry.OriginalBox = Box.clone();
   Entry.OriginalLegacyBox = Box.clone();
+  Entry.LayoutSlot = Slot;
   Entry.GeneratorExactR77 = true;
 }
 
-function RemoveEntry(Chunk, Entry) {
-  if (!Entry) return;
-  Entry.Active = false;
-  for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
-    if (Game.CollisionBoxes[Index] === Entry) Game.CollisionBoxes.splice(Index, 1);
+function ViolatesCentralAisle(Chunk, Object) {
+  const Aisle = Chunk.Layout?.CenterAisle;
+  if (!Aisle) return false;
+  const Bounds = BoundsOf(Object);
+  if (Bounds.isEmpty()) return false;
+  return Bounds.max.x > Aisle.MinX && Bounds.min.x < Aisle.MaxX &&
+    Bounds.max.z > Aisle.MinZ && Bounds.min.z < Aisle.MaxZ;
+}
+
+function OverlapXZ(A, B, Padding = 0.04) {
+  return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding &&
+    A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
+}
+
+function ViolatesStructure(Chunk, Bounds) {
+  for (const Structure of Chunk.StructureBounds || []) {
+    if (OverlapXZ(Bounds, Structure, 0.035)) return true;
   }
-  const LocalIndex = Chunk.CollisionEntries.indexOf(Entry);
-  if (LocalIndex >= 0) Chunk.CollisionEntries.splice(LocalIndex, 1);
-}
-
-function RemoveModel(Chunk, Model, Entry) {
-  RemoveEntry(Chunk, Entry);
-  Model.parent?.remove(Model);
-  const Index = Chunk.Models.indexOf(Model);
-  if (Index >= 0) Chunk.Models.splice(Index, 1);
-}
-
-function ModelVolume(Model) {
-  const Bounds = BoundsOf(Model);
-  if (Bounds.isEmpty()) return 0;
-  Bounds.getSize(TempSize);
-  return TempSize.x * TempSize.y * TempSize.z;
-}
-
-function ResolveFurniture(Chunk) {
-  ClaimedEntries.clear();
-  const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name) && !BoundsOf(Model).isEmpty());
-  Models.sort((A, B) => ModelVolume(B) - ModelVolume(A));
-  const Accepted = StaticObstacleBounds(Chunk);
-
-  for (const Model of [...Models]) {
-    const Bounds = BoundsOf(Model);
-    if (Bounds.isEmpty()) continue;
-    const Entry = NearestEntry(Chunk, Model, Bounds);
-    const Safe = FindSafePosition(Chunk, Bounds, Accepted);
-
-    if (!Safe) {
-      RemoveModel(Chunk, Model, Entry);
-      continue;
-    }
-
-    if (Math.abs(Safe.DX) > 0.0001 || Math.abs(Safe.DZ) > 0.0001) {
-      Model.position.x += Safe.DX;
-      Model.position.z += Safe.DZ;
-      Model.updateWorldMatrix(true, true);
-      TranslateEntry(Entry, Safe.DX, Safe.DZ);
-      Model.userData.GeneratorRelocatedR77 = { X: Safe.DX, Z: Safe.DZ };
-    }
-
-    TightenEntryToModel(Entry, Model);
-    Accepted.push(BoundsOf(Model));
-  }
-}
-
-function ResolveGeneratedProps(Chunk) {
-  const Accepted = StaticObstacleBounds(Chunk);
-  for (const Model of Chunk.Models || []) {
-    if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
-    const Bounds = BoundsOf(Model);
-    if (!Bounds.isEmpty()) Accepted.push(Bounds);
-  }
-
-  for (const Prop of GeneratedProps(Chunk)) {
-    if (!Prop?.parent) continue;
-    const Bounds = BoundsOf(Prop);
-    if (Bounds.isEmpty()) continue;
-    const Safe = FindSafePosition(Chunk, Bounds, Accepted);
-    if (!Safe) {
-      Prop.parent.remove(Prop);
-      continue;
-    }
-    if (Math.abs(Safe.DX) > 0.0001 || Math.abs(Safe.DZ) > 0.0001) {
-      Prop.position.x += Safe.DX;
-      Prop.position.z += Safe.DZ;
-      Prop.updateWorldMatrix(true, true);
-      Prop.userData.GeneratorRelocatedR77 = { X: Safe.DX, Z: Safe.DZ };
-    }
-    Accepted.push(BoundsOf(Prop));
-  }
-}
-
-function IsReservationObject(Object) {
-  const Name = String(Object?.name || "");
-  if (FurnitureNames.has(Name)) return true;
-  if (Name === "StoreTask") return true;
-  if (Name.startsWith("FurnitureItemSignR74-")) return true;
-  if (Name.startsWith("OnlineChunkDecorationR76-")) return true;
   return false;
 }
 
-function RebuildReservations(Chunk) {
-  const Reservations = StaticObstacleBounds(Chunk).map(Bounds => Bounds.clone());
-  for (const Model of Chunk.Models || []) {
-    if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
-    const Bounds = BoundsOf(Model);
-    if (!Bounds.isEmpty()) Reservations.push(Bounds.clone());
-  }
+function OutsideChunk(Chunk, Bounds) {
+  return Bounds.min.x < -16.55 || Bounds.max.x > 16.55 ||
+    Bounds.min.z < Chunk.BottomZ + 0.35 || Bounds.max.z > Chunk.TopZ - 0.35;
+}
 
-  Chunk.Group?.traverse?.(Object => {
-    if (!Object?.parent || !IsReservationObject(Object)) return;
-    if (FurnitureNames.has(Object.name) || Object.name === "StoreTask") return;
+function ValidatePlannedObjects(Chunk) {
+  const PlannedSlots = Chunk.Layout?.Slots || {};
+  const Accepted = [];
+  const Roots = [...ManagedRoots(Chunk)].sort((A, B) =>
+    String(A.userData?.LayoutSlot || "").localeCompare(String(B.userData?.LayoutSlot || ""))
+  );
+
+  for (const Object of Roots) {
+    const Slot = String(Object.userData?.LayoutSlot || "");
+    if (!Slot || !PlannedSlots[Slot]) {
+      RemoveUnplannedObject(Chunk, Object, "no authoritative layout slot");
+      continue;
+    }
+
     const Bounds = BoundsOf(Object);
-    if (!Bounds.isEmpty()) Reservations.push(Bounds.clone());
-  });
+    if (Bounds.isEmpty()) {
+      RemoveUnplannedObject(Chunk, Object, "empty model bounds");
+      continue;
+    }
+    if (ViolatesCentralAisle(Chunk, Object)) {
+      RemoveUnplannedObject(Chunk, Object, "intrudes into protected central aisle");
+      continue;
+    }
+    if (OutsideChunk(Chunk, Bounds)) {
+      RemoveUnplannedObject(Chunk, Object, "extends outside the chunk display envelope");
+      continue;
+    }
+    if (ViolatesStructure(Chunk, Bounds)) {
+      RemoveUnplannedObject(Chunk, Object, "intersects a structural wall or partition");
+      continue;
+    }
+    const Conflict = Accepted.find(Entry => OverlapXZ(Bounds, Entry.Bounds, 0.04));
+    if (Conflict) {
+      RemoveUnplannedObject(Chunk, Object, `overlaps planned slot ${Conflict.Slot}`);
+      continue;
+    }
 
-  Chunk.ReservedBounds.length = 0;
-  Chunk.ReservedBounds.push(...Reservations);
+    TightenLegacyCollision(Chunk, Object);
+    Accepted.push({ Slot, Bounds });
+  }
 }
 
 function ChunkSignature(Chunk) {
-  let Signature = `${Chunk.Models?.length || 0}`;
-  for (const Model of Chunk.Models || []) {
-    if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
-    Signature += `|${Model.name}:${Model.position.x.toFixed(2)}:${Model.position.z.toFixed(2)}:${Model.rotation.y.toFixed(2)}`;
+  const Parts = [Chunk.Layout?.Template || "none"];
+  for (const Object of ManagedRoots(Chunk)) {
+    Parts.push(`${Object.userData?.LayoutSlot || "unplanned"}:${Object.position.x.toFixed(2)}:${Object.position.z.toFixed(2)}`);
   }
-  for (const Prop of GeneratedProps(Chunk)) {
-    Signature += `|P${Prop.name}:${Prop.position.x.toFixed(2)}:${Prop.position.z.toFixed(2)}:${Prop.rotation.y.toFixed(2)}`;
-  }
-  const Warehouse = Chunk.Group?.getObjectByName?.("WarehouseBoxes");
-  Signature += `|W${Warehouse?.count || 0}|T${Chunk.TaskRecords?.length || 0}`;
-  return Signature;
+  return Parts.sort().join("|");
 }
 
-function ProcessChunk(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group?.userData?.WorldPolishR72) return;
+export function ProcessChunk(Chunk) {
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group?.userData?.WorldPolishR72 || !Chunk.Layout) return;
   const Signature = ChunkSignature(Chunk);
   if (State.get(Chunk) === Signature) return;
-  ResolveFurniture(Chunk);
-  ResolveGeneratedProps(Chunk);
-  RebuildReservations(Chunk);
+  ValidatePlannedObjects(Chunk);
   State.set(Chunk, ChunkSignature(Chunk));
   Chunk.Group.userData.GeneratorIntegrityR77 = true;
 }
 
-function ProcessAll() {
+export function ProcessAll() {
   const Seen = new Set();
   for (const Chunk of Game.ActiveChunks.values()) {
     Seen.add(Chunk);
     ProcessChunk(Chunk);
   }
-  for (const Chunk of Game.PreparedChunks.values()) {
-    if (!Seen.has(Chunk)) ProcessChunk(Chunk);
-  }
+  for (const Chunk of Game.PreparedChunks.values()) if (!Seen.has(Chunk)) ProcessChunk(Chunk);
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 180);
+const Interval = setInterval(ProcessAll, 240);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_GENERATOR_INTEGRITY_R77__ = { ProcessAll, ProcessChunk };
-window.__STORE_GENERATOR_INTEGRITY_BUILD__ = "V0.18.0-R77";
+window.__STORE_GENERATOR_INTEGRITY_BUILD__ = "V0.27.0";
