@@ -319,31 +319,10 @@ function FindSafeOffset(Chunk, Bounds, Accepted) {
 }
 
 function ResolveModelOverlaps(Chunk) {
-  ClaimedEntries.clear?.();
-  const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name));
-  Models.sort((A, B) => `${A.name}:${A.position.x.toFixed(3)}:${A.position.z.toFixed(3)}`.localeCompare(`${B.name}:${B.position.x.toFixed(3)}:${B.position.z.toFixed(3)}`));
-  const Accepted = [];
-
-  for (const Model of Models) {
-    if (Model.userData?.WorldPolishPlacementR72) {
-      const Current = ModelBounds(Model);
-      if (!Current.isEmpty()) Accepted.push(Current);
-      continue;
-    }
-
-    const Bounds = ModelBounds(Model);
-    if (Bounds.isEmpty()) continue;
-    const Entry = FindNearestEntry(Chunk, Model, Bounds);
-    const Safe = FindSafeOffset(Chunk, Bounds, Accepted);
-    if (Safe && (Math.abs(Safe.DX) > 0.0001 || Math.abs(Safe.DZ) > 0.0001)) {
-      Model.position.x += Safe.DX;
-      Model.position.z += Safe.DZ;
-      Model.updateWorldMatrix(true, true);
-      TranslateEntry(Entry, Safe.DX, Safe.DZ);
-      Model.userData.WorldPolishMovedR72 = { x: Safe.DX, z: Safe.DZ };
-    }
+  for (const Model of Chunk.Models || []) {
+    if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
     Model.userData.WorldPolishPlacementR72 = true;
-    Accepted.push(Safe?.Bounds || Bounds);
+    Model.userData.LayoutAuthority = Model.userData.LayoutAuthority || Chunk.Layout?.Authority;
   }
 }
 
@@ -398,7 +377,6 @@ function EnsureCollisionEntry(Chunk, Type, Bounds, Height = 1.5) {
 function RebuildTaskTerminal(Chunk, Task) {
   const Group = Task?.Object;
   if (!Group?.isObject3D || ProcessedTasks.has(Group)) return;
-  RelocateTaskIfNeeded(Chunk, Task);
   ProcessedTasks.add(Group);
 
   while (Group.children.length) Group.remove(Group.children[0]);
@@ -437,7 +415,6 @@ function RebuildTaskTerminal(Chunk, Task) {
   Beacon.position.set(0, 1.36, -0.02);
 
   Group.add(Foot, Post, Neck, Console, TrimTop, Accent, Screen, Label, Handle, Beacon);
-  Group.lookAt(new THREE.Vector3(0, Group.position.y + 0.9, Group.position.z));
   Group.userData.WorldPolishTerminalR72 = true;
   Task.Screen = Screen;
 
@@ -643,8 +620,6 @@ function ProcessChunk(Chunk) {
   RestoreToiletCollision(Chunk);
   for (const Task of Chunk.TaskRecords || []) RebuildTaskTerminal(Chunk, Task);
   CreateDepartmentHeader(Chunk);
-  BuildPriceSign(Chunk);
-  QueueDensity(Chunk);
   Chunk.Group.userData.WorldPolishR72 = true;
 }
 
@@ -685,4 +660,4 @@ const Interval = setInterval(DiscoverChunks, 420);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_WORLD_POLISH_R72__ = { DiscoverChunks, ProcessChunk };
-window.__STORE_WORLD_POLISH_BUILD__ = "V0.14.0-R72";
+window.__STORE_WORLD_POLISH_BUILD__ = "V0.27.0";
