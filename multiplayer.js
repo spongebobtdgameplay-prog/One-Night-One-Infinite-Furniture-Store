@@ -55,6 +55,7 @@ let TempPositionB = null;
 let LastSentPosition = null;
 let NavigationObserver = null;
 let RoomSeedFlight = null;
+let StartGameFlight = null;
 
 const RemotePlayers = new Map();
 const SharedCompletedTasks = new Set();
@@ -999,7 +1000,6 @@ function BindSocketEvents(Target) {
   Target.on("room:started", Payload => {
     if (!Payload?.room) return;
     ApplyRoomState(Payload.room, Payload.players || [], Payload.serverTime);
-    StartGameFromRoom().catch(() => {});
   });
 
   Target.on("player:joined", Data => {
@@ -1120,7 +1120,6 @@ function ApplyJoinResult(Result) {
   if (!Result?.ok) return Result;
   ApplyRoomState(Result.room, Result.players || [], Result.serverTime);
   ShowNetworkView("lobby");
-  if (Result.room?.started) StartGameFromRoom().catch(() => {});
   return Result;
 }
 
@@ -1356,21 +1355,30 @@ function RenderLobby() {
   else SetMessage(LobbyStatus, "Lobby ready.");
 }
 
-async function StartGameFromRoom() {
-  if (!CurrentRoom?.started || !CoreReady) return;
-  const SeedResult = await SyncRoomSeed(CurrentRoom);
-  if (!SeedResult?.ok) return;
-  const Finalizer = window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk;
-  if (typeof Finalizer === "function") {
-    const Chunks = [...Game.ActiveChunks.values()].filter(Chunk => Chunk?.Ready && !Chunk.Cancelled);
-    await Promise.allSettled(Chunks.map(Chunk => Finalizer(Chunk)));
-  }
-  CloseNetworkOverlay();
-  const Hud = document.getElementById("Hud");
-  if (Hud && !Hud.classList.contains("Hidden")) return;
-  const StartButton = document.getElementById("StartButton");
-  if (!StartButton || StartButton.disabled) return;
-  StartButton.click();
+function StartGameFromRoom() {
+  if (!CurrentRoom?.started || !CoreReady) return Promise.resolve();
+  if (StartGameFlight) return StartGameFlight;
+
+  StartGameFlight = (async () => {
+    const SeedResult = await SyncRoomSeed(CurrentRoom);
+    if (!SeedResult?.ok) return;
+    ApplyCompletedTasks(CurrentRoom?.completedTasks || []);
+    const Finalizer = window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk;
+    if (typeof Finalizer === "function") {
+      const Chunks = [...Game.ActiveChunks.values()].filter(Chunk => Chunk?.Ready && !Chunk.Cancelled);
+      await Promise.allSettled(Chunks.map(Chunk => Finalizer(Chunk)));
+    }
+    CloseNetworkOverlay();
+    const Hud = document.getElementById("Hud");
+    if (Hud && !Hud.classList.contains("Hidden")) return;
+    const StartButton = document.getElementById("StartButton");
+    if (!StartButton || StartButton.disabled) return;
+    StartButton.click();
+  })().finally(() => {
+    StartGameFlight = null;
+  });
+
+  return StartGameFlight;
 }
 
 function CreateNavigationButton(Id, Text, Handler, ClassName = "StoreNavButton") {
