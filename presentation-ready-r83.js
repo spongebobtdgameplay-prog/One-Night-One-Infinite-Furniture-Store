@@ -85,11 +85,39 @@ function RemoveTerminalBeacons(Chunk) {
   }
 }
 
+function LayoutOccupancyReady(Chunk) {
+  const Placed = new Set();
+  for (const Object of Chunk.Group?.children || []) {
+    const Slot = String(Object?.userData?.LayoutSlot || "");
+    if (Slot) Placed.add(Slot);
+  }
+  for (const Object of Chunk.TaskObjects || []) {
+    const Slot = String(Object?.userData?.LayoutSlot || "");
+    if (Slot) Placed.add(Slot);
+  }
+
+  for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
+    for (const Entry of Chunk.Layout?.[GroupName] || []) {
+      if (!Placed.has(Entry.Slot)) return false;
+    }
+  }
+  if (Chunk.Layout?.Task && !Placed.has(Chunk.Layout.Task.Slot)) return false;
+
+  const PlannedBoxCount = (Chunk.Layout?.Boxes || []).reduce((Total, Stack) => Total + Math.max(1, Math.floor(Stack.Levels || 1)), 0);
+  if (PlannedBoxCount) {
+    const Boxes = Chunk.Group?.getObjectByName?.("WarehouseBoxes");
+    if (!Boxes?.isInstancedMesh || Boxes.count !== PlannedBoxCount) return false;
+  }
+
+  return true;
+}
+
 function CoreReady(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
   if (!Chunk.Layout?.Authority || Chunk.Layout.Authority !== "StoreLayoutV1") return false;
   if ((Chunk.Layout.ValidationErrors || []).length) return false;
   if (Chunk.Group.userData?.LayoutAuthority !== Chunk.Layout.Authority) return false;
+  if (!LayoutOccupancyReady(Chunk)) return false;
   const Stable = UpdateStability(Chunk);
   const ShelfStocked = window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ?? Boolean(Chunk.Group.userData?.ShelfStockR83);
   const SaleDisplaysReady = window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk) ?? false;
