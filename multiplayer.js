@@ -257,23 +257,31 @@ Style.textContent = `
 .StoreNetworkInput:focus,.StoreNetworkSelect:focus{border-color:#c99358}
 .StoreMaskedSecretInput{font-family:Arial,sans-serif;letter-spacing:.12em}
 .StoreNetworkActions{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:8px;margin-top:5px}
-.StoreNetworkButton{display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.24);background:#252a27;color:#fff;font-size:.61rem;font-weight:900;letter-spacing:.10em;text-transform:uppercase;cursor:pointer}
+.StoreNetworkButton{display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:44px;padding:0 14px;border:1px solid rgba(255,255,255,.24);background:#252a27;color:#fff;font-size:.61rem;font-weight:900;letter-spacing:.10em;text-transform:uppercase;cursor:pointer;transition:transform .14s ease,background .14s ease,border-color .14s ease,box-shadow .14s ease,color .14s ease}
+.StoreNetworkButton:hover{transform:translateY(-2px);border-color:rgba(217,168,117,.78);background:#343a36;box-shadow:0 8px 20px rgba(0,0,0,.24)}
+.StoreNetworkButton.Primary:hover{border-color:#e1b27d;background:#cc8e52;color:#090704;box-shadow:0 8px 22px rgba(183,123,67,.22)}
+.StoreNetworkButton.Danger:hover{border-color:#e48677;background:#3a201d;color:#ffd6cf}
+.StoreNetworkButton:active{transform:translateY(0)}
+.StoreNetworkButton:focus-visible{outline:2px solid #d0a36b;outline-offset:2px}
 .StoreNetworkButton.Primary{border-color:#d09a60;background:#b77b43;color:#100c08}
 .StoreNetworkButton.Danger{border-color:rgba(194,92,77,.58);color:#ffc5bc}
 .StoreNetworkButton:disabled{opacity:.38;cursor:not-allowed}
 .StoreNetworkStatus{min-height:18px;margin:12px 0 0;color:rgba(244,239,230,.55);font-size:.64rem;line-height:1.45}
 .StoreNetworkStatus.Error{color:#ffafa4}
 .StoreNetworkTabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:16px}
-.StoreNetworkTab{min-height:40px;padding:0 12px;border:1px solid rgba(255,255,255,.14);background:#161918;color:rgba(255,255,255,.60);font-size:.58rem;font-weight:900;letter-spacing:.10em;cursor:pointer}
-.StoreNetworkTab.Active{border-color:#d0a36b;background:#2a2119;color:#f4e4d2}
+.StoreAccountModeTitle{margin:0 0 16px;color:#f4efe6;font-size:.8rem;font-weight:900;letter-spacing:.13em}
+.StoreAccountLoginSwitch{width:100%;margin:3px 0 0;border:0;background:transparent;color:#c99358;font-size:.58rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;text-decoration:underline;text-underline-offset:4px;transition:color .14s ease,background .14s ease}
+.StoreAccountLoginSwitch:hover{color:#f2c491;background:rgba(201,147,88,.08)}
 .StoreAccountSectionTitle{margin-bottom:11px;color:#c99358;font-size:.61rem;font-weight:900;letter-spacing:.18em}
 .StoreAccountChoices{display:grid;gap:8px}
-.StoreAccountChoice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:54px;width:100%;padding:0 15px;border:1px solid rgba(255,255,255,.15);background:#151817;color:#fff;text-align:left;cursor:pointer}
-.StoreAccountChoice:hover{border-color:rgba(201,147,88,.72);background:#1f2321}
+.StoreAccountChoice{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:54px;width:100%;padding:0 15px;border:1px solid rgba(255,255,255,.15);background:#151817;color:#fff;text-align:left;cursor:pointer;transition:transform .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
+.StoreAccountChoice:hover{transform:translateX(3px);border-color:#d0a36b;background:#25201a;box-shadow:0 7px 18px rgba(0,0,0,.22)}
+.StoreAccountChoice:focus-visible{outline:2px solid #d0a36b;outline-offset:2px}
 .StoreAccountChoice strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.76rem;letter-spacing:.06em}
 .StoreAccountChoice span{flex:0 0 auto;color:#c99358;font-size:.54rem;font-weight:900;letter-spacing:.10em}
 .StoreAccountOther{width:100%;margin-top:9px}
-.StoreAccountBack{margin-bottom:14px;min-height:36px;padding:0 10px;border:0;background:transparent;color:rgba(244,239,230,.58);font-size:.58rem;font-weight:900;letter-spacing:.10em;cursor:pointer}
+.StoreAccountBack{margin-bottom:14px;min-height:36px;padding:0 10px;border:1px solid transparent;background:transparent;color:rgba(244,239,230,.58);font-size:.58rem;font-weight:900;letter-spacing:.10em;cursor:pointer;transition:background .14s ease,border-color .14s ease,color .14s ease,transform .14s ease}
+.StoreAccountBack:hover{transform:translateX(-2px);border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05);color:#fff}
 .StoreSelectedAccount{margin-bottom:16px;padding:15px;border:1px solid rgba(255,255,255,.12);background:#121513}
 .StoreSelectedAccount small{display:block;color:rgba(244,239,230,.43);font-size:.52rem;font-weight:900;letter-spacing:.13em}
 .StoreSelectedAccount strong{display:block;margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1rem;letter-spacing:.07em}
@@ -339,10 +347,7 @@ AccountOverlay.innerHTML = `
         </section>
         <section id="StoreManualAccount" class="StoreAccountStep" hidden>
           <button id="StoreManualBack" class="StoreAccountBack" type="button">← BACK TO ACCOUNTS</button>
-          <div class="StoreNetworkTabs">
-            <button class="StoreNetworkTab Active" type="button" data-account-tab="login">LOGIN</button>
-            <button class="StoreNetworkTab" type="button" data-account-tab="create">CREATE ACCOUNT</button>
-          </div>
+          <div id="StoreAccountModeTitle" class="StoreAccountModeTitle">LOGIN</div>
           <form id="StoreAccountForm" class="StoreNetworkForm" autocomplete="off" data-form-type="other">
             <label class="StoreNetworkLabel">USERNAME
               <input id="StoreAccountUsername" class="StoreNetworkInput" maxlength="20" autocomplete="one-time-code" name="infinity-store-account-name-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
@@ -357,6 +362,7 @@ AccountOverlay.innerHTML = `
               <button id="StoreAccountSubmit" class="StoreNetworkButton Primary" type="submit">LOGIN</button>
               <button id="StoreAccountRetry" class="StoreNetworkButton" type="button">RETRY SERVER</button>
             </div>
+            <button id="StoreAccountLoginSwitch" class="StoreAccountLoginSwitch" type="button" hidden>ALREADY HAVE AN ACCOUNT? LOG IN</button>
           </form>
           <p id="StoreAccountStatus" class="StoreNetworkStatus"></p>
         </section>
@@ -481,6 +487,8 @@ const AccountUsername = document.getElementById("StoreAccountUsername");
 const AccountPassword = document.getElementById("StoreAccountPassword");
 const AccountRepeatWrap = document.getElementById("StoreAccountRepeatWrap");
 const AccountRepeat = document.getElementById("StoreAccountRepeat");
+const AccountModeTitle = document.getElementById("StoreAccountModeTitle");
+const AccountLoginSwitch = document.getElementById("StoreAccountLoginSwitch");
 const AccountSubmit = document.getElementById("StoreAccountSubmit");
 const AccountStatus = document.getElementById("StoreAccountStatus");
 const MenuStatus = document.getElementById("StoreNetworkMenuStatus");
@@ -596,13 +604,13 @@ function ConfigureMaskedSecret(Input) {
 
 function SetAccountMode(Mode) {
   AccountMode = Mode === "create" ? "create" : "login";
-  for (const Tab of AccountOverlay.querySelectorAll("[data-account-tab]")) {
-    Tab.classList.toggle("Active", Tab.dataset.accountTab === AccountMode);
-  }
-  AccountRepeatWrap.hidden = AccountMode !== "create";
+  const Creating = AccountMode === "create";
+  AccountRepeatWrap.hidden = !Creating;
+  AccountModeTitle.textContent = Creating ? "CREATE ACCOUNT" : "LOG IN";
+  AccountLoginSwitch.hidden = !Creating;
   SetMaskedSecret(AccountPassword, "");
   SetMaskedSecret(AccountRepeat, "");
-  AccountSubmit.textContent = AccountMode === "create" ? "CREATE ACCOUNT" : "LOGIN";
+  AccountSubmit.textContent = Creating ? "CREATE ACCOUNT" : "LOG IN";
   SetMessage(AccountStatus, "");
 }
 
@@ -1802,10 +1810,7 @@ async function InitializeAccountGate() {
   ShowAccountScreen(ErrorText(Result?.error));
 }
 
-AccountOverlay.querySelectorAll("[data-account-tab]").forEach(Button => {
-  Button.addEventListener("click", () => SetAccountMode(Button.dataset.accountTab));
-});
-
+AccountLoginSwitch.addEventListener("click", () => ShowManualAccount("login"));
 document.getElementById("StoreAccountOther").addEventListener("click", () => ShowManualAccount("login"));
 document.getElementById("StoreAccountCreateNew").addEventListener("click", () => ShowManualAccount("create"));
 document.getElementById("StoreManualBack").addEventListener("click", () => ShowAccountChooser());
@@ -1986,7 +1991,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.8";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.9";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
