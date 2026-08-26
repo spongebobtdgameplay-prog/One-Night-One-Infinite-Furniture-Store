@@ -366,86 +366,39 @@ function ConfigureLightVariation(Chunk) {
   }
 }
 
-function OverlapsXZ(A, B, Padding = 0.10) {
-  return A.max.x > B.min.x - Padding && A.min.x < B.max.x + Padding && A.max.z > B.min.z - Padding && A.min.z < B.max.z + Padding;
-}
+async function PlacePlannedRetailAsset(Chunk, Entry) {
+  const Object = await CloneAsset(Entry.AssetKey);
+  if (!Object) return false;
+  if (!NormalizeLocalAsset(
+    Object,
+    Number(Entry.TargetHeight) || 1.2,
+    Number(Entry.MaximumWidth) || 2.20,
+    Number(Entry.MaximumDepth) || 1.10
+  )) return false;
 
-function CanPlaceBounds(Chunk, Bounds) {
-  if (Bounds.min.x < -16.45 || Bounds.max.x > 16.45) return false;
-  if (Bounds.min.z < Chunk.BottomZ + 0.55 || Bounds.max.z > Chunk.TopZ - 0.55) return false;
-  for (const Reserved of Chunk.ReservedBounds || []) if (OverlapsXZ(Bounds, Reserved, 0.14)) return false;
-  for (const Structure of Chunk.StructureBounds || []) if (OverlapsXZ(Bounds, Structure, 0.10)) return false;
+  Object.position.set(Entry.X, 0, Entry.Z);
+  Object.rotation.y = Number(Entry.Rotation) || 0;
+  Object.name = Entry.Name;
+  Object.userData.ChunkId = Chunk.Id;
+  Object.userData.LayoutSlot = Entry.Slot;
+  Object.userData.LayoutAuthority = Chunk.Layout?.Authority;
+  Object.userData.DecorationNoCollision = false;
+  Object.userData.RetailImportedR79 = true;
+  Chunk.Group.add(Object);
+  Object.updateWorldMatrix(true, true);
+  AddExactCollision(Chunk, Object, `${Entry.Name}SolidR79`);
   return true;
-}
-
-function AddExactCollision(Chunk, Object, Type) {
-  const Bounds = BoundsOf(Object);
-  if (Bounds.isEmpty()) return;
-  const Entry = ApplySolidBounds(Chunk, null, Bounds, Type);
-  Entry.RetailImportedR79 = true;
-  Chunk.ReservedBounds.push(Bounds.clone());
-}
-
-async function TryPlaceRetailAsset(Chunk, Key, TargetHeight, Candidates, Name, MaximumWidth = 2.20, MaximumDepth = 1.10) {
-  const Object = await CloneAsset(Key);
-  if (!NormalizeLocalAsset(Object, TargetHeight, MaximumWidth, MaximumDepth)) return false;
-  for (const [X, Z, Rotation] of Candidates) {
-    Object.position.set(X, 0, Z);
-    Object.rotation.y = Rotation;
-    Object.updateWorldMatrix(true, true);
-    const Bounds = BoundsOf(Object);
-    if (!CanPlaceBounds(Chunk, Bounds)) continue;
-    Object.name = Name;
-    Object.userData.ChunkId = Chunk.Id;
-    Object.userData.DecorationNoCollision = false;
-    Chunk.Group.add(Object);
-    AddExactCollision(Chunk, Object, `${Name}SolidR79`);
-    return true;
-  }
-  return false;
 }
 
 async function AddRealShowroomPieces(Chunk) {
   if (DecoratedChunks.has(Chunk)) return;
   DecoratedChunks.add(Chunk);
-  const C = Chunk.CenterZ;
-  const Flip = Chunk.Index % 2 === 0 ? 1 : -1;
-  try {
-    if (Chunk.Theme === "LIVING ROOM" || Chunk.Theme === "SHOWROOM" || Chunk.Theme === "CLEARANCE") {
-      await TryPlaceRetailAsset(Chunk, "ArmchairPillows", 0.96, [
-        [Flip * 13.7, C + 1.7, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
-        [-Flip * 13.5, C - 6.4, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailArmchairR79", 1.35, 1.35);
-      await TryPlaceRetailAsset(Chunk, "ShelfSmallDecorated", 1.42, [
-        [-Flip * 14.0, C + 6.5, Flip > 0 ? Math.PI / 2 : -Math.PI / 2],
-        [Flip * 14.0, C - 6.2, Flip > 0 ? -Math.PI / 2 : Math.PI / 2]
-      ], "RetailLivingShelfR79", 1.25, 0.72);
-    } else if (Chunk.Theme === "BEDROOMS") {
-      await TryPlaceRetailAsset(Chunk, "CabinetSmallDecorated", 1.32, [
-        [Flip * 13.9, C + 0.8, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
-        [-Flip * 13.8, C - 6.2, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailBedroomCabinetR79", 1.30, 0.82);
-      await TryPlaceRetailAsset(Chunk, "ArmchairPillows", 0.90, [
-        [-Flip * 13.4, C + 6.3, Flip > 0 ? Math.PI / 2 : -Math.PI / 2],
-        [Flip * 13.4, C - 5.9, Flip > 0 ? -Math.PI / 2 : Math.PI / 2]
-      ], "RetailBedroomChairR79", 1.30, 1.30);
-    } else if (Chunk.Theme === "WAREHOUSE" || Chunk.Theme === "STORAGE") {
-      await TryPlaceRetailAsset(Chunk, "ShelfSmallDecorated", 1.52, [
-        [Flip * 14.0, C + 0.5, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
-        [-Flip * 14.0, C - 6.0, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailStorageShelfR79", 1.35, 0.78);
-      await TryPlaceRetailAsset(Chunk, "CabinetSmallDecorated", 1.18, [
-        [-Flip * 14.0, C + 6.3, Flip > 0 ? Math.PI / 2 : -Math.PI / 2],
-        [Flip * 14.0, C - 6.3, Flip > 0 ? -Math.PI / 2 : Math.PI / 2]
-      ], "RetailStorageCabinetR79", 1.25, 0.78);
-    } else {
-      await TryPlaceRetailAsset(Chunk, "CabinetSmallDecorated", 1.22, [
-        [Flip * 14.0, C + 5.8, Flip > 0 ? -Math.PI / 2 : Math.PI / 2],
-        [-Flip * 14.0, C - 5.8, Flip > 0 ? Math.PI / 2 : -Math.PI / 2]
-      ], "RetailDisplayCabinetR79", 1.25, 0.78);
+  for (const Entry of Chunk.Layout?.Retail || []) {
+    try {
+      await PlacePlannedRetailAsset(Chunk, Entry);
+    } catch (Error) {
+      console.warn(`Planned retail asset unavailable for ${Entry.Slot}`, Error);
     }
-  } catch (Error) {
-    console.warn("Retail showroom decoration unavailable", Error);
   }
 }
 
@@ -474,4 +427,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.20.0-R79";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.0";
