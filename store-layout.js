@@ -120,8 +120,8 @@ function LivingRoomTemplateA() {
       Slot("Living.Right.AccentChair", "RetailArmchairR79", 14.00, 3.95, -Math.PI / 2, { Kind: "Retail", AssetKey: "ArmchairPillows", Name: "RetailArmchairR79", TargetHeight: 0.96, MaximumWidth: 1.35, MaximumDepth: 1.35 })
     ],
     Partitions: [
-      Partition("Living.Left.Backdrop", -14.85, 5.40, 4.0),
-      Partition("Living.Right.Backdrop", 14.85, -5.30, 4.0)
+      Partition("Living.Left.Backdrop", -14.85, 4.20, 4.0),
+      Partition("Living.Right.Backdrop", 14.85, -4.20, 4.0)
     ]
   };
 }
@@ -161,8 +161,8 @@ function BedroomTemplateA() {
       Slot("Bedroom.Right.AccentChair", "RetailBedroomChairR79", 13.80, 2.35, -Math.PI / 2, { Kind: "Retail", AssetKey: "ArmchairPillows", Name: "RetailBedroomChairR79", TargetHeight: 0.90, MaximumWidth: 1.30, MaximumDepth: 1.30 })
     ],
     Partitions: [
-      Partition("Bedroom.Left.Backdrop", -14.85, 5.35, 4.2),
-      Partition("Bedroom.Right.Backdrop", 14.85, -5.35, 4.2)
+      Partition("Bedroom.Left.Backdrop", -14.85, 4.10, 4.0),
+      Partition("Bedroom.Right.Backdrop", 14.85, -4.10, 4.0)
     ]
   };
 }
@@ -176,6 +176,7 @@ function BedroomTemplateB() {
   const Single = Plan.Base.find(Entry => Entry.Slot === "Bedroom.Left.Single");
   if (Single) {
     Single.X = 10.25;
+    Single.Z = -4.25;
     Single.Slot = "Bedroom.Right.Single";
     Single.Rotation = Math.PI;
   }
@@ -240,8 +241,8 @@ function BathroomTemplateA() {
       Slot("Bathroom.Left.DisplayCabinet", "RetailDisplayCabinetR79", -14.05, 0.20, Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
     ],
     Partitions: [
-      Partition("Bathroom.Left.Backdrop", -14.85, 5.45, 3.8),
-      Partition("Bathroom.Right.Backdrop", 14.85, -5.45, 3.8)
+      Partition("Bathroom.Left.Backdrop", -14.85, 4.15, 3.8),
+      Partition("Bathroom.Right.Backdrop", 14.85, -4.15, 3.8)
     ]
   };
 }
@@ -319,8 +320,8 @@ function ShowroomTemplateA() {
       Slot("Showroom.Right.AccentChair", "RetailArmchairR79", 13.80, -0.60, -Math.PI / 2, { Kind: "Retail", AssetKey: "ArmchairPillows", Name: "RetailArmchairR79", TargetHeight: 0.96, MaximumWidth: 1.35, MaximumDepth: 1.35 })
     ],
     Partitions: [
-      Partition("Showroom.Left.Backdrop", -14.85, 5.20, 4.0),
-      Partition("Showroom.Right.Backdrop", 14.85, -5.20, 4.0)
+      Partition("Showroom.Left.Backdrop", -14.85, 4.00, 4.0),
+      Partition("Showroom.Right.Backdrop", 14.85, -4.00, 4.0)
     ]
   };
 }
@@ -424,9 +425,9 @@ function AddRetailZone(Layout, Index, Seed) {
   const Side = SeedRoll(Seed, "EntranceRetailZoneSide") < 0.5 ? -1 : 1;
   const Facing = Side < 0 ? Math.PI / 2 : -Math.PI / 2;
   Layout.Zones.push(
-    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 7.20, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.1", "Cart", Side * 14.25, 8.75, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.2", "Cart", Side * 14.25, 10.00, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 7.40, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.1", "Cart", Side * 14.25, 8.55, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.2", "Cart", Side * 14.25, 9.70, Facing, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.60, -Facing, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.Basket.0", "Basket", -Side * 12.75, 7.45, -Facing, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.Basket.1", "Basket", -Side * 12.75, 8.60, -Facing, { Kind: "Zone", Sellable: false }),
@@ -617,7 +618,6 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
-  for (const Box of Layout.Boxes) Box.Z += CenterZ;
   return FinalizeLayout(Layout, Seed, CenterZ);
 }
 
