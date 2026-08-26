@@ -29,7 +29,7 @@ const DISCONNECT_GRACE_MS = 45_000;
 const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const SOCKET_AUTH_WINDOW_MS = 60_000;
-const SOCKET_AUTH_LIMIT = 24;
+const SOCKET_AUTH_LIMIT = 60;
 const SOCKET_ROOM_ACTION_WINDOW_MS = 10_000;
 const SOCKET_ROOM_ACTION_LIMIT = 18;
 const SOCKET_MOVEMENT_WINDOW_MS = 1_000;
@@ -362,6 +362,9 @@ App.post("/api/auth/login", AuthLimiter, async (Request, Response) => {
   const Username = NormalizeUsername(Request.body?.username);
   const Password = String(Request.body?.password || "");
   if (!Username || !Password) return Response.status(400).json({ ok: false, error: "MISSING_CREDENTIALS" });
+  if (ValidateUsername(Username) || ValidatePassword(Password)) {
+    return Response.status(401).json({ ok: false, error: "INVALID_LOGIN" });
+  }
 
   try {
     const Result = await Database.query(
