@@ -87,6 +87,9 @@ function RemoveTerminalBeacons(Chunk) {
 
 function CoreReady(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
+  if (!Chunk.Layout?.Authority || Chunk.Layout.Authority !== "StoreLayoutV1") return false;
+  if ((Chunk.Layout.ValidationErrors || []).length) return false;
+  if (Chunk.Group.userData?.LayoutAuthority !== Chunk.Layout.Authority) return false;
   const Stable = UpdateStability(Chunk);
   const ShelfStocked = window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ?? Boolean(Chunk.Group.userData?.ShelfStockR83);
   const SaleDisplaysReady = window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk) ?? false;
@@ -197,4 +200,4 @@ const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.26.0-R88";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.0";
