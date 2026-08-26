@@ -313,7 +313,7 @@ AccountOverlay.className = "StoreNetworkOverlay";
 AccountOverlay.innerHTML = `
   <div class="StoreNetworkCard StoreAccountCard">
     <div class="StoreNetworkHead">
-      <div><small>GREAT OLD GAMES ACCOUNT</small><h2 id="StoreAccountTitle">ACCOUNT</h2></div>
+      <div><h2 id="StoreAccountTitle">ACCOUNT</h2></div>
     </div>
     <div class="StoreNetworkBody">
       <div id="StoreAccountNormal">
@@ -326,9 +326,9 @@ AccountOverlay.innerHTML = `
         <section id="StoreQuickAccount" class="StoreAccountStep" hidden>
           <button id="StoreQuickBack" class="StoreAccountBack" type="button">← BACK</button>
           <div class="StoreSelectedAccount"><small>CONTINUE WITH</small><strong id="StoreQuickAccountName">PLAYER</strong></div>
-          <form id="StoreQuickAccountForm" class="StoreNetworkForm" autocomplete="off">
+          <form id="StoreQuickAccountForm" class="StoreNetworkForm" autocomplete="off" data-form-type="other">
             <label class="StoreNetworkLabel">PASSWORD
-              <input id="StoreQuickPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="off" name="infinity-store-quick-secret-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+              <input id="StoreQuickPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="one-time-code" name="infinity-store-quick-secret-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <div class="StoreNetworkActions"><button id="StoreQuickSubmit" class="StoreNetworkButton Primary" type="submit">CONTINUE</button></div>
           </form>
@@ -340,15 +340,15 @@ AccountOverlay.innerHTML = `
             <button class="StoreNetworkTab Active" type="button" data-account-tab="login">LOGIN</button>
             <button class="StoreNetworkTab" type="button" data-account-tab="create">CREATE ACCOUNT</button>
           </div>
-          <form id="StoreAccountForm" class="StoreNetworkForm" autocomplete="off">
+          <form id="StoreAccountForm" class="StoreNetworkForm" autocomplete="off" data-form-type="other">
             <label class="StoreNetworkLabel">USERNAME
-              <input id="StoreAccountUsername" class="StoreNetworkInput" maxlength="20" autocomplete="off" name="infinity-store-account-name-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+              <input id="StoreAccountUsername" class="StoreNetworkInput" maxlength="20" autocomplete="one-time-code" name="infinity-store-account-name-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <label class="StoreNetworkLabel">PASSWORD
-              <input id="StoreAccountPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="off" name="infinity-store-login-secret-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+              <input id="StoreAccountPassword" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="one-time-code" name="infinity-store-login-secret-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <label id="StoreAccountRepeatWrap" class="StoreNetworkLabel" hidden>RETYPE PASSWORD
-              <input id="StoreAccountRepeat" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="off" name="infinity-store-create-secret-v1" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-bwignore="true">
+              <input id="StoreAccountRepeat" class="StoreNetworkInput" type="password" maxlength="20" autocomplete="new-password" name="infinity-store-create-secret-v2" autocapitalize="off" spellcheck="false" aria-autocomplete="none" data-form-type="other" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-protonpass-ignore="true">
             </label>
             <div class="StoreNetworkActions">
               <button id="StoreAccountSubmit" class="StoreNetworkButton Primary" type="submit">LOGIN</button>
@@ -493,6 +493,7 @@ const ProfileStatus = document.getElementById("StoreProfileStatus");
 
 let AccountMode = "login";
 let SelectedAccountName = "";
+let AccountChooserExcludedName = "";
 
 function SetMessage(Element, Message, Error = false) {
   if (!Element) return;
@@ -506,6 +507,8 @@ function SetAccountMode(Mode) {
     Tab.classList.toggle("Active", Tab.dataset.accountTab === AccountMode);
   }
   AccountRepeatWrap.hidden = AccountMode !== "create";
+  AccountPassword.setAttribute("autocomplete", AccountMode === "create" ? "new-password" : "one-time-code");
+  AccountPassword.name = AccountMode === "create" ? "infinity-store-new-secret-v2" : "infinity-store-login-secret-v2";
   AccountSubmit.textContent = AccountMode === "create" ? "CREATE ACCOUNT" : "LOGIN";
   AccountRepeat.value = "";
   SetMessage(AccountStatus, "");
@@ -517,8 +520,12 @@ function ShowAccountStep(Name) {
   ManualAccount.hidden = Name !== "manual";
 }
 
-function RenderAccountChoices() {
-  const Accounts = ReadSavedAccounts();
+function GetChooserAccounts() {
+  const Excluded = String(AccountChooserExcludedName || "").toLowerCase();
+  return ReadSavedAccounts().filter(Name => !Excluded || Name.toLowerCase() !== Excluded);
+}
+
+function RenderAccountChoices(Accounts = GetChooserAccounts()) {
   AccountChoices.replaceChildren();
   for (const Name of Accounts) {
     const Button = document.createElement("button");
@@ -542,18 +549,25 @@ function RenderAccountChoices() {
   }
 }
 
-function ShowManualAccount(Mode = "login") {
+function ShowManualAccount(Mode = "login", Message = "") {
   SelectedAccountName = "";
   SetAccountMode(Mode);
+  AccountUsername.value = "";
   AccountPassword.value = "";
   AccountRepeat.value = "";
-  SetMessage(AccountStatus, "");
+  document.getElementById("StoreManualBack").hidden = GetChooserAccounts().length === 0;
+  SetMessage(AccountStatus, Message);
   ShowAccountStep("manual");
   requestAnimationFrame(() => AccountUsername.focus());
 }
 
 function ShowAccountChooser(Message = "") {
-  RenderAccountChoices();
+  const Accounts = GetChooserAccounts();
+  if (!Accounts.length) {
+    ShowManualAccount("login", Message);
+    return;
+  }
+  RenderAccountChoices(Accounts);
   SelectedAccountName = "";
   QuickPassword.value = "";
   AccountPassword.value = "";
@@ -569,7 +583,8 @@ function ShowOutdated() {
   SetStatus("outdated");
 }
 
-function ShowAccountScreen(Message = "") {
+function ShowAccountScreen(Message = "", ExcludedName = "") {
+  AccountChooserExcludedName = String(ExcludedName || "");
   AccountOverlay.hidden = false;
   AccountNormal.hidden = false;
   AccountOutdated.hidden = true;
@@ -651,6 +666,7 @@ async function RefreshAccount() {
 
 function FinishAuthentication() {
   if (!Account) return;
+  AccountChooserExcludedName = "";
   ApplyProfileSettings();
   SaveAccountName(Account.username);
   HideAccountScreen();
@@ -734,6 +750,7 @@ async function RestoreSession() {
 }
 
 async function Logout(ShowAccount = true) {
+  const LoggedOutUsername = Account?.username || "";
   if (Socket?.connected && CurrentRoom) {
     await SocketAck("room:leave", {}).catch(() => {});
   }
@@ -748,7 +765,7 @@ async function Logout(ShowAccount = true) {
   SetStatus("offline");
   Dispatch("store-account-change", GetState());
   NetworkOverlay.hidden = true;
-  if (ShowAccount) ShowAccountScreen("Sign in with another account.");
+  if (ShowAccount) ShowAccountScreen("Sign in to continue.", LoggedOutUsername);
   return { ok: true };
 }
 
@@ -1864,7 +1881,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.5";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.25.6";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
