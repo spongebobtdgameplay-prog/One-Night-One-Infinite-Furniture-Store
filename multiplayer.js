@@ -315,6 +315,11 @@ Style.textContent = `
 @keyframes StoreOutdatedPulse{from{box-shadow:0 0 0 rgba(214,132,86,0)}to{box-shadow:0 0 42px rgba(214,132,86,.22)}}
 .StoreNavButton{display:inline-flex;align-items:center;justify-content:center;min-height:47px;padding:0 18px;border:1px solid rgba(255,255,255,.8);background:rgba(255,255,255,.035);color:#fff;font-size:.7rem;font-weight:850;letter-spacing:.11em;text-transform:uppercase;cursor:pointer}
 .StoreNavButton:hover{background:#fff;color:#0a0c0d}
+.StoreAccountNavButton{display:inline-flex;align-items:center;justify-content:flex-start;gap:9px;min-width:0;max-width:220px;text-transform:none;letter-spacing:0}
+.StoreAccountNavButton .StoreProfileChipIcon{display:grid;place-items:center;flex:0 0 27px;width:27px;height:27px;border:1px solid rgba(255,255,255,.26);background:rgba(8,10,9,.48);color:#d6a46e}
+.StoreAccountNavButton .StoreProfileChipIcon svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none}
+.StoreAccountNavButton .StoreProfileChipName{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.68rem;font-weight:900;letter-spacing:.045em}
+.StoreAccountNavButton:hover .StoreProfileChipIcon{border-color:rgba(10,12,13,.38);background:rgba(10,12,13,.08);color:#7f542d}
 @media(max-width:520px){.StoreNetworkHead{padding:15px 16px}.StoreNetworkBody{padding:15px}.StoreLobbySettings,.StoreProfileStats{grid-template-columns:repeat(3,minmax(0,1fr))}.StoreNetworkButton{font-size:.56rem;padding:0 9px}}
 @media(max-height:600px){.StoreNetworkCard{max-height:calc(100dvh - 12px)}.StoreNetworkHead{padding-top:12px;padding-bottom:12px}.StoreNetworkBody{padding-top:13px;padding-bottom:13px}.StoreNetworkChoice{min-height:92px}}
 `;
@@ -1393,12 +1398,53 @@ function CreateNavigationButton(Id, Text, Handler, ClassName = "StoreNavButton")
   return Button;
 }
 
+const ProfileChipIcon = `
+  <span class="StoreProfileChipIcon" aria-hidden="true">
+    <svg viewBox="0 0 24 24">
+      <circle cx="12" cy="8" r="3.25"></circle>
+      <path d="M5.5 19c.7-3.4 3-5.1 6.5-5.1s5.8 1.7 6.5 5.1"></path>
+    </svg>
+  </span>
+`;
+
+function CreateAccountNavigationButton(Id, ClassName) {
+  let Button = document.getElementById(Id);
+  if (Button) return Button;
+  Button = document.createElement("button");
+  Button.id = Id;
+  Button.type = "button";
+  Button.className = ClassName;
+  Button.dataset.storeProfileChip = "1";
+  Button.innerHTML = `${ProfileChipIcon}<span class="StoreProfileChipName"></span>`;
+  Button.addEventListener("click", OpenProfile);
+  return Button;
+}
+
+function UpdateAccountNavigation() {
+  const Username = String(Account?.username || "PLAYER");
+  for (const Button of document.querySelectorAll('[data-store-profile-chip="1"]')) {
+    const Name = Button.querySelector(".StoreProfileChipName");
+    if (Name && Name.textContent !== Username) Name.textContent = Username;
+    const Label = `Open ${Username}'s profile`;
+    if (Button.getAttribute("aria-label") !== Label) Button.setAttribute("aria-label", Label);
+    if (Button.title !== Label) Button.title = Label;
+  }
+}
+
 function MountInitialNavigation() {
   const Actions = document.getElementById("MainMenuActions");
+  document.getElementById("StoreProfileMainButton")?.remove();
+
   if (Actions && !document.getElementById("StoreMultiplayerMainButton")) {
     const Button = CreateNavigationButton("StoreMultiplayerMainButton", "MULTIPLAYER", OpenMultiplayer, "MainMenuButton");
     const SettingsButton = document.getElementById("FirstMenuSettingsButton");
     Actions.insertBefore(Button, SettingsButton || null);
+  }
+
+  if (Actions && !document.getElementById("StoreAccountMainButton")) {
+    const AccountButton = CreateAccountNavigationButton("StoreAccountMainButton", "MainMenuButton StoreAccountNavButton");
+    const SettingsButton = document.getElementById("FirstMenuSettingsButton");
+    Actions.insertBefore(AccountButton, SettingsButton || null);
   }
 
   const StartButton = document.getElementById("StartButton");
@@ -1418,11 +1464,13 @@ function MountInitialNavigation() {
 function MountRuntimeNavigation() {
   const Actions = document.querySelector("#RuntimeMainMenuR83 .RuntimeMenuActionsR84");
   if (!Actions) return;
+  document.getElementById("StoreProfilePauseButton")?.remove();
+
   if (!document.getElementById("StoreMultiplayerPauseButton")) {
     Actions.appendChild(CreateNavigationButton("StoreMultiplayerPauseButton", "MULTIPLAYER", OpenMultiplayer));
   }
-  if (!document.getElementById("StoreProfilePauseButton")) {
-    Actions.appendChild(CreateNavigationButton("StoreProfilePauseButton", "PROFILE", OpenProfile));
+  if (!document.getElementById("StoreAccountPauseButton")) {
+    Actions.appendChild(CreateAccountNavigationButton("StoreAccountPauseButton", "StoreNavButton StoreAccountNavButton"));
   }
 }
 
@@ -1430,10 +1478,12 @@ function MountNavigation() {
   if (!CoreReady) return;
   MountInitialNavigation();
   MountRuntimeNavigation();
+  UpdateAccountNavigation();
   if (!NavigationObserver) {
     NavigationObserver = new MutationObserver(() => {
       MountInitialNavigation();
       MountRuntimeNavigation();
+      UpdateAccountNavigation();
     });
     NavigationObserver.observe(document.body, { childList: true, subtree: true });
   }
@@ -2012,6 +2062,8 @@ document.getElementById("StoreProfileSettings").addEventListener("click", () => 
 document.getElementById("StoreProfileSwitch").addEventListener("click", SwitchAccount);
 document.getElementById("StoreProfileLogout").addEventListener("click", () => Logout(true));
 
+addEventListener("store-account-change", UpdateAccountNavigation);
+
 addEventListener("store-settings-change", Event => {
   const Settings = Event.detail || window.__STORE_USER_SETTINGS__;
   SyncSettings(Settings).catch(() => {});
@@ -2045,7 +2097,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.26.0";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.27.3";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");

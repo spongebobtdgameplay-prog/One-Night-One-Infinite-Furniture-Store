@@ -39,13 +39,6 @@ if (Actions) {
   );
 
   CreateMenuButton(
-    "StoreProfileMainButton",
-    "PROFILE",
-    "MainMenuButton",
-    () => window.__STORE_MULTIPLAYER__?.OpenProfile?.()
-  );
-
-  CreateMenuButton(
     "FirstMenuSettingsButton",
     "SETTINGS",
     "MainMenuButton",
@@ -58,4 +51,4 @@ if (Actions) {
   );
 }
 
-window.__STORE_SINGLE_MENU_BUILD__ = "V0.12.26";
+window.__STORE_SINGLE_MENU_BUILD__ = "V0.27.3";

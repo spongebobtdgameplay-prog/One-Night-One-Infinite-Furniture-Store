@@ -11,10 +11,11 @@ Primary cardboard-box display model:
 
 The game uses the 1K glTF version when available.
 
-Fallback cardboard-box model:
+Fallback cardboard-box model and matching color texture:
 - **cardboard_box.glb**
+- **cardboard_box.png**
 - Source: Microsoft experimental-pcf-control-assets
 - License: CC BY 4.0
 - Repository: https://github.com/microsoft/experimental-pcf-control-assets
 
-The fallback is only used if the primary Poly Haven model cannot be loaded.
+The fallback pair is used when the primary Poly Haven model does not load with a usable color texture. The game applies the matching PNG explicitly so the fallback cannot render as an untextured white box.
