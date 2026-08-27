@@ -269,21 +269,30 @@ function BathroomTemplateA() {
   return {
     Name: "BathroomTemplateA",
     Base: [
-      Slot("Bathroom.Left.Tub", "Bathroom_Bathtub", -11.80, 5.50, Math.PI / 2),
-      Slot("Bathroom.Left.ToiletA", "Bathroom_Toilet", -8.55, 5.50, 0),
-      Slot("Bathroom.Left.ToiletB", "Bathroom_Toilet", -11.30, -4.65, 0),
-      Slot("Bathroom.Right.Tub", "Bathroom_Bathtub", 11.80, -5.50, -Math.PI / 2),
-      Slot("Bathroom.Right.ToiletA", "Bathroom_Toilet", 8.55, -5.50, Math.PI),
-      Slot("Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.30, 4.65, Math.PI)
+      Slot("Bathroom.ToiletBay.0", "Bathroom_Toilet", -11.85, -6.30, 0),
+      Slot("Bathroom.ToiletBay.1", "Bathroom_Toilet", -11.85, -2.10, 0),
+      Slot("Bathroom.ToiletBay.2", "Bathroom_Toilet", -11.85, 2.10, 0),
+      Slot("Bathroom.ToiletBay.3", "Bathroom_Toilet", -11.85, 6.30, 0),
+      Slot("Bathroom.BathBay.0", "Bathroom_Bathtub", 11.55, -5.80, -Math.PI / 2),
+      Slot("Bathroom.BathBay.1", "Bathroom_Bathtub", 11.55, 0.00, -Math.PI / 2),
+      Slot("Bathroom.BathBay.2", "Bathroom_Bathtub", 11.55, 5.80, -Math.PI / 2)
     ],
     Rugs: [],
     Sale: [],
     Retail: [
-      Slot("Bathroom.Left.DisplayCabinet", "RetailDisplayCabinetR79", -14.05, 0.20, Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
+      Slot("Bathroom.BathBay.DisplayCabinet", "RetailDisplayCabinetR79", 14.20, 0.00, -Math.PI / 2, {
+        Kind: "Retail",
+        AssetKey: "CabinetSmallDecorated",
+        Name: "RetailDisplayCabinetR79",
+        TargetHeight: 1.22,
+        MaximumWidth: 1.25,
+        MaximumDepth: 0.78,
+        StockStyle: "Books"
+      })
     ],
     Partitions: [
-      Partition("Bathroom.Left.Backdrop", -14.85, 4.15, 3.8),
-      Partition("Bathroom.Right.Backdrop", 14.85, -4.15, 3.8)
+      Partition("Bathroom.ToiletBay.Backdrop", -14.85, 0.00, 18.0),
+      Partition("Bathroom.BathBay.Backdrop", 14.85, 0.00, 18.0)
     ]
   };
 }
@@ -291,9 +300,19 @@ function BathroomTemplateA() {
 function BathroomTemplateB() {
   const Plan = BathroomTemplateA();
   Plan.Name = "BathroomTemplateB";
-  for (const GroupName of ["Base", "Retail", "Partitions"]) {
-    for (const Entry of Plan[GroupName]) Entry.Z *= -1;
+  for (const Entry of Plan.Base) {
+    Entry.X *= -1;
+    Entry.Rotation = Entry.Model === "Bathroom_Toilet" ? Math.PI : Math.PI / 2;
+    Entry.Slot = Entry.Slot
+      .replace("Bathroom.ToiletBay", "Bathroom.TempBay")
+      .replace("Bathroom.BathBay", "Bathroom.ToiletBay")
+      .replace("Bathroom.TempBay", "Bathroom.BathBay");
   }
+  for (const Entry of Plan.Retail) {
+    Entry.X *= -1;
+    Entry.Rotation *= -1;
+  }
+  for (const Entry of Plan.Partitions) Entry.X *= -1;
   return Plan;
 }
 
@@ -502,14 +521,6 @@ function AddDenseDepartmentSlots(Layout, Theme, Seed) {
       KitchenRetailSlot("Density.Kitchen.Right.Sink", "RetailKitchenSinkBacksplashR90", "KitchenSinkBacksplash", 11.55, P.RightNear - 2.35, Math.PI - 0.06, 1.04, 1.38, 1.22)
     );
   } else if (Theme === "BATHROOMS") {
-    ExtraBase.push(
-      Slot("Density.Bathroom.Left.ToiletNear", "Bathroom_Toilet", -5.35, P.LeftNear, 0.12),
-      Slot("Density.Bathroom.Left.Tub", "Bathroom_Bathtub", -9.65, P.LeftMid, Math.PI / 2 + 0.08),
-      Slot("Density.Bathroom.Left.ToiletOuter", "Bathroom_Toilet", -13.10, P.LeftNear + 2.60, -0.08),
-      Slot("Density.Bathroom.Right.ToiletNear", "Bathroom_Toilet", 5.55, P.RightNear, Math.PI - 0.12),
-      Slot("Density.Bathroom.Right.Tub", "Bathroom_Bathtub", 9.70, P.RightMid, -Math.PI / 2 - 0.08),
-      Slot("Density.Bathroom.Right.ToiletOuter", "Bathroom_Toilet", 13.05, P.RightNear - 2.55, Math.PI + 0.08)
-    );
   } else if (Theme === "WAREHOUSE" || Theme === "STORAGE") {
     ExtraBase.push(
       Slot("Density.Warehouse.Left.ShelfNear", "Shelf_Large", -5.55, P.LeftNear, 0.08, { StockStyle: "Books" }),
@@ -638,6 +649,31 @@ function AddEntranceDisplayPods(Layout, Index, Seed) {
   });
   Layout.Sale.push(LeftSale);
   Layout.Retail.push(RightRetail);
+}
+
+function AddDepartmentZoneHeaders(Layout, Theme) {
+  if (Theme !== "BATHROOMS") return;
+  const ToiletsOnLeft = (Layout.Base || []).some(Entry => Entry.Slot.startsWith("Bathroom.ToiletBay") && Entry.X < 0);
+  const ToiletSide = ToiletsOnLeft ? -1 : 1;
+  const BathSide = -ToiletSide;
+  Layout.ZoneHeaders.push(
+    {
+      Slot: "Bathroom.ToiletZoneHeader",
+      Text: "TOILETS",
+      X: ToiletSide * 16.84,
+      Z: 0,
+      Rotation: ToiletSide < 0 ? Math.PI / 2 : -Math.PI / 2,
+      WallMounted: true
+    },
+    {
+      Slot: "Bathroom.BathZoneHeader",
+      Text: "BATHTUBS",
+      X: BathSide * 16.84,
+      Z: 0,
+      Rotation: BathSide < 0 ? Math.PI / 2 : -Math.PI / 2,
+      WallMounted: true
+    }
+  );
 }
 
 function AddRetailZone(Layout, Index, Seed) {
@@ -840,6 +876,7 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
   };
 
   AddDenseDepartmentSlots(Layout, ThemeName, Seed);
+  AddDepartmentZoneHeaders(Layout, ThemeName);
   ReserveEntranceTransition(Layout, Index);
   AddEntranceDisplayPods(Layout, Index, Seed);
   AddCardboardBoxClusters(Layout, ThemeName, Index, Seed);
@@ -870,4 +907,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.8";
+window.__STORE_LAYOUT_BUILD__ = "V0.27.9";
