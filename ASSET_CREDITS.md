@@ -24,7 +24,6 @@ The kitchen showroom uses local copies of selected models from **KayKit Restaura
 - `oven.gltf`
 - `kitchencounter_sink.gltf`
 - `kitchencounter_sink_backsplash.gltf`
-- additional fridge variants are bundled with the local kitchen asset set for future approved layouts
 - shared `restaurantbits_texture.png`
 
 Local path: `assets/models/kitchen/kaykit/`
