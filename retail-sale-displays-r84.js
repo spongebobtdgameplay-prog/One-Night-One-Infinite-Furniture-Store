@@ -263,9 +263,10 @@ async function EnsureCardboardAisle(Chunk, Entries) {
     Marker.userData.LayoutAuthority = Chunk.Layout?.Authority;
     Marker.userData.RetailImportedR84 = true;
     Marker.userData.RetailSellableR84 = Entry.Sellable !== false;
-    Marker.userData.RetailLabel = Assets.CardboardBox.Label;
-    Marker.userData.RetailPrice = Assets.CardboardBox.Price;
-    Marker.userData.RetailDescription = Assets.CardboardBox.Description;
+    Marker.userData.RetailLabel = Entry.RetailLabel || (Entry.Contents ? `BOXED ${Entry.Contents}` : Assets.CardboardBox.Label);
+    Marker.userData.RetailPrice = Entry.RetailPrice || Assets.CardboardBox.Price;
+    Marker.userData.RetailDescription = Entry.RetailDescription || (Entry.Contents ? `CONTAINS ${Entry.Contents}` : Assets.CardboardBox.Description);
+    Marker.userData.BoxContents = Entry.Contents || "";
     Marker.userData.Source = Assets.CardboardBox.Source;
     Marker.userData.CardboardBoxMarkerR88 = true;
     Marker.userData.DecorationNoCollision = true;
@@ -390,4 +391,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.7";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.8";
