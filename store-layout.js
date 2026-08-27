@@ -571,13 +571,13 @@ function AddCardboardBoxClusters(Layout, Theme, Index, Seed) {
     { Name: "BED FRAME PARTS", Price: "$129.99" }
   ];
   const StartCluster = Math.floor(SeedRoll(Seed, "CardboardClusterStart") * ClusterZ.length) % ClusterZ.length;
+  const BaseSide = SeedRoll(Seed, "CardboardClusterBaseSide") < 0.5 ? -1 : 1;
 
   for (let Added = 0; Added < TargetCount; Added += 1) {
     const ClusterOrder = Math.floor(Added / 2);
     const ClusterIndex = (StartCluster + ClusterOrder) % ClusterZ.length;
     const LocalIndex = Added % 2;
-    const SideRoll = SeedRoll(Seed, `CardboardClusterSide:${ClusterOrder}`);
-    const Side = ((ClusterOrder + (SideRoll < 0.5 ? 0 : 1)) % 2 === 0) ? -1 : 1;
+    const Side = ClusterOrder % 2 === 0 ? BaseSide : -BaseSide;
     const Offset = LocalOffsets[(LocalIndex + ClusterOrder) % LocalOffsets.length];
     const XJitter = (SeedRoll(Seed, `CardboardClusterX:${Added}`) - 0.5) * 0.20;
     const ZJitter = (SeedRoll(Seed, `CardboardClusterZ:${Added}`) - 0.5) * 0.24;
@@ -870,4 +870,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.7";
+window.__STORE_LAYOUT_BUILD__ = "V0.27.8";
