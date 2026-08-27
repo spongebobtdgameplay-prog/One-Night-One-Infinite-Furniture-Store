@@ -126,6 +126,7 @@ function AddCollision(Chunk, Object, Type, Reserve = false) {
     Type,
     Active: Boolean(Chunk.Active),
     RetailZoneR82: true,
+    CollisionObject: Object,
     PreciseGeometry: false,
     LegacyCollisionDisabled: false
   };
