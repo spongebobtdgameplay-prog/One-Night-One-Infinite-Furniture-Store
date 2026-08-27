@@ -15,12 +15,16 @@ let LastTriggerAt = -Infinity;
 let LastFrameAt = performance.now();
 let SurfaceOffset = 0;
 let SurfaceTarget = 0;
+let StepHeight = 0.03;
+let StepDirection = 1;
 const BaseEyeHeight = Number(Game.PlayerEyeHeight) || Number(Game.Camera.position.y) || 1.68;
 
 const STEP_DURATION = 360;
 const STEP_COOLDOWN = 170;
 const MIN_TRIGGER_SPEED = 0.22;
 const EDGE_PADDING = 0.025;
+const MAX_SURFACE_HEIGHT = 0.18;
+const MIN_VISIBLE_STEP_HEIGHT = 0.018;
 const BoneNames = [
   "Hips", "Abdomen", "Torso",
   "UpperLeg.L", "UpperLeg.R", "LowerLeg.L", "LowerLeg.R", "Foot.L", "Foot.R",
@@ -85,12 +89,14 @@ function RugAt(Position) {
   return RugRecordAt(Position)?.Id || "";
 }
 
-function TriggerStep(Side = null) {
+function TriggerStep(Side = null, Height = MIN_VISIBLE_STEP_HEIGHT, Direction = 1) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return;
   LastTriggerAt = Now;
   StepStartedAt = Now;
   StepSide = Side === -1 || Side === 1 ? Side : -StepSide;
+  StepHeight = THREE.MathUtils.clamp(Math.max(Math.abs(Number(Height) || 0), MIN_VISIBLE_STEP_HEIGHT), MIN_VISIBLE_STEP_HEIGHT, MAX_SURFACE_HEIGHT);
+  StepDirection = Direction < 0 ? -1 : 1;
 }
 
 function UpdateCrossingState() {
@@ -101,9 +107,11 @@ function UpdateCrossingState() {
   const NextRug = RugRecordAt(Position);
   const NextRugId = NextRug?.Id || "";
 
-  SurfaceTarget = NextRug
-    ? THREE.MathUtils.clamp(Number(NextRug.Bounds?.max?.y) || 0, 0, 0.12)
+  const PreviousSurfaceTarget = SurfaceTarget;
+  const NextSurfaceTarget = NextRug
+    ? THREE.MathUtils.clamp(Number(NextRug.Bounds?.max?.y) || 0, 0, MAX_SURFACE_HEIGHT)
     : 0;
+  SurfaceTarget = NextSurfaceTarget;
   const SurfaceAlpha = 1 - Math.exp(-Delta * 22);
   SurfaceOffset = THREE.MathUtils.lerp(SurfaceOffset, SurfaceTarget, SurfaceAlpha);
   if (Math.abs(SurfaceOffset - SurfaceTarget) < 0.0004) SurfaceOffset = SurfaceTarget;
@@ -120,7 +128,10 @@ function UpdateCrossingState() {
   TempVelocity.y = 0;
   const Speed = TempVelocity.length() / Delta;
 
-  if (NextRugId !== CurrentRugId && Speed >= MIN_TRIGGER_SPEED) TriggerStep();
+  if (NextRugId !== CurrentRugId && Speed >= MIN_TRIGGER_SPEED) {
+    const HeightDelta = NextSurfaceTarget - PreviousSurfaceTarget;
+    TriggerStep(null, Math.abs(HeightDelta), HeightDelta < 0 ? -1 : 1);
+  }
   CurrentRugId = NextRugId;
   LastPosition.copy(Position);
 }
@@ -147,7 +158,12 @@ function ApplyStepPose(Root, Elapsed) {
   const Lead = StepCurve(0.00, 0.66, T);
   const Trail = StepCurve(0.34, 1.00, T);
   const Body = Math.sin(T * Math.PI);
+  const HeightScale = THREE.MathUtils.clamp(0.46 + StepHeight / 0.065, 0.46, 1.32);
+  const DirectionScale = StepDirection > 0 ? 1 : 0.72;
+  const MotionScale = HeightScale * DirectionScale;
+  const BodyLift = Math.min(0.052, Math.max(0.010, StepHeight * 0.52)) * Body * DirectionScale;
 
+  Root.position.y += BodyLift;
   const IsLeftLead = StepSide < 0;
   const LeadUpper = Bone(Root, IsLeftLead ? "UpperLeg.L" : "UpperLeg.R");
   const LeadLower = Bone(Root, IsLeftLead ? "LowerLeg.L" : "LowerLeg.R");
@@ -156,17 +172,17 @@ function ApplyStepPose(Root, Elapsed) {
   const TrailLower = Bone(Root, IsLeftLead ? "LowerLeg.R" : "LowerLeg.L");
   const TrailFoot = Bone(Root, IsLeftLead ? "Foot.R" : "Foot.L");
 
-  ApplyBoneRotation(LeadUpper, -0.38 * Lead, 0, StepSide * -0.018 * Lead);
-  ApplyBoneRotation(LeadLower, 0.48 * Lead, 0, 0);
-  ApplyBoneRotation(LeadFoot, -0.23 * Lead, 0, 0);
-  ApplyBoneRotation(TrailUpper, -0.20 * Trail, 0, StepSide * 0.012 * Trail);
-  ApplyBoneRotation(TrailLower, 0.28 * Trail, 0, 0);
-  ApplyBoneRotation(TrailFoot, -0.12 * Trail, 0, 0);
-  ApplyBoneRotation(Bone(Root, "Hips"), 0.045 * Body, 0, StepSide * 0.035 * Body);
-  ApplyBoneRotation(Bone(Root, "Abdomen"), -0.028 * Body, StepSide * -0.018 * Body, 0);
+  ApplyBoneRotation(LeadUpper, -0.38 * Lead * MotionScale, 0, StepSide * -0.018 * Lead);
+  ApplyBoneRotation(LeadLower, 0.48 * Lead * MotionScale, 0, 0);
+  ApplyBoneRotation(LeadFoot, -0.23 * Lead * MotionScale, 0, 0);
+  ApplyBoneRotation(TrailUpper, -0.20 * Trail * MotionScale, 0, StepSide * 0.012 * Trail);
+  ApplyBoneRotation(TrailLower, 0.28 * Trail * MotionScale, 0, 0);
+  ApplyBoneRotation(TrailFoot, -0.12 * Trail * MotionScale, 0, 0);
+  ApplyBoneRotation(Bone(Root, "Hips"), 0.045 * Body * MotionScale, 0, StepSide * 0.035 * Body);
+  ApplyBoneRotation(Bone(Root, "Abdomen"), -0.028 * Body * MotionScale, StepSide * -0.018 * Body * MotionScale, 0);
   ApplyBoneRotation(Bone(Root, "Torso"), -0.018 * Body, StepSide * 0.014 * Body, 0);
-  ApplyBoneRotation(Bone(Root, "UpperArm.L"), 0.055 * Trail - 0.035 * Lead, 0, 0);
-  ApplyBoneRotation(Bone(Root, "UpperArm.R"), 0.055 * Lead - 0.035 * Trail, 0, 0);
+  ApplyBoneRotation(Bone(Root, "UpperArm.L"), (0.055 * Trail - 0.035 * Lead) * MotionScale, 0, 0);
+  ApplyBoneRotation(Bone(Root, "UpperArm.R"), (0.055 * Lead - 0.035 * Trail) * MotionScale, 0, 0);
   Root.updateMatrixWorld(true);
 }
 
@@ -180,10 +196,12 @@ if (!Player.__SurfaceStepAnimationR87Wrapped) {
 
     const Bones = BoneNames.map(Name => Bone(Root, Name)).filter(Boolean);
     const Saved = Bones.map(Item => Item.quaternion.clone());
+    const SavedRootY = Root.position.y;
     ApplyStepPose(Root, Elapsed);
     try {
       return OriginalPlayerRender(Renderer, Scene, Camera);
     } finally {
+      Root.position.y = SavedRootY;
       for (let Index = 0; Index < Bones.length; Index += 1) Bones[Index].quaternion.copy(Saved[Index]);
       Root.updateMatrixWorld(true);
     }
@@ -204,4 +222,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetSurfaceTarget: () => SurfaceTarget,
   GetRegisteredCount: () => Rugs.size
 };
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.6-R88";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8";
