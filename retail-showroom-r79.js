@@ -155,7 +155,7 @@ function NearestCollisionEntry(Chunk, Type, Center) {
   return Best;
 }
 
-function ApplySolidBounds(Chunk, Entry, Bounds, Type = null) {
+function ApplySolidBounds(Chunk, Entry, Bounds, Type = null, CollisionObject = null) {
   if (!Entry) {
     Entry = { ChunkId: Chunk.Id, Type: Type || "RetailObjectR79" };
     Chunk.CollisionEntries.push(Entry);
@@ -173,6 +173,7 @@ function ApplySolidBounds(Chunk, Entry, Bounds, Type = null) {
   Entry.TestCollision = null;
   Entry.Active = Boolean(Chunk.Active);
   Entry.RetailModelR79 = true;
+  if (CollisionObject?.isObject3D) Entry.CollisionObject = CollisionObject;
   if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
   return Entry;
 }
@@ -188,7 +189,7 @@ function TightenExistingCollision(Chunk, Model) {
     new THREE.Vector3(Center.x - HalfX, Math.max(0, Bounds.min.y), Center.z - HalfZ),
     new THREE.Vector3(Center.x + HalfX, Bounds.max.y, Center.z + HalfZ)
   );
-  ApplySolidBounds(Chunk, NearestCollisionEntry(Chunk, Model.name, Center), TightBounds, Model.name);
+  ApplySolidBounds(Chunk, NearestCollisionEntry(Chunk, Model.name, Center), TightBounds, Model.name, Model);
 }
 
 async function ReplaceShelfModel(Chunk, Model, Key, TargetHeight, MaximumWidth, MaximumDepth) {
@@ -252,7 +253,7 @@ function ReplaceTaskCollision(Chunk, Task) {
       Best = Entry;
     }
   }
-  ApplySolidBounds(Chunk, Best, Bounds, "StoreTaskTerminalR79");
+  ApplySolidBounds(Chunk, Best, Bounds, "StoreTaskTerminalR79", Group);
 }
 
 async function BuildImportedBreaker(Chunk, Task) {
