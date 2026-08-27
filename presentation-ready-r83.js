@@ -57,6 +57,45 @@ function HasVisibleLegacyPriceSign(Chunk) {
   return Found;
 }
 
+function ObjectHasFinalCollision(Chunk, Object) {
+  return (Chunk.CollisionEntries || []).some(Entry =>
+    Entry?.CollisionObject === Object &&
+    (
+      Entry.ConvexCollisionR89 ||
+      Entry.CoreFixR87 ||
+      Entry.PreciseGeometry ||
+      Entry.RetailZoneR82
+    )
+  );
+}
+
+function CollisionPresentationReady(Chunk) {
+  for (const Model of Chunk.Models || []) {
+    if (!Model?.parent || !FurnitureNames.has(Model.name)) continue;
+    if (!ObjectHasFinalCollision(Chunk, Model)) return false;
+  }
+
+  for (const Object of Chunk.Group?.children || []) {
+    if (!Object?.parent) continue;
+    const Name = String(Object.name || "");
+    const NeedsCollision =
+      Object.userData?.RetailSellableR84 ||
+      Object.userData?.RetailZoneR82 ||
+      Object.userData?.CardboardBoxInstancesR88 ||
+      Name === "DepartmentHeaderR73" ||
+      Name === "StoreTask" ||
+      Name.startsWith("RetailZoneHeaderR82-") ||
+      Name.startsWith("CompactPriceTagR83-");
+    if (NeedsCollision && !ObjectHasFinalCollision(Chunk, Object)) return false;
+  }
+  return true;
+}
+
+function SetChunkPresentationVisibility(Chunk, Visible) {
+  if (Chunk?.Group) Chunk.Group.visible = Visible === true;
+  for (const Object of Chunk?.ExternalObjects || []) Object.visible = Visible === true;
+}
+
 function PartitionsFinished(Chunk) {
   let Total = 0;
   let Finished = 0;
@@ -169,6 +208,7 @@ async function RunWorldPasses(Chunk) {
 export async function FinalizeChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Chunk.Group.userData?.PresentationReadyR83 || Finalizing.has(Chunk)) return;
   Finalizing.add(Chunk);
+  SetChunkPresentationVisibility(Chunk, false);
   try {
     const Started = performance.now();
     let Pass = 0;
@@ -182,14 +222,30 @@ export async function FinalizeChunk(Chunk) {
     await RunWorldPasses(Chunk);
     await Delay(140);
     UpdateStability(Chunk);
-    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R86 fix pass.`);
+    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final world pass.`);
 
+    window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
+    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
+    window.__STORE_SOLID_OBJECT_COLLISION_R83__?.ProcessChunk?.(Chunk, true);
+    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
+
+    if (!CollisionPresentationReady(Chunk)) {
+      await Delay(90);
+      window.__STORE_SOLID_OBJECT_COLLISION_R83__?.ProcessChunk?.(Chunk, true);
+      window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
+    }
+
+    if (!CollisionPresentationReady(Chunk)) {
+      Chunk.Group.userData.PresentationCollisionPendingR90 = true;
+      return;
+    }
+
+    Chunk.Group.userData.PresentationCollisionPendingR90 = false;
+    Chunk.Group.userData.CollisionPresentationReadyR90 = true;
     Chunk.Group.userData.PresentationReadyR83 = true;
     Chunk.Group.userData.PresentationReadyR82 = true;
     Chunk.Group.userData.PresentationReadyAt = performance.now();
-    window.__STORE_SOLID_OBJECT_COLLISION_R83__?.ProcessChunk?.(Chunk, true);
-    window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
-    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
+    SetChunkPresentationVisibility(Chunk, true);
   } finally {
     Finalizing.delete(Chunk);
   }
@@ -226,4 +282,4 @@ const Interval = setInterval(Discover, 400);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.7";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.9-R90";
