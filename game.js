@@ -47,6 +47,8 @@ const PreparedChunks = new Map();
 const PreparingChunks = new Map();
 const Tasks = new Map();
 const PlayerApi = window.__STORE_PLAYER__ || null;
+let GroundSurfaceOffset = 0;
+let GroundSurfaceTarget = 0;
 
 window.__STORE_COLLISION_BOXES__ = CollisionBoxes;
 
@@ -1103,6 +1105,20 @@ function MoveAxis(ForwardDistance, RightDistance) {
   }
 }
 
+function UpdateGroundSurface(Delta) {
+  const Collision = window.__STORE_COLLISION_UTILITY__ || null;
+  const Radius = PlayerApi?.GetPlayerRadius?.() || 0.285;
+  const Surface = Collision?.FindWalkableSurface?.(Camera.position, Radius, CollisionBoxes, {
+    FloorY: 0,
+    MaxStepHeight: 0.22
+  });
+  GroundSurfaceTarget = Surface?.Hit ? THREE.MathUtils.clamp(Number(Surface.Height) || 0, 0, 0.22) : 0;
+  const Alpha = 1 - Math.exp(-Math.max(0.001, Delta) * 20);
+  GroundSurfaceOffset = THREE.MathUtils.lerp(GroundSurfaceOffset, GroundSurfaceTarget, Alpha);
+  if (Math.abs(GroundSurfaceOffset - GroundSurfaceTarget) < 0.0005) GroundSurfaceOffset = GroundSurfaceTarget;
+  Camera.position.y = PlayerEyeHeight + GroundSurfaceOffset;
+}
+
 function UpdateMovement(Delta) {
   if (!Controls.isLocked) return;
   let Forward = 0;
@@ -1122,7 +1138,7 @@ function UpdateMovement(Delta) {
   const ForwardStep = Forward * Distance / StepCount;
   const RightStep = Right * Distance / StepCount;
   for (let Step = 0; Step < StepCount; Step += 1) MoveAxis(ForwardStep, RightStep);
-  Camera.position.y = PlayerEyeHeight;
+  UpdateGroundSurface(Delta);
 }
 
 function ShowError(Message) {
@@ -1211,6 +1227,8 @@ window.__STORE_GAME__ = {
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
   PlayerEyeHeight,
+  GetGroundSurfaceOffset: () => GroundSurfaceOffset,
+  GetGroundSurfaceTarget: () => GroundSurfaceTarget,
   PrepareChunk,
   SetStoreSeconds,
   SetCompletedTaskCount,
