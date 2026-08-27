@@ -294,19 +294,21 @@ function BathroomTemplateB() {
 }
 
 function WarehouseTemplateA() {
-  const Base = [];
-  let NumberIndex = 0;
-  for (const X of [-12.60, -9.35, 9.35, 12.60]) {
-    for (const Z of [-6.20, 0, 6.20]) {
-      Base.push(Slot(`Warehouse.Shelf.${NumberIndex}`, "Shelf_Large", X, Z, X < 0 ? 0 : Math.PI, { StockStyle: "Books" }));
-      NumberIndex += 1;
-    }
-  }
-  Base.push(Slot("Warehouse.Left.Bookcase", "Bookshelf", -14.35, -8.95, Math.PI / 2, { StockStyle: "Books" }));
-  Base.push(Slot("Warehouse.Right.Bookcase", "Bookshelf", 14.35, 8.95, -Math.PI / 2, { StockStyle: "Books" }));
   return {
     Name: "WarehouseTemplateA",
-    Base,
+    Base: [
+      Slot("Warehouse.Left.ShelfBack", "Shelf_Large", -12.20, -8.20, 0.04, { StockStyle: "Books" }),
+      Slot("Warehouse.Left.BookcaseBack", "Bookshelf", -9.45, -5.55, -0.06, { StockStyle: "Books" }),
+      Slot("Warehouse.Left.ShelfMid", "Shelf_Large", -11.35, -1.45, 0.03, { StockStyle: "Books" }),
+      Slot("Warehouse.Left.BookcaseMid", "Bookshelf", -8.85, 2.55, -0.05, { StockStyle: "Books" }),
+      Slot("Warehouse.Left.ShelfFront", "Shelf_Large", -12.55, 6.85, 0.07, { StockStyle: "Books" }),
+
+      Slot("Warehouse.Right.BookcaseBack", "Bookshelf", 11.90, -7.10, Math.PI - 0.05, { StockStyle: "Books" }),
+      Slot("Warehouse.Right.ShelfBack", "Shelf_Large", 9.15, -4.05, Math.PI + 0.06, { StockStyle: "Books" }),
+      Slot("Warehouse.Right.BookcaseMid", "Bookshelf", 12.45, 0.20, Math.PI - 0.03, { StockStyle: "Books" }),
+      Slot("Warehouse.Right.ShelfMid", "Shelf_Large", 8.85, 3.85, Math.PI + 0.05, { StockStyle: "Books" }),
+      Slot("Warehouse.Right.BookcaseFront", "Bookshelf", 11.45, 7.55, Math.PI - 0.06, { StockStyle: "Books" })
+    ],
     Rugs: [],
     Sale: [],
     Retail: [
@@ -320,8 +322,12 @@ function WarehouseTemplateA() {
 function WarehouseTemplateB() {
   const Plan = WarehouseTemplateA();
   Plan.Name = "WarehouseTemplateB";
-  for (const Entry of Plan.Base) Entry.Z *= -1;
-  for (const Entry of Plan.Retail) Entry.Z *= -1;
+  for (const GroupName of ["Base", "Retail"]) {
+    for (const Entry of Plan[GroupName]) {
+      Entry.Z *= -1;
+      Entry.Rotation = -Entry.Rotation;
+    }
+  }
   return Plan;
 }
 
@@ -614,13 +620,13 @@ function AddRetailZone(Layout, Index, Seed) {
   const Side = SeedRoll(Seed, "EntranceRetailZoneSide") < 0.5 ? -1 : 1;
   const Facing = Side < 0 ? Math.PI / 2 : -Math.PI / 2;
   Layout.Zones.push(
-    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.80, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.1", "Cart", Side * 14.25, 8.30, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.2", "Cart", Side * 14.25, 9.80, Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.30, -Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.0", "Basket", -Side * 12.75, 6.90, -Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.1", "Basket", -Side * 12.75, 8.30, -Facing, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.2", "Basket", -Side * 12.75, 9.70, -Facing, { Kind: "Zone", Sellable: false })
+    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.75, Facing + 0.035 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.1", "Cart", Side * 13.95, 8.20, Facing - 0.045 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.2", "Cart", Side * 14.35, 9.65, Facing + 0.025 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.45, -Facing + 0.02 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.0", "Basket", -Side * 12.55, 6.85, -Facing + 0.08 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.1", "Basket", -Side * 12.95, 8.15, -Facing - 0.05 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.2", "Basket", -Side * 12.50, 9.45, -Facing + 0.10 * Side, { Kind: "Zone", Sellable: false })
   );
   Layout.ZoneHeaders.push(
     { Slot: "Entrance.CartHeader", Text: "CART RETURN", X: Side * 16.84, Z: 8.55, Rotation: Facing, WallMounted: true },
