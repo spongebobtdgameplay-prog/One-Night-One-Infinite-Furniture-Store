@@ -13,6 +13,9 @@ let StepStartedAt = -Infinity;
 let StepSide = 1;
 let LastTriggerAt = -Infinity;
 let LastFrameAt = performance.now();
+let SurfaceOffset = 0;
+let SurfaceTarget = 0;
+const BaseEyeHeight = Number(Game.PlayerEyeHeight) || Number(Game.Camera.position.y) || 1.68;
 
 const STEP_DURATION = 360;
 const STEP_COOLDOWN = 170;
@@ -60,14 +63,18 @@ function RefreshRegisteredRugs() {
   }
 }
 
-function RugAt(Position) {
+function RugRecordAt(Position) {
   for (const Record of Rugs.values()) {
     const Bounds = Record.Bounds;
     if (Position.x < Bounds.min.x - EDGE_PADDING || Position.x > Bounds.max.x + EDGE_PADDING) continue;
     if (Position.z < Bounds.min.z - EDGE_PADDING || Position.z > Bounds.max.z + EDGE_PADDING) continue;
-    return Record.Id;
+    return Record;
   }
-  return "";
+  return null;
+}
+
+function RugAt(Position) {
+  return RugRecordAt(Position)?.Id || "";
 }
 
 function TriggerStep(Side = null) {
@@ -83,10 +90,20 @@ function UpdateCrossingState() {
   const Delta = Math.max(0.001, Math.min((Now - LastFrameAt) / 1000, 0.08));
   LastFrameAt = Now;
   const Position = Game.Camera.position;
+  const NextRug = RugRecordAt(Position);
+  const NextRugId = NextRug?.Id || "";
+
+  SurfaceTarget = NextRug
+    ? THREE.MathUtils.clamp(Number(NextRug.Bounds?.max?.y) || 0, 0, 0.12)
+    : 0;
+  const SurfaceAlpha = 1 - Math.exp(-Delta * 22);
+  SurfaceOffset = THREE.MathUtils.lerp(SurfaceOffset, SurfaceTarget, SurfaceAlpha);
+  if (Math.abs(SurfaceOffset - SurfaceTarget) < 0.0004) SurfaceOffset = SurfaceTarget;
+  Game.Camera.position.y = BaseEyeHeight + SurfaceOffset;
 
   if (!HasLastPosition) {
     LastPosition.copy(Position);
-    CurrentRugId = RugAt(Position);
+    CurrentRugId = NextRugId;
     HasLastPosition = true;
     return;
   }
@@ -94,7 +111,6 @@ function UpdateCrossingState() {
   TempVelocity.copy(Position).sub(LastPosition);
   TempVelocity.y = 0;
   const Speed = TempVelocity.length() / Delta;
-  const NextRugId = RugAt(Position);
 
   if (NextRugId !== CurrentRugId && Speed >= MIN_TRIGGER_SPEED) TriggerStep();
   CurrentRugId = NextRugId;
@@ -176,6 +192,8 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   UnregisterChunk,
   RefreshRegisteredRugs,
   TriggerStep,
+  GetSurfaceOffset: () => SurfaceOffset,
+  GetSurfaceTarget: () => SurfaceTarget,
   GetRegisteredCount: () => Rugs.size
 };
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.24.1-R87";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.6-R88";
