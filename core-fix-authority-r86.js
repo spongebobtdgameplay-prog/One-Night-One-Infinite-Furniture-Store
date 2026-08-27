@@ -391,12 +391,21 @@ function RemoveDecorativeWindows(Chunk) {
 }
 
 function InstallWalkableRugSurface(Chunk, Object) {
-  const Previous = WalkableSurfaceEntries.get(Object);
-  if (Previous) RemoveGlobalEntry(Chunk, Previous);
-
   Object.updateWorldMatrix(true, true);
   const WorldBox = new THREE.Box3().setFromObject(Object);
   if (WorldBox.isEmpty()) return null;
+
+  const Previous = WalkableSurfaceEntries.get(Object);
+  if (Previous && Previous.ChunkId === Chunk.Id) {
+    Previous.Box.copy(WorldBox);
+    Previous.OriginalBox.copy(WorldBox);
+    Previous.OriginalLegacyBox.copy(WorldBox);
+    Previous.SurfaceTopY = WorldBox.max.y;
+    Previous.Active = Boolean(Chunk.Active);
+    if (Chunk.Active && !Game.CollisionBoxes.includes(Previous)) Game.CollisionBoxes.push(Previous);
+    return Previous;
+  }
+  if (Previous) RemoveGlobalEntry(Chunk, Previous);
 
   const StableBox = WorldBox.clone();
   const Entry = {
@@ -412,7 +421,6 @@ function InstallWalkableRugSurface(Chunk, Object) {
     SurfaceTopY: StableBox.max.y,
     LegacyCollisionDisabled: true,
     TestPlayerCollision() {
-      // Rugs are a walkable top surface, not a horizontal blocking wall.
       return false;
     }
   };
@@ -425,18 +433,21 @@ function InstallWalkableRugSurface(Chunk, Object) {
 
 function RegisterWalkableRugs(Chunk) {
   SurfaceStep?.UnregisterChunk?.(Chunk.Id);
-
-  for (const Entry of [...(Chunk.CollisionEntries || [])]) {
-    if (Entry?.WalkableSurfaceR88) RemoveGlobalEntry(Chunk, Entry);
-  }
+  const Seen = new Set();
 
   Chunk.Group?.traverse?.(Object => {
     if (!IsRugObject(Object) || !Object.visible) return;
+    Seen.add(Object);
     Object.userData.WalkableCarpetR87 = true;
     Object.userData.DecorationNoCollision = false;
     SurfaceStep?.RegisterRug?.(Object, Chunk.Id);
     InstallWalkableRugSurface(Chunk, Object);
   });
+
+  for (const Entry of [...(Chunk.CollisionEntries || [])]) {
+    if (!Entry?.WalkableSurfaceR88 || Seen.has(Entry.CollisionObject)) continue;
+    RemoveGlobalEntry(Chunk, Entry);
+  }
 }
 
 function CollectManagedRoots(Chunk) {
@@ -492,7 +503,7 @@ export function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 480);
+const Interval = setInterval(ProcessAll, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
