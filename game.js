@@ -631,10 +631,11 @@ function AddPlannedRug(Chunk, Entry) {
   const Colors = [0x574236, 0x37494b, 0x4a3d50, 0x4c493a, 0x3e4740, 0x493d35];
   const ColorIndex = Math.floor(SeededRandom(Chunk.Seed + Entry.Variant * 17 + 31) * Colors.length);
   const Material = new THREE.MeshStandardMaterial({ color: Colors[ColorIndex], roughness: 1 });
+  const RugHeight = 0.060;
   const Rug = Box(
     `ShowroomRug-${Entry.Slot}`,
-    new THREE.Vector3(Entry.Width, 0.018, Entry.Depth),
-    new THREE.Vector3(Entry.X, 0.012, Entry.Z),
+    new THREE.Vector3(Entry.Width, RugHeight, Entry.Depth),
+    new THREE.Vector3(Entry.X, RugHeight * 0.5, Entry.Z),
     Material,
     Chunk
   );
