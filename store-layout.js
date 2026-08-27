@@ -694,11 +694,17 @@ function AddRetailZone(Layout, Index, Seed) {
     Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.45, -Facing + 0.02 * Side, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.Basket.0", "Basket", -Side * 12.55, 6.85, -Facing + 0.08 * Side, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.Basket.1", "Basket", -Side * 12.95, 8.15, -Facing - 0.05 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.2", "Basket", -Side * 12.50, 9.45, -Facing + 0.10 * Side, { Kind: "Zone", Sellable: false })
+    Slot("Entrance.Basket.2", "Basket", -Side * 12.50, 9.45, -Facing + 0.10 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Checkout", "Checkout", Side * 12.45, 4.35, Facing, {
+      Kind: "Zone",
+      Sellable: false,
+      Footprint: [1.55, 0.86]
+    })
   );
   Layout.ZoneHeaders.push(
     { Slot: "Entrance.CartHeader", Text: "CART RETURN", X: Side * 16.84, Z: 8.55, Rotation: Facing, WallMounted: true },
-    { Slot: "Entrance.BagHeader", Text: "BAGS + BASKETS", X: -Side * 16.84, Z: 8.60, Rotation: -Facing, WallMounted: true }
+    { Slot: "Entrance.BagHeader", Text: "BAGS + BASKETS", X: -Side * 16.84, Z: 8.60, Rotation: -Facing, WallMounted: true },
+    { Slot: "Entrance.CheckoutHeader", Text: "CHECKOUT", X: Side * 16.84, Z: 4.35, Rotation: Facing, WallMounted: true }
   );
 }
 
