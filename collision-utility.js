@@ -368,6 +368,7 @@ function FindCapsuleContact(Start, End, Radius, Entries, Options = {}) {
 
   for (const Entry of Entries || []) {
     if (Filter && !Filter(Entry)) continue;
+    if (Entry?.WalkableSurfaceR88 && Options.IncludeWalkableSurfaces !== true) continue;
     const Bounds = EntryBounds(Entry);
     if (!FiniteBounds(Bounds)) continue;
     const Hit = SegmentExpandedBoundsHit(Start, End, Bounds, Padding);
@@ -530,6 +531,7 @@ function PushPointOutOfWorld(Point, Radius, Entries, Result = new THREE.Vector3(
     let Changed = false;
     for (const Entry of Entries || []) {
       if (Filter && !Filter(Entry)) continue;
+      if (Entry?.WalkableSurfaceR88 && Options.IncludeWalkableSurfaces !== true) continue;
       const Bounds = EntryBounds(Entry);
       if (!FiniteBounds(Bounds) || !PointInsideExpandedBounds(Result, Bounds, Padding)) continue;
       const Normal = ExpandedBoundsExitNormal(Result, Bounds, Padding, Scratch.Normal);
