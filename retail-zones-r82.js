@@ -177,6 +177,8 @@ async function PlacePlannedZoneAsset(Chunk, Entry, Index) {
       Register.position.set(0.20, CounterBounds.max.y + 0.018, 0.03);
       Register.rotation.y = -0.08;
       Register.name = "CheckoutRegisterR90";
+      delete Register.userData.RetailZoneR82;
+      Register.userData.NestedStoreFixtureR90 = true;
       Object.add(Register);
       Object.userData.CheckoutFixtureR90 = true;
     }
