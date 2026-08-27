@@ -639,7 +639,13 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
     ...Layout.Sale,
     ...Layout.Zones,
     ...(Layout.Task ? [Layout.Task] : [])
-  ];
+  ].map((Entry, Order) => ({ Entry, Order }))
+    .sort((A, B) => {
+      const ARequired = A.Entry.Required !== false ? 1 : 0;
+      const BRequired = B.Entry.Required !== false ? 1 : 0;
+      return BRequired - ARequired || A.Order - B.Order;
+    })
+    .map(Item => Item.Entry);
 
   Layout.ValidationErrors = [];
   Layout.Slots = Object.create(null);
