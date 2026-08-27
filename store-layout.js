@@ -90,6 +90,10 @@ function Slot(SlotName, Model, X, Z, Rotation = 0, Extra = {}) {
     MaximumWidth: Extra.MaximumWidth,
     MaximumDepth: Extra.MaximumDepth,
     PriceZOffset: Number(Extra.PriceZOffset) || 0,
+    Contents: String(Extra.Contents || ""),
+    RetailLabel: String(Extra.RetailLabel || ""),
+    RetailPrice: String(Extra.RetailPrice || ""),
+    RetailDescription: String(Extra.RetailDescription || ""),
     Decorations: Array.isArray(Extra.Decorations) ? Extra.Decorations : [],
     StockStyle: Extra.StockStyle || "",
     Kind: Extra.Kind || "Base",
@@ -543,34 +547,51 @@ function AddDenseDepartmentSlots(Layout, Theme, Seed) {
   Layout.Retail.push(...ExtraRetail);
 }
 
-function AddCardboardBoxAisle(Layout, Theme, Index, Seed) {
+function AddCardboardBoxClusters(Layout, Theme, Index, Seed) {
   const DenseStorage = Theme === "WAREHOUSE" || Theme === "STORAGE";
-  const Side = SeedRoll(Seed, "CardboardAisleSide") < 0.5 ? -1 : 1;
-  const BaseX = DenseStorage ? 5.45 : 5.35;
-  const ZPositions = DenseStorage
-    ? [-9.00, -7.20, -5.40, -3.60, -1.80, 0, 1.80, 3.60, 5.40, 7.20, 9.00]
-    : [-8.80, -6.60, -4.40, -2.20, 0, 2.20, 4.40, 6.60, 8.80];
   const TargetCount = DenseStorage ? 10 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 7 : 5);
-  const RotationChoices = [-0.14, -0.08, -0.02, 0.04, 0.10, 0.15];
-  const ScaleChoices = [0.86, 0.93, 1.00, 1.06, 1.12];
-  const LaneOffsets = [0, 0.52, 0.18, 0.66, 0.08, 0.42];
-  const ZJitter = [-0.22, 0.12, -0.08, 0.24, 0.04, -0.16];
-  const Start = Math.floor(SeedRoll(Seed, "CardboardAisleStart") * ZPositions.length) % ZPositions.length;
-  let Added = 0;
+  const ClusterZ = DenseStorage
+    ? [-8.10, -4.05, -0.10, 3.95, 7.90]
+    : [-7.35, -2.20, 3.05, 7.10];
+  const LocalOffsets = [
+    { X: 0.00, Z: -0.40 },
+    { X: 0.82, Z: 0.34 },
+    { X: 0.26, Z: 0.92 }
+  ];
+  const RotationChoices = [-0.34, -0.22, -0.11, 0.06, 0.18, 0.29];
+  const ScaleChoices = [0.88, 0.94, 1.00, 1.06, 1.11];
+  const Contents = [
+    { Name: "SIDE TABLE", Price: "$39.99" },
+    { Name: "FLOOR LAMP", Price: "$24.99" },
+    { Name: "DINING CHAIR", Price: "$49.99" },
+    { Name: "NIGHTSTAND", Price: "$59.99" },
+    { Name: "BOOKSHELF", Price: "$79.99" },
+    { Name: "STORAGE CABINET", Price: "$99.99" },
+    { Name: "COFFEE TABLE", Price: "$89.99" },
+    { Name: "BED FRAME PARTS", Price: "$129.99" }
+  ];
+  const StartCluster = Math.floor(SeedRoll(Seed, "CardboardClusterStart") * ClusterZ.length) % ClusterZ.length;
 
-  for (let Offset = 0; Offset < ZPositions.length && Added < TargetCount; Offset += 1) {
-    const BaseZ = ZPositions[(Start + Offset) % ZPositions.length];
-    const JitterIndex = Math.floor(SeedRoll(Seed, `CardboardAisleJitter:${Offset}`) * ZJitter.length) % ZJitter.length;
-    const Z = BaseZ + ZJitter[JitterIndex];
+  for (let Added = 0; Added < TargetCount; Added += 1) {
+    const ClusterOrder = Math.floor(Added / 2);
+    const ClusterIndex = (StartCluster + ClusterOrder) % ClusterZ.length;
+    const LocalIndex = Added % 2;
+    const SideRoll = SeedRoll(Seed, `CardboardClusterSide:${ClusterOrder}`);
+    const Side = ((ClusterOrder + (SideRoll < 0.5 ? 0 : 1)) % 2 === 0) ? -1 : 1;
+    const Offset = LocalOffsets[(LocalIndex + ClusterOrder) % LocalOffsets.length];
+    const XJitter = (SeedRoll(Seed, `CardboardClusterX:${Added}`) - 0.5) * 0.20;
+    const ZJitter = (SeedRoll(Seed, `CardboardClusterZ:${Added}`) - 0.5) * 0.24;
+    const X = Side * (5.72 + Offset.X + XJitter);
+    const Z = ClusterZ[ClusterIndex] + Offset.Z + ZJitter;
     if (Index === 0 && Z > 5.20) continue;
 
-    const RotationIndex = Math.floor(SeedRoll(Seed, `CardboardAisleRotation:${Offset}`) * RotationChoices.length) % RotationChoices.length;
-    const ScaleIndex = Math.floor(SeedRoll(Seed, `CardboardAisleScale:${Offset}`) * ScaleChoices.length) % ScaleChoices.length;
-    const LaneIndex = Math.floor(SeedRoll(Seed, `CardboardAisleLane:${Offset}`) * LaneOffsets.length) % LaneOffsets.length;
-    const X = Side * (BaseX + LaneOffsets[LaneIndex]);
+    const RotationIndex = Math.floor(SeedRoll(Seed, `CardboardClusterRotation:${Added}`) * RotationChoices.length) % RotationChoices.length;
+    const ScaleIndex = Math.floor(SeedRoll(Seed, `CardboardClusterScale:${Added}`) * ScaleChoices.length) % ScaleChoices.length;
+    const ContentsIndex = Math.floor(SeedRoll(Seed, `CardboardClusterContents:${Added}`) * Contents.length) % Contents.length;
+    const PackedItem = Contents[ContentsIndex];
 
     Layout.Sale.push(Slot(
-      `CardboardAisle.${Added}`,
+      `CardboardCluster.${Added}`,
       "RetailCardboardBoxR84",
       X,
       Z,
@@ -582,10 +603,14 @@ function AddCardboardBoxAisle(Layout, Theme, Index, Seed) {
         Sellable: true,
         Required: false,
         Footprint: [0.70, 0.62],
-        Scale: ScaleChoices[ScaleIndex]
+        Scale: ScaleChoices[ScaleIndex],
+        PriceZOffset: LocalIndex === 0 ? -0.18 : 0.18,
+        Contents: PackedItem.Name,
+        RetailLabel: `BOXED ${PackedItem.Name}`,
+        RetailPrice: PackedItem.Price,
+        RetailDescription: `CONTAINS ${PackedItem.Name}`
       }
     ));
-    Added += 1;
   }
 }
 
@@ -720,12 +745,6 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
   Layout.Base = FilterGroup(Layout.Base);
   Layout.Retail = FilterGroup(Layout.Retail);
   Layout.Sale = FilterGroup(Layout.Sale);
-  const CardboardBoxes = Layout.Sale.filter(Entry => Entry.AssetKey === "CardboardBox");
-  for (let Index = 0; Index < CardboardBoxes.length; Index += 1) {
-    const Entry = CardboardBoxes[Index];
-    Entry.Sellable = Index === 0;
-    if (Index > 0) delete Layout.PriceAnchors[Entry.Slot];
-  }
   Layout.Zones = FilterGroup(Layout.Zones);
   if (Layout.Task && !Layout.Slots[Layout.Task.Slot]) Layout.Task = null;
 
@@ -823,7 +842,7 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
   AddDenseDepartmentSlots(Layout, ThemeName, Seed);
   ReserveEntranceTransition(Layout, Index);
   AddEntranceDisplayPods(Layout, Index, Seed);
-  AddCardboardBoxAisle(Layout, ThemeName, Index, Seed);
+  AddCardboardBoxClusters(Layout, ThemeName, Index, Seed);
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
