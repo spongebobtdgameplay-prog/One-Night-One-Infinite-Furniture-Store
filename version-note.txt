@@ -1,1 +1,1 @@
-V0.27.8 — thicker 0.06-unit showroom carpets; incomplete aisles stay buffered; finalized showroom/layout systems stop visible regeneration.
+V0.27.8 — rugs now act as real walkable raised surfaces; imported kitchen sinks and appliances receive exact visible-model collision.
