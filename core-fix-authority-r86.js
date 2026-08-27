@@ -67,7 +67,7 @@ function IsLowWalkableEntry(Entry) {
 }
 
 function IsManagedRoot(Object) {
-  if (!Object?.isObject3D || IsRugObject(Object)) return false;
+  if (!Object?.isObject3D || IsRugObject(Object) || Object?.userData?.CardboardBoxMarkerR88) return false;
   const Name = String(Object.name || "");
   if (FurnitureNames.has(Name) || RetailNames.has(Name)) return true;
   if (Object.userData?.RetailSellableR84) return true;
