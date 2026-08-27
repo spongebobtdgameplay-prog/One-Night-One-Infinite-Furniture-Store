@@ -121,7 +121,18 @@ function FindCircleContact(Position, Radius, Motion, Entries, Options = {}) {
     if (Filter && !Filter(Entry)) continue;
     if (!EntryTouchesCircle(Entry, Position, Radius)) continue;
     const Bounds = EntryBounds(Entry);
-    if (!BoundsNormal(Position, Radius, Bounds, Motion, Scratch.Normal)) continue;
+    let HasNormal = false;
+
+    if (typeof Entry.GetCollisionNormal === "function") {
+      try {
+        Scratch.Normal.set(0, 0, 0);
+        const CustomNormal = Entry.GetCollisionNormal(Position, Radius, Motion, Scratch.Normal);
+        if (CustomNormal?.isVector3) Scratch.Normal.copy(CustomNormal);
+        HasNormal = Scratch.Normal.lengthSq() > 0.000001;
+      } catch {}
+    }
+
+    if (!HasNormal && !BoundsNormal(Position, Radius, Bounds, Motion, Scratch.Normal)) continue;
     const Score = Motion?.lengthSq() > 0.000001 ? -Motion.dot(Scratch.Normal) : 1;
     if (Score <= BestScore) continue;
     BestScore = Score;
@@ -530,7 +541,7 @@ const CollisionUtility = {
 };
 
 window.__STORE_COLLISION_UTILITY__ = CollisionUtility;
-window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.12.13";
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.27.8";
 
 export default CollisionUtility;
 export {
