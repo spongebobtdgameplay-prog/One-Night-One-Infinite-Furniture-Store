@@ -913,6 +913,8 @@ async function SetWorldSeed(Value) {
       window.__STORE_WORLD_SEED__ = WorldSeed;
       if (window.__STORE_GAME__) window.__STORE_GAME__.WorldSeed = WorldSeed;
 
+      GroundSurfaceOffset = 0;
+      GroundSurfaceTarget = 0;
       Camera.position.set(0, PlayerEyeHeight, 8);
       await PrepareInitialWorld();
       ResetTaskProgress();
