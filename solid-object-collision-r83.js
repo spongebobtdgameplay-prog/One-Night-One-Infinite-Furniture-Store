@@ -212,6 +212,14 @@ function RemoveManaged(Object) {
   Managed.delete(Object);
 }
 
+function RemoveSupersededObjectEntries(Chunk, Object) {
+  for (const Entry of [...(Chunk.CollisionEntries || [])]) {
+    if (!Entry || Entry.ConvexCollisionR89 || Entry.WalkableSurfaceR88) continue;
+    if (Entry.CollisionObject !== Object && Entry.SourceModel !== Object && Entry.Model !== Object) continue;
+    RemoveEntry(Chunk, Entry);
+  }
+}
+
 function HasTextAncestor(Object, Root) {
   let Current = Object;
   while (Current && Current !== Root) {
@@ -255,7 +263,9 @@ function ObjectKind(Object) {
   if (Object?.userData?.CardboardBoxInstancesR88 && Object.isInstancedMesh) return "CardboardBoxAisle";
   if (Object?.userData?.RetailSellableR84) return "RetailFurniture";
   if (Name === "DepartmentHeaderR73") return "DepartmentSign";
+  if (Name.startsWith("RetailZoneHeaderR82-")) return "DepartmentSign";
   if (Name.startsWith("CompactPriceTagR83-")) return "FurnitureSign";
+  if (Name === "StoreTask" || Name.startsWith("TaskTerminal3D")) return "StoreFixture";
   if (Name.startsWith("CouchDisplayRugR84-")) return "";
   if (Name.startsWith("OnlineChunkDecorationR76-")) return "FloorDecoration";
   if (Name.startsWith("OnlineSurfaceDecorationR76-")) return "SurfaceDecoration";
@@ -284,9 +294,12 @@ function Install(Object, Chunk, Kind) {
   if (Existing?.Signature === CurrentSignature && Existing.Chunk === Chunk) return;
   if (Existing) RemoveManaged(Object);
 
+  RemoveSupersededObjectEntries(Chunk, Object);
+
   let Pieces;
   if (Kind === "WarehouseBoxes" || Kind === "CardboardBoxAisle") Pieces = InstanceConvexPieces(Object, 80);
-  else if (Kind === "FurnitureSign" || Kind === "DepartmentSign") Pieces = MeshConvexPieces(Object, 14);
+  else if (Kind === "FurnitureSign" || Kind === "DepartmentSign") Pieces = MeshConvexPieces(Object, 18);
+  else if (Kind === "StoreFixture") Pieces = MeshConvexPieces(Object, 24);
   else if (Kind === "RetailFurniture") Pieces = MeshConvexPieces(Object, 20);
   else if (Kind === "SurfaceDecoration") Pieces = MeshConvexPieces(Object, 6);
   else Pieces = MeshConvexPieces(Object, 10);
@@ -326,4 +339,4 @@ const Interval = setInterval(() => ProcessAll(false), 1100);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SOLID_OBJECT_COLLISION_R83__ = { ProcessAll, ProcessChunk };
-window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.27.8-R89";
+window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.27.9-R90";
