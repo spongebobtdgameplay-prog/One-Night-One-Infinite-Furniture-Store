@@ -280,7 +280,7 @@ function BathroomTemplateA() {
     Rugs: [],
     Sale: [],
     Retail: [
-      Slot("Bathroom.BathBay.DisplayCabinet", "RetailDisplayCabinetR79", 14.20, 0.00, -Math.PI / 2, {
+      Slot("Bathroom.BathBay.DisplayCabinet", "RetailDisplayCabinetR79", 13.80, 0.00, -Math.PI / 2, {
         Kind: "Retail",
         AssetKey: "CabinetSmallDecorated",
         Name: "RetailDisplayCabinetR79",
@@ -300,17 +300,24 @@ function BathroomTemplateA() {
 function BathroomTemplateB() {
   const Plan = BathroomTemplateA();
   Plan.Name = "BathroomTemplateB";
+  let ToiletIndex = 0;
+  let BathIndex = 0;
   for (const Entry of Plan.Base) {
     Entry.X *= -1;
-    Entry.Rotation = Entry.Model === "Bathroom_Toilet" ? Math.PI : Math.PI / 2;
-    Entry.Slot = Entry.Slot
-      .replace("Bathroom.ToiletBay", "Bathroom.TempBay")
-      .replace("Bathroom.BathBay", "Bathroom.ToiletBay")
-      .replace("Bathroom.TempBay", "Bathroom.BathBay");
+    if (Entry.Model === "Bathroom_Toilet") {
+      Entry.Rotation = Math.PI;
+      Entry.Slot = `Bathroom.ToiletBay.${ToiletIndex}`;
+      ToiletIndex += 1;
+    } else if (Entry.Model === "Bathroom_Bathtub") {
+      Entry.Rotation = Math.PI / 2;
+      Entry.Slot = `Bathroom.BathBay.${BathIndex}`;
+      BathIndex += 1;
+    }
   }
   for (const Entry of Plan.Retail) {
     Entry.X *= -1;
     Entry.Rotation *= -1;
+    Entry.Slot = "Bathroom.BathBay.DisplayCabinet";
   }
   for (const Entry of Plan.Partitions) Entry.X *= -1;
   return Plan;
