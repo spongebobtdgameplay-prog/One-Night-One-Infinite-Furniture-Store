@@ -175,7 +175,6 @@ function UpdateDepartmentVisibility() {
 await Promise.allSettled([Preload3DTextFont(), PreloadOnlineDecorations()]);
 
 function Discover() {
-  for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
   UpdateDepartmentVisibility();
 }
@@ -186,4 +185,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
 window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.27.0";
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.27.6";
