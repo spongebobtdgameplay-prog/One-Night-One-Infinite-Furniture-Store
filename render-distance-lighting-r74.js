@@ -95,7 +95,6 @@ function ConfigureProjection() {
   ProjectionConfigured = true;
   Game.Camera.far = 140;
   Game.Camera.updateProjectionMatrix();
-  Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
 }
 
 function ConfigureAtmosphere() {
