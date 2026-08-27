@@ -272,6 +272,7 @@ function ObjectKind(Object) {
   if (Name.startsWith("OnlineWallDecorationR76-")) return "WallDecoration";
   if (Name.startsWith("OnlineDisplayRugR75-") || Name === "LargeShowroomRugR82") return "";
   if (Object?.userData?.DecorationKind === "Rug" || Object?.userData?.DecorationKind === "LargeShowroomRug") return "";
+  if (Object?.userData?.RetailZoneR82) return "StoreFixture";
   if (Name === "Houseplant_3") return "Plant";
   if (Name === "WarehouseBoxes" && Object.isInstancedMesh) return "WarehouseBoxes";
   if (Name === "Ceiling") return "Ceiling";
