@@ -64,9 +64,10 @@ const RESERVED_CLEARANCE = 0.035;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
 function InitialSeedValue(Value) {
+  if (Value === undefined || Value === null || Value === "") return 0;
   const NumberValue = Number(Value);
   if (!Number.isFinite(NumberValue)) return 0;
-  return (Math.trunc(NumberValue) >>> 0) || 1;
+  return Math.trunc(NumberValue) >>> 0;
 }
 
 function GenerateClientWorldSeed() {
