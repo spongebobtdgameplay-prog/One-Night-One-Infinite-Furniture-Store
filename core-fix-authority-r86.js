@@ -22,6 +22,7 @@ const RetailNames = new Set([
 ]);
 const RemovedGeometryNames = new Set(["Window_Large1"]);
 const ProcessedCollision = new WeakMap();
+const WalkableSurfaceEntries = new WeakMap();
 const TempA = new THREE.Vector3();
 const TempB = new THREE.Vector3();
 const TempC = new THREE.Vector3();
@@ -389,13 +390,52 @@ function RemoveDecorativeWindows(Chunk) {
   for (const Object of RemoveObjects) Object.parent?.remove(Object);
 }
 
+function InstallWalkableRugSurface(Chunk, Object) {
+  const Previous = WalkableSurfaceEntries.get(Object);
+  if (Previous) RemoveGlobalEntry(Chunk, Previous);
+
+  Object.updateWorldMatrix(true, true);
+  const WorldBox = new THREE.Box3().setFromObject(Object);
+  if (WorldBox.isEmpty()) return null;
+
+  const StableBox = WorldBox.clone();
+  const Entry = {
+    Box: StableBox,
+    OriginalBox: StableBox.clone(),
+    OriginalLegacyBox: StableBox.clone(),
+    ChunkId: Chunk.Id,
+    Type: "WalkableCarpetSurfaceR88",
+    Active: Boolean(Chunk.Active),
+    CollisionObject: Object,
+    CoreFixR87: true,
+    WalkableSurfaceR88: true,
+    SurfaceTopY: StableBox.max.y,
+    LegacyCollisionDisabled: true,
+    TestPlayerCollision() {
+      // Rugs are a walkable top surface, not a horizontal blocking wall.
+      return false;
+    }
+  };
+
+  Chunk.CollisionEntries.push(Entry);
+  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
+  WalkableSurfaceEntries.set(Object, Entry);
+  return Entry;
+}
+
 function RegisterWalkableRugs(Chunk) {
   SurfaceStep?.UnregisterChunk?.(Chunk.Id);
+
+  for (const Entry of [...(Chunk.CollisionEntries || [])]) {
+    if (Entry?.WalkableSurfaceR88) RemoveGlobalEntry(Chunk, Entry);
+  }
+
   Chunk.Group?.traverse?.(Object => {
     if (!IsRugObject(Object) || !Object.visible) return;
     Object.userData.WalkableCarpetR87 = true;
-    Object.userData.DecorationNoCollision = true;
+    Object.userData.DecorationNoCollision = false;
     SurfaceStep?.RegisterRug?.(Object, Chunk.Id);
+    InstallWalkableRugSurface(Chunk, Object);
   });
 }
 
@@ -441,12 +481,9 @@ export function ProcessChunk(Chunk) {
 }
 
 export function ProcessAll() {
-  const Seen = new Set();
-  for (const Chunk of Game.ActiveChunks.values()) {
-    Seen.add(Chunk);
-    ProcessChunk(Chunk);
-  }
-  for (const Chunk of Game.PreparedChunks.values()) if (!Seen.has(Chunk)) ProcessChunk(Chunk);
+  // Prepared chunks receive their final collision pass from presentation-ready.
+  // The repeating pass only touches chunks that can currently affect the player.
+  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
 
   for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
     const Entry = Game.CollisionBoxes[Index];
@@ -460,4 +497,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.24.1-R87";
+window.__STORE_CORE_FIX_BUILD__ = "V0.27.6-R88";
