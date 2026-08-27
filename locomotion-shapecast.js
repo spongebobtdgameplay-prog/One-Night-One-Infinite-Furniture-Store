@@ -127,8 +127,10 @@ function PlayerProbeHits(Position, Radius) {
       try {
         if (Entry.TestPlayerCollision(Position, Radius)) return true;
       } catch {}
+      if (Entry.PreciseGeometry || Entry.LegacyCollisionDisabled || Entry.WalkableSurfaceR88) continue;
     }
 
+    if (Entry.WalkableSurfaceR88) continue;
     if (FiniteBounds(Bounds) && CircleHitsBounds(Position, Radius, Bounds)) return true;
   }
   return false;
