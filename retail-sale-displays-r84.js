@@ -9,7 +9,7 @@ const Templates = new Map();
 const Processing = new WeakSet();
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
-const DetailedCardboardBox = "./assets/models/cardboard_box_detailed.glb";
+const DetailedCardboardBox = "./assets/models/cardboard_box_detailed.glb?v=20260826-154";
 let CardboardSurfaceTexture = null;
 
 const Assets = Object.freeze({
