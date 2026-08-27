@@ -52,8 +52,16 @@ function UnregisterChunk(ChunkId) {
 }
 
 function RefreshRegisteredRugs() {
+  const LiveChunkIds = new Set();
+  for (const Chunk of Game.ActiveChunks?.values?.() || []) if (Chunk?.Id && !Chunk.Cancelled) LiveChunkIds.add(Chunk.Id);
+  for (const Chunk of Game.PreparedChunks?.values?.() || []) if (Chunk?.Id && !Chunk.Cancelled) LiveChunkIds.add(Chunk.Id);
+
   for (const [Id, Record] of Rugs) {
-    if (!Record.Object?.parent || !Record.Object.visible) {
+    if (
+      !Record.Object?.parent ||
+      !Record.Object.visible ||
+      (Record.ChunkId && !LiveChunkIds.has(Record.ChunkId))
+    ) {
       Rugs.delete(Id);
       continue;
     }
@@ -183,7 +191,7 @@ if (!Player.__SurfaceStepAnimationR87Wrapped) {
   Player.__SurfaceStepAnimationR87Wrapped = true;
 }
 
-const RefreshInterval = setInterval(RefreshRegisteredRugs, 700);
+const RefreshInterval = setInterval(RefreshRegisteredRugs, 900);
 addEventListener("pagehide", () => clearInterval(RefreshInterval), { once: true });
 
 window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
