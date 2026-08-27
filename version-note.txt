@@ -1,1 +1,1 @@
-Semantic versioning begins at V0.12.0. Internal legacy filenames may retain old suffixes until they are naturally replaced.
+V0.27.8 — scattered cardboard box clusters with contents pricing, walkable carpet step contact, and convex static collision hulls.
