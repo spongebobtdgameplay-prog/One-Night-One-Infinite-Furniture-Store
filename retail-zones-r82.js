@@ -19,7 +19,9 @@ const Assets = Object.freeze({
   Cart: { Url: `${KenneyBase}shopping-cart.glb`, Source: KenneySource },
   Basket: { Url: `${KenneyBase}shopping-basket.glb`, Source: KenneySource },
   BagShelf: { Url: `${KenneyBase}shelf-bags.glb`, Source: KenneySource },
-  RugLarge: { Url: `${KayKitBase}rug_rectangle_stripes_A.gltf`, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" }
+  RugLarge: { Url: `${KayKitBase}rug_rectangle_stripes_A.gltf`, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  CheckoutCounter: { Url: `${KayKitBase}cabinet_medium.gltf`, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  CheckoutRegister: { Url: `${KenneyBase}cash-register.glb`, Source: KenneySource }
 });
 
 const ZoneBoardMaterial = new THREE.MeshStandardMaterial({ color: 0xd8ccb3, roughness: 0.86, metalness: 0.02 });
@@ -156,7 +158,8 @@ async function MakeZoneHeader(Text) {
 const PlannedZoneAssets = Object.freeze({
   Cart: { Key: "Cart", TargetHeight: 0.88, MaximumWidth: 1.15, MaximumDepth: 1.45, Prefix: "ShoppingCartR82" },
   Basket: { Key: "Basket", TargetHeight: 0.42, MaximumWidth: 0.75, MaximumDepth: 0.75, Prefix: "ShoppingBasketR82" },
-  BagShelf: { Key: "BagShelf", TargetHeight: 1.55, MaximumWidth: 1.45, MaximumDepth: 0.95, Prefix: "BagShelfR82" }
+  BagShelf: { Key: "BagShelf", TargetHeight: 1.55, MaximumWidth: 1.45, MaximumDepth: 0.95, Prefix: "BagShelfR82" },
+  Checkout: { Key: "CheckoutCounter", TargetHeight: 0.92, MaximumWidth: 1.55, MaximumDepth: 0.78, Prefix: "CheckoutCounterR90" }
 });
 
 async function PlacePlannedZoneAsset(Chunk, Entry, Index) {
@@ -166,6 +169,19 @@ async function PlacePlannedZoneAsset(Chunk, Entry, Index) {
   if (!Definition) return null;
   const Object = await CloneAsset(Definition.Key);
   if (!NormalizeHeight(Object, Definition.TargetHeight, Definition.MaximumWidth, Definition.MaximumDepth)) return null;
+
+  if (Entry.Model === "Checkout") {
+    const Register = await CloneAsset("CheckoutRegister");
+    if (NormalizeHeight(Register, 0.34, 0.54, 0.42)) {
+      const CounterBounds = BoundsOf(Object);
+      Register.position.set(0.20, CounterBounds.max.y + 0.018, 0.03);
+      Register.rotation.y = -0.08;
+      Register.name = "CheckoutRegisterR90";
+      Object.add(Register);
+      Object.userData.CheckoutFixtureR90 = true;
+    }
+  }
+
   Object.position.set(Entry.X, 0, Entry.Z);
   Object.rotation.y = Number(Entry.Rotation) || 0;
   Object.updateWorldMatrix(true, true);
@@ -249,4 +265,4 @@ const Interval = setInterval(Discover, 700);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ZONES_R82__ = { ProcessChunk, Discover, PreloadRetailZoneAssets };
-window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.6";
+window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.9-R90";
