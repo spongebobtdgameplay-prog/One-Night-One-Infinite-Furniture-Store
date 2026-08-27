@@ -250,6 +250,8 @@ async function EnsureCardboardAisle(Chunk, Entries) {
     TempInstancePosition.set(Entry.X, 0, Entry.Z);
     TempInstanceEuler.set(0, Number(Entry.Rotation) || 0, 0);
     TempInstanceQuaternion.setFromEuler(TempInstanceEuler);
+    const InstanceScale = Number.isFinite(Number(Entry.Scale)) ? Number(Entry.Scale) : 1;
+    TempInstanceScale.setScalar(InstanceScale);
     TempInstanceMatrix.compose(TempInstancePosition, TempInstanceQuaternion, TempInstanceScale);
     Instances.setMatrixAt(Index, TempInstanceMatrix);
 
@@ -388,4 +390,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.6";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.7";
