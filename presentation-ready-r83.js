@@ -182,8 +182,16 @@ export async function FinalizeChunk(Chunk) {
     await RunWorldPasses(Chunk);
     await Delay(140);
     UpdateStability(Chunk);
-    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R86 fix pass.`);
 
+    if (!CoreReady(Chunk)) {
+      Chunk.Group.userData.PresentationReadyR83 = false;
+      Chunk.Group.userData.PresentationReadyR82 = false;
+      Chunk.Group.userData.PresentationRetryR90 = true;
+      console.warn(`Chunk ${Chunk.Id} is still incomplete; keeping it buffered instead of revealing a regenerating aisle.`);
+      return;
+    }
+
+    Chunk.Group.userData.PresentationRetryR90 = false;
     Chunk.Group.userData.PresentationReadyR83 = true;
     Chunk.Group.userData.PresentationReadyR82 = true;
     Chunk.Group.userData.PresentationReadyAt = performance.now();
@@ -226,4 +234,4 @@ const Interval = setInterval(Discover, 400);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.7";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.8-R90";
