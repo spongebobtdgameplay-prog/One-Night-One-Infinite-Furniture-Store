@@ -52,6 +52,7 @@ function CircleTouchesBounds(Position, Radius, Bounds) {
 
 function EntryTouchesCircle(Entry, Position, Radius) {
   if (!Entry) return false;
+  if (Entry.WalkableSurfaceR88 || /Rug|Carpet|WalkableSurface/i.test(String(Entry.Type || ""))) return false;
   const Bounds = EntryBounds(Entry);
 
   if (IsStructure(Entry) && FiniteBounds(Bounds)) return CircleTouchesBounds(Position, Radius, Bounds);
