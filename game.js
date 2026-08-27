@@ -346,6 +346,38 @@ const PlacementProfiles = {
 };
 
 const Themes = ["LIVING ROOM", "BEDROOMS", "KITCHENS", "BATHROOMS", "WAREHOUSE", "SHOWROOM", "CLEARANCE", "STORAGE"];
+const ThemeCycleCache = new Map();
+
+function BaseThemePermutation(Cycle) {
+  const Order = Themes.map((_, Index) => Index);
+  let State = MixSeed32((WorldSeed ^ Math.imul((Cycle + 1) | 0, 0x6d2b79f5)) >>> 0);
+  for (let Index = Order.length - 1; Index > 0; Index -= 1) {
+    State = MixSeed32((State + Math.imul(Index + 1, 0x9e3779b1)) >>> 0);
+    const SwapIndex = State % (Index + 1);
+    [Order[Index], Order[SwapIndex]] = [Order[SwapIndex], Order[Index]];
+  }
+  return Order;
+}
+
+function ThemePermutation(Cycle) {
+  if (ThemeCycleCache.has(Cycle)) return ThemeCycleCache.get(Cycle);
+  const Order = BaseThemePermutation(Cycle);
+  if (Cycle > 0) {
+    const PreviousBase = BaseThemePermutation(Cycle - 1);
+    if (Order[0] === PreviousBase[PreviousBase.length - 1]) {
+      [Order[0], Order[1]] = [Order[1], Order[0]];
+    }
+  }
+  ThemeCycleCache.set(Cycle, Order);
+  return Order;
+}
+
+function ThemeForChunk(Index) {
+  const CycleLength = Themes.length;
+  const Cycle = Math.floor(Math.max(0, Index) / CycleLength);
+  const Position = Math.max(0, Index) % CycleLength;
+  return Themes[ThemePermutation(Cycle)[Position]];
+}
 
 const GenerationQueue = [];
 let GenerationRunning = false;
@@ -675,7 +707,7 @@ function CreatePreparedChunk(Index) {
   const TopZ = ChunkTopZ(Index);
   const BottomZ = ChunkBottomZ(Index);
   const Seed = ChunkSeed(Index);
-  const Theme = Themes[Math.floor(SeededRandom(Seed + 11.17) * Themes.length)];
+  const Theme = ThemeForChunk(Index);
   const Layout = CreateChunkLayout({ Index, Seed, Theme, CenterZ, TopZ, BottomZ });
   const Group = new THREE.Group();
   Group.name = Id;
@@ -865,6 +897,7 @@ async function SetWorldSeed(Value) {
       for (const Index of [...PreparedChunks.keys()]) DropPreparedChunk(Index);
 
       PreparingChunks.clear();
+      ThemeCycleCache.clear();
       CollisionBoxes.length = 0;
       Tasks.clear();
       LoadedDisplays = 0;
