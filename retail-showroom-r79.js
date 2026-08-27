@@ -9,6 +9,8 @@ if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) {
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitSource = "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0";
+const KayKitRestaurantBase = "./assets/models/kitchen/kaykit/";
+const KayKitRestaurantSource = "https://kaylousberg.itch.io/restaurant-bits";
 const Loader = new GLTFLoader();
 const Templates = new Map();
 const RunningChunks = new WeakSet();
@@ -23,7 +25,13 @@ const AssetFiles = Object.freeze({
   ShelfSmallDecorated: "shelf_B_small_decorated.gltf",
   CabinetMedium: "cabinet_medium.gltf",
   CabinetSmallDecorated: "cabinet_small_decorated.gltf",
-  ArmchairPillows: "armchair_pillows.gltf"
+  ArmchairPillows: "armchair_pillows.gltf",
+  KitchenStoveSingle: { Url: `${KayKitRestaurantBase}stove_single.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
+  KitchenStoveMulti: { Url: `${KayKitRestaurantBase}stove_multi.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
+  KitchenStoveDecorated: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
+  KitchenOven: { Url: `${KayKitRestaurantBase}oven.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
+  KitchenSink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
+  KitchenSinkBacksplash: { Url: `${KayKitRestaurantBase}kitchencounter_sink_backsplash.gltf?v=20260826-156`, Source: KayKitRestaurantSource }
 });
 
 const BreakerLabelMaterial = new THREE.MeshStandardMaterial({
@@ -66,16 +74,24 @@ function CloneMaterials(Root) {
   });
 }
 
+function AssetDefinition(Key) {
+  const Entry = AssetFiles[Key];
+  if (!Entry) throw new Error(`Unknown retail asset ${Key}`);
+  if (typeof Entry === "string") {
+    return { Url: `${KayKitBase}${Entry}`, Source: KayKitSource, License: "CC0-1.0" };
+  }
+  return { Url: Entry.Url, Source: Entry.Source || KayKitRestaurantSource, License: "CC0-1.0" };
+}
+
 async function LoadTemplate(Key) {
-  const File = AssetFiles[Key];
-  if (!File) throw new Error(`Unknown retail asset ${Key}`);
+  const Definition = AssetDefinition(Key);
   if (!Templates.has(Key)) {
-    Templates.set(Key, Loader.loadAsync(`${KayKitBase}${File}`).then(Gltf => {
+    Templates.set(Key, Loader.loadAsync(Definition.Url).then(Gltf => {
       const Root = Gltf.scene;
       Root.name = `KayKitRetailTemplate-${Key}`;
       CloneMaterials(Root);
-      Root.userData.Source = KayKitSource;
-      Root.userData.License = "CC0-1.0";
+      Root.userData.Source = Definition.Source;
+      Root.userData.License = Definition.License;
       return Root;
     }).catch(Error => {
       Templates.delete(Key);
@@ -91,8 +107,8 @@ async function CloneAsset(Key) {
   CloneMaterials(Clone);
   Clone.name = `RetailImported-${Key}`;
   Clone.userData.RetailImportedR79 = true;
-  Clone.userData.Source = KayKitSource;
-  Clone.userData.License = "CC0-1.0";
+  Clone.userData.Source = Template.userData.Source;
+  Clone.userData.License = Template.userData.License;
   return Clone;
 }
 
@@ -426,10 +442,11 @@ function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
 }
 
-Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key))).then(Discover);
+const StartupAssetKeys = Object.keys(AssetFiles).filter(Key => typeof AssetFiles[Key] === "string");
+Promise.allSettled(StartupAssetKeys.map(Key => LoadTemplate(Key))).then(Discover);
 Discover();
 const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.6";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.7";
