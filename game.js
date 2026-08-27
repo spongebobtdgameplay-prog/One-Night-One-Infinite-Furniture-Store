@@ -42,6 +42,9 @@ const GameTimer = new THREE.Clock();
 const KeyState = new Set();
 const CollisionBoxes = [];
 const ModelCache = new Map();
+const RugModelCache = new Map();
+const KayKitFurnitureBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
+const RugModelFiles = ["rug_rectangle_A.gltf", "rug_rectangle_stripes_B.gltf", "rug_oval_A.gltf", "rug_rectangle_B.gltf"];
 const ActiveChunks = new Map();
 const PreparedChunks = new Map();
 const PreparingChunks = new Map();
@@ -627,22 +630,68 @@ function SpawnLayoutModel(Chunk, Entry) {
   return Pending;
 }
 
-function AddPlannedRug(Chunk, Entry) {
-  const Colors = [0x574236, 0x37494b, 0x4a3d50, 0x4c493a, 0x3e4740, 0x493d35];
-  const ColorIndex = Math.floor(SeededRandom(Chunk.Seed + Entry.Variant * 17 + 31) * Colors.length);
-  const Material = new THREE.MeshStandardMaterial({ color: Colors[ColorIndex], roughness: 1 });
-  const Rug = Box(
-    `ShowroomRug-${Entry.Slot}`,
-    new THREE.Vector3(Entry.Width, 0.018, Entry.Depth),
-    new THREE.Vector3(Entry.X, 0.012, Entry.Z),
-    Material,
-    Chunk
-  );
-  Rug.userData.LayoutSlot = Entry.Slot;
-  Rug.userData.LayoutAuthority = Chunk.Layout.Authority;
-  Rug.userData.DecorationKind = "Rug";
-  Rug.userData.DecorationNoCollision = true;
-  return Rug;
+async function GetRugTemplate(Variant = 0) {
+  const File = RugModelFiles[Math.abs(Number(Variant) || 0) % RugModelFiles.length];
+  if (!RugModelCache.has(File)) {
+    RugModelCache.set(File, Loader.loadAsync(`${KayKitFurnitureBase}${File}`).then(Gltf => {
+      const Template = Gltf.scene;
+      Template.name = `FurnitureStoreRugTemplate-${File}`;
+      Template.traverse(Object => {
+        if (!Object?.isMesh) return;
+        Object.castShadow = false;
+        Object.receiveShadow = true;
+        Object.frustumCulled = true;
+        if (Object.material) {
+          Object.material = Object.material.clone();
+          if ("roughness" in Object.material) Object.material.roughness = Math.max(0.72, Object.material.roughness ?? 0.8);
+          Object.material.needsUpdate = true;
+        }
+      });
+      return Template;
+    }).catch(Error => {
+      RugModelCache.delete(File);
+      throw Error;
+    }));
+  }
+  return RugModelCache.get(File);
+}
+
+function SpawnPlannedRug(Chunk, Entry) {
+  const Pending = GetRugTemplate(Entry.Variant)
+    .then(Template => ScheduleGenerationWork(() => {
+      if (Chunk.Cancelled) return null;
+      const Rug = Template.clone(true);
+      Rug.updateWorldMatrix(true, true);
+      let Bounds = new THREE.Box3().setFromObject(Rug);
+      if (Bounds.isEmpty()) return null;
+      const Size = Bounds.getSize(new THREE.Vector3());
+      const ScaleX = Number(Entry.Width) / Math.max(Size.x, 0.001);
+      const ScaleZ = Number(Entry.Depth) / Math.max(Size.z, 0.001);
+      const ScaleY = Math.min(ScaleX, ScaleZ);
+      Rug.scale.set(ScaleX, ScaleY, ScaleZ);
+      Rug.updateWorldMatrix(true, true);
+      Bounds = new THREE.Box3().setFromObject(Rug);
+      const Center = Bounds.getCenter(new THREE.Vector3());
+      Rug.position.x += Number(Entry.X) - Center.x;
+      Rug.position.z += Number(Entry.Z) - Center.z;
+      Rug.position.y += 0.006 - Bounds.min.y;
+      Rug.name = `ShowroomRug-${Entry.Slot}`;
+      Rug.userData.ChunkId = Chunk.Id;
+      Rug.userData.LayoutSlot = Entry.Slot;
+      Rug.userData.LayoutAuthority = Chunk.Layout.Authority;
+      Rug.userData.DecorationKind = "Rug";
+      Rug.userData.WalkableCarpetR87 = true;
+      Rug.userData.DecorationNoCollision = false;
+      Rug.userData.RealFurnitureStoreRugR90 = true;
+      Chunk.Group.add(Rug);
+      return Rug;
+    }))
+    .catch(Error => {
+      console.warn(`Could not load planned rug ${Entry.Slot}`, Error);
+      return null;
+    });
+  Chunk.PendingLoads.push(Pending);
+  return Pending;
 }
 
 function AddTask(Chunk, Entry) {
@@ -696,7 +745,7 @@ function ApplyLayoutReservations(Chunk) {
 }
 
 function PopulateFromLayout(Chunk) {
-  for (const Rug of Chunk.Layout?.Rugs || []) AddPlannedRug(Chunk, Rug);
+  for (const Rug of Chunk.Layout?.Rugs || []) SpawnPlannedRug(Chunk, Rug);
   for (const Entry of Chunk.Layout?.Base || []) SpawnLayoutModel(Chunk, Entry);
   if (Chunk.Layout?.Task) AddTask(Chunk, Chunk.Layout.Task);
 }
@@ -711,6 +760,7 @@ function CreatePreparedChunk(Index) {
   const Layout = CreateChunkLayout({ Index, Seed, Theme, CenterZ, TopZ, BottomZ });
   const Group = new THREE.Group();
   Group.name = Id;
+  Group.visible = false;
   Group.userData.ChunkId = Id;
   Group.userData.LayoutTemplate = Layout.Template;
   Group.userData.LayoutAuthority = Layout.Authority;
@@ -777,8 +827,12 @@ function ActivateChunk(Chunk) {
   if (!Chunk || Chunk.Cancelled || !Chunk.Ready || Chunk.Active) return false;
   PreparedChunks.delete(Chunk.Index);
   Chunk.Active = true;
+  Chunk.Group.visible = Boolean(Chunk.Group.userData?.PresentationReadyR83);
   Scene.add(Chunk.Group);
-  for (const Object of Chunk.ExternalObjects) Scene.add(Object);
+  for (const Object of Chunk.ExternalObjects) {
+    Object.visible = Chunk.Group.visible;
+    Scene.add(Object);
+  }
   for (const Entry of Chunk.CollisionEntries) {
     if (Entry.Active) continue;
     Entry.Active = true;
