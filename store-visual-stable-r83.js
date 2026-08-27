@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { CreateDepartmentSign3D } from "./sign-utility-r73.js?v=20260824-93";
-import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260824-93";
+import { CreateTaskTerminal3D } from "./task-terminal-utility-r73.js?v=20260827-158";
 import { Preload3DTextFont } from "./three-text-utility-r73.js?v=20260824-93";
 import {
   CreateOnlineSurfaceDecoration,
