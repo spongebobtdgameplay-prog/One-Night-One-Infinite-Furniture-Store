@@ -1,18 +1,16 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { CardboardTextureDataUri, CardboardTextureSource } from "./cardboard-box-asset.js?v=20260826-153";
 
 const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before retail sale displays.");
 
 const Loader = new GLTFLoader();
-const TextureLoader = new THREE.TextureLoader();
 const Templates = new Map();
 const Processing = new WeakSet();
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
-const MicrosoftCardboardBox = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb";
-let CardboardTexturePromise = null;
+const DetailedCardboardBox = "./assets/models/cardboard_box_detailed.glb?v=20260826-154";
+let CardboardSurfaceTexture = null;
 
 const Assets = Object.freeze({
   CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
@@ -20,14 +18,14 @@ const Assets = Object.freeze({
   DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" },
   CardboardBox: {
-    Url: MicrosoftCardboardBox,
+    Url: DetailedCardboardBox,
     Label: "CARDBOARD BOX",
-    Description: "CORRUGATED SHIPPING BOX",
+    Description: "HEAVY-DUTY CORRUGATED CARTON",
     Price: "$4.99",
-    Height: 0.46,
-    MaxWidth: 0.70,
-    MaxDepth: 0.70,
-    Source: CardboardTextureSource
+    Height: 0.50,
+    MaxWidth: 0.72,
+    MaxDepth: 0.72,
+    Source: "https://github.com/IcterusGames/Garage42"
   }
 });
 
@@ -51,88 +49,76 @@ function CloneMaterials(Root) {
     Object.receiveShadow = false;
   });
 }
-async function LoadCardboardTexture() {
-  if (!CardboardTexturePromise) {
-    CardboardTexturePromise = TextureLoader.loadAsync(CardboardTextureDataUri)
-      .then(Texture => {
-        Texture.colorSpace = THREE.SRGBColorSpace;
-        Texture.flipY = false;
-        Texture.wrapS = THREE.ClampToEdgeWrapping;
-        Texture.wrapT = THREE.ClampToEdgeWrapping;
-        Texture.anisotropy = Math.min(8, Game.Renderer?.capabilities?.getMaxAnisotropy?.() || 4);
-        Texture.needsUpdate = true;
-        return Texture;
-      })
-      .catch(Error => {
-        CardboardTexturePromise = null;
-        throw Error;
-      });
+function CreateCardboardSurfaceTexture() {
+  if (CardboardSurfaceTexture) return CardboardSurfaceTexture;
+
+  const Canvas = document.createElement("canvas");
+  Canvas.width = 256;
+  Canvas.height = 256;
+  const Context = Canvas.getContext("2d");
+  if (!Context) return null;
+
+  const Gradient = Context.createLinearGradient(0, 0, 256, 256);
+  Gradient.addColorStop(0, "#8b6844");
+  Gradient.addColorStop(0.50, "#a27b52");
+  Gradient.addColorStop(1, "#7c5a39");
+  Context.fillStyle = Gradient;
+  Context.fillRect(0, 0, 256, 256);
+
+  for (let Index = 0; Index < 220; Index += 1) {
+    const X = (Index * 73 + 19) % 256;
+    const Y = (Index * 151 + 41) % 256;
+    const Length = 7 + ((Index * 29) % 26);
+    const Alpha = 0.025 + ((Index * 17) % 8) * 0.007;
+    Context.strokeStyle = `rgba(57,36,20,${Alpha.toFixed(3)})`;
+    Context.lineWidth = Index % 5 === 0 ? 1.1 : 0.55;
+    Context.beginPath();
+    Context.moveTo(X, Y);
+    Context.lineTo(Math.min(256, X + Length), Y + ((Index % 3) - 1) * 1.5);
+    Context.stroke();
   }
-  return CardboardTexturePromise;
+
+  for (let Y = 9; Y < 256; Y += 13) {
+    Context.strokeStyle = "rgba(50,30,16,0.045)";
+    Context.lineWidth = 0.55;
+    Context.beginPath();
+    Context.moveTo(0, Y);
+    Context.lineTo(256, Y + 1);
+    Context.stroke();
+  }
+
+  CardboardSurfaceTexture = new THREE.CanvasTexture(Canvas);
+  CardboardSurfaceTexture.colorSpace = THREE.SRGBColorSpace;
+  CardboardSurfaceTexture.wrapS = THREE.RepeatWrapping;
+  CardboardSurfaceTexture.wrapT = THREE.RepeatWrapping;
+  CardboardSurfaceTexture.repeat.set(1.35, 1.35);
+  CardboardSurfaceTexture.anisotropy = Math.min(8, Game.Renderer?.capabilities?.getMaxAnisotropy?.() || 4);
+  CardboardSurfaceTexture.needsUpdate = true;
+  return CardboardSurfaceTexture;
 }
 
-function ApplyEmbeddedCardboardTexture(Root, Texture) {
+function ApplyDetailedCardboardMaterial(Root) {
+  const Texture = CreateCardboardSurfaceTexture();
   Root.traverse(Object => {
     if (!Object?.isMesh) return;
     const Existing = Object.material
       ? (Array.isArray(Object.material) ? Object.material : [Object.material])
-      : [];
-    const Materials = Existing.length ? Existing : [new THREE.MeshStandardMaterial()];
-    const Copies = Materials.map(Material => {
+      : [new THREE.MeshStandardMaterial()];
+    const Materials = Existing.map(Material => {
       const Copy = Material.clone();
       Copy.map = Texture;
       if (Copy.color?.setHex) Copy.color.setHex(0xffffff);
-      if ("roughness" in Copy) Copy.roughness = 0.90;
+      if ("roughness" in Copy) Copy.roughness = 0.94;
       if ("metalness" in Copy) Copy.metalness = 0;
       if ("emissive" in Copy && Copy.emissive?.setHex) Copy.emissive.setHex(0x000000);
       if ("emissiveIntensity" in Copy) Copy.emissiveIntensity = 0;
       Copy.needsUpdate = true;
       return Copy;
     });
-    Object.material = Array.isArray(Object.material) ? Copies : Copies[0];
+    Object.material = Array.isArray(Object.material) ? Materials : Materials[0];
     Object.castShadow = false;
     Object.receiveShadow = true;
   });
-}
-
-function CreateEmergencyCardboardBox() {
-  const Group = new THREE.Group();
-  Group.name = "RetailSaleTemplateR84-CardboardBoxEmergency";
-
-  const Cardboard = new THREE.MeshStandardMaterial({
-    color: 0x8a6541,
-    roughness: 0.94,
-    metalness: 0
-  });
-  const Tape = new THREE.MeshStandardMaterial({
-    color: 0xb79a70,
-    roughness: 0.78,
-    metalness: 0
-  });
-  const Label = new THREE.MeshStandardMaterial({
-    color: 0xd7d1c4,
-    roughness: 0.82,
-    metalness: 0
-  });
-
-  const Body = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.34, 0.42), Cardboard);
-  Body.position.y = 0.17;
-
-  const LidLeft = new THREE.Mesh(new THREE.BoxGeometry(0.245, 0.022, 0.40), Cardboard.clone());
-  LidLeft.position.set(-0.132, 0.351, 0);
-  const LidRight = LidLeft.clone();
-  LidRight.position.x = 0.132;
-
-  const TapeTop = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.012, 0.425), Tape);
-  TapeTop.position.set(0, 0.368, 0);
-
-  const ShippingLabel = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.095), Label);
-  ShippingLabel.position.set(0.085, 0.205, 0.2115);
-
-  Group.add(Body, LidLeft, LidRight, TapeTop, ShippingLabel);
-  Group.userData.CardboardEmergencyGeometryR86 = true;
-  Group.userData.Source = CardboardTextureSource;
-  return Group;
 }
 
 async function LoadTemplate(Key) {
@@ -141,28 +127,13 @@ async function LoadTemplate(Key) {
   if (!Templates.has(Key)) {
     Templates.set(Key, (async () => {
       if (Key === "CardboardBox") {
-        let Root = null;
-        try {
-          const Data = await Loader.loadAsync(Definition.Url);
-          Root = Data.scene;
-        } catch (Error) {
-          console.warn("Cardboard GLB failed; using the local shipping-box fallback.", Error);
-          Root = CreateEmergencyCardboardBox();
-        }
-
-        Root.name = "RetailSaleTemplateR84-CardboardBox";
+        const Data = await Loader.loadAsync(Definition.Url);
+        const Root = Data.scene;
+        Root.name = "RetailSaleTemplateR84-CardboardBoxDetailed";
         CloneMaterials(Root);
-
-        try {
-          const Texture = await LoadCardboardTexture();
-          ApplyEmbeddedCardboardTexture(Root, Texture);
-          Root.userData.CardboardTextureAppliedR86 = true;
-          Root.userData.CardboardTextureMode = "embedded-data-uri";
-        } catch (Error) {
-          console.warn("Embedded cardboard texture could not initialize; keeping brown shipping-box material.", Error);
-          Root.userData.CardboardTextureFailedR86 = true;
-        }
-
+        ApplyDetailedCardboardMaterial(Root);
+        Root.userData.CardboardDetailedModelR87 = true;
+        Root.userData.CardboardTextureMode = "generated-fiber-surface";
         Root.userData.Source = Definition.Source;
         Root.userData.AssetUrl = Definition.Url;
         return Root;
@@ -253,7 +224,8 @@ async function EnsureSaleItems(Chunk) {
   }
 
   const CurrentSlots = new Set(ExistingSaleItems(Chunk).map(Object => String(Object.userData?.LayoutSlot || "")));
-  const Ready = Planned.every(Entry => CurrentSlots.has(Entry.Slot));
+  const Required = Planned.filter(Entry => Entry.Required !== false);
+  const Ready = Required.every(Entry => CurrentSlots.has(Entry.Slot));
   Chunk.Group.userData.RetailSaleAttemptedR85 = true;
   Chunk.Group.userData.RetailSaleItemsR84 = Ready;
   return Ready;
@@ -274,7 +246,8 @@ export function Ready(Chunk) {
   if (!Chunk?.Group) return false;
   const Planned = Chunk.Layout?.Sale || [];
   const CurrentSlots = new Set(ExistingSaleItems(Chunk).map(Object => String(Object.userData?.LayoutSlot || "")));
-  return Planned.every(Entry => CurrentSlots.has(Entry.Slot));
+  const Required = Planned.filter(Entry => Entry.Required !== false);
+  return Required.every(Entry => CurrentSlots.has(Entry.Slot));
 }
 
 export async function Preload() {
@@ -293,4 +266,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.4";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.5";

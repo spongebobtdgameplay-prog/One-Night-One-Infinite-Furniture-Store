@@ -63,7 +63,33 @@ const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
-let WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
+function InitialSeedValue(Value) {
+  if (Value === undefined || Value === null || Value === "") return 0;
+  const NumberValue = Number(Value);
+  if (!Number.isFinite(NumberValue)) return 0;
+  return Math.trunc(NumberValue) >>> 0;
+}
+
+function GenerateClientWorldSeed() {
+  const Values = new Uint32Array(1);
+  crypto.getRandomValues(Values);
+  return Values[0] || 1;
+}
+
+function ResolveInitialWorldSeed() {
+  const ExplicitWorldSeed = InitialSeedValue(window.__STORE_WORLD_SEED__);
+  if (ExplicitWorldSeed) return ExplicitWorldSeed;
+
+  let SinglePlayerSeed = InitialSeedValue(window.__STORE_SINGLEPLAYER_WORLD_SEED__);
+  if (!SinglePlayerSeed) {
+    SinglePlayerSeed = GenerateClientWorldSeed();
+    window.__STORE_SINGLEPLAYER_WORLD_SEED__ = SinglePlayerSeed;
+  }
+  window.__STORE_WORLD_SEED__ = SinglePlayerSeed;
+  return SinglePlayerSeed;
+}
+
+let WorldSeed = ResolveInitialWorldSeed();
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -1137,8 +1163,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.2";
-window.__STORE_VERSION__ = "0.13.2";
+window.__STORE_GAME_BUILD__ = "V0.13.3";
+window.__STORE_VERSION__ = "0.13.3";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1158,6 +1184,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.2"
+  Version: "0.13.3"
 };
 Animate();
