@@ -15,7 +15,7 @@ const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
 const SINGLEPLAYER_WORLD_SEED = (() => {
   const Existing = Number(window.__STORE_SINGLEPLAYER_WORLD_SEED__);
-  const ExistingSeed = Number.isFinite(Existing) ? ((Math.trunc(Existing) >>> 0) || 1) : 0;
+  const ExistingSeed = Number.isFinite(Existing) ? (Math.trunc(Existing) >>> 0) : 0;
   if (ExistingSeed) return ExistingSeed;
 
   const Values = new Uint32Array(1);
