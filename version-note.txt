@@ -1,1 +1,1 @@
-V0.27.8 — hotfix: walkable carpets can no longer be re-enabled as horizontal blocking collision by the precise collision authority.
+V0.27.8 — thicker 0.06-unit showroom carpets; incomplete aisles stay buffered; finalized showroom/layout systems stop visible regeneration.
