@@ -106,6 +106,7 @@ function InstanceBoxes(Object, Limit = 80) {
 
 function ObjectKind(Object) {
   const Name = String(Object?.name || "");
+  if (Object?.userData?.CardboardBoxInstancesR88 && Object.isInstancedMesh) return "CardboardBoxAisle";
   if (Object?.userData?.RetailSellableR84) return "RetailFurniture";
   if (Name === "DepartmentHeaderR73") return "DepartmentSign";
   if (Name.startsWith("CompactPriceTagR83-")) return "FurnitureSign";
@@ -137,7 +138,7 @@ function Install(Object, Chunk, Kind) {
   if (Existing) RemoveManaged(Object);
 
   let Boxes;
-  if (Kind === "WarehouseBoxes") Boxes = InstanceBoxes(Object, 80);
+  if (Kind === "WarehouseBoxes" || Kind === "CardboardBoxAisle") Boxes = InstanceBoxes(Object, 80);
   else if (Kind === "FurnitureSign" || Kind === "DepartmentSign") Boxes = MeshBoxes(Object, 14);
   else if (Kind === "RetailFurniture") Boxes = MeshBoxes(Object, 20);
   else if (Kind === "SurfaceDecoration") Boxes = MeshBoxes(Object, 6);
@@ -168,12 +169,9 @@ function CleanupRemoved() {
 }
 
 export function ProcessAll(Force = false) {
-  const Seen = new Set();
-  for (const Chunk of Game.ActiveChunks.values()) {
-    Seen.add(Chunk);
-    ProcessChunk(Chunk, Force);
-  }
-  for (const Chunk of Game.PreparedChunks.values()) if (!Seen.has(Chunk)) ProcessChunk(Chunk, Force);
+  // Prepared chunks are finalized explicitly by presentation-ready-r83. The
+  // periodic collision pass only needs to touch geometry that can affect the player.
+  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk, Force);
   CleanupRemoved();
 }
 
@@ -182,4 +180,4 @@ const Interval = setInterval(() => ProcessAll(false), 1100);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SOLID_OBJECT_COLLISION_R83__ = { ProcessAll, ProcessChunk };
-window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.24.0-R86";
+window.__STORE_SOLID_OBJECT_COLLISION_BUILD__ = "V0.27.6";
