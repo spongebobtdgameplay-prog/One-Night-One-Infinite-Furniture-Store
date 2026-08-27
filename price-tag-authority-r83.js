@@ -63,9 +63,13 @@ function ItemPrice(Item, Chunk, Index) {
   return Fixed || FurniturePrice(Item.name, Chunk.Index, Index);
 }
 
-function SignatureOf(Items) {
+function SignatureOf(Items, Chunk) {
   return Items.map(Item => {
-    const C = BoundsOf(Item).getCenter(new THREE.Vector3());
+    const SlotName = String(Item.userData?.LayoutSlot || "");
+    const Slot = Chunk.Layout?.Slots?.[SlotName];
+    const C = Slot
+      ? { x: Number(Slot.X) || 0, z: Number(Slot.Z) || 0 }
+      : BoundsOf(Item).getCenter(new THREE.Vector3());
     return `${Item.uuid}:${C.x.toFixed(2)}:${C.z.toFixed(2)}:${ItemLabel(Item)}:${Item.userData?.RetailPrice || ""}:${Item.userData?.RetailDescription || ""}`;
   }).join("|");
 }
@@ -107,7 +111,7 @@ export async function RebuildChunk(Chunk) {
   Rebuilding.add(Chunk);
   try {
     const Items = SellableItems(Chunk);
-    const Signature = SignatureOf(Items);
+    const Signature = SignatureOf(Items, Chunk);
     const Existing = ExistingTags(Chunk);
     if (Signatures.get(Chunk) === Signature && Existing.length === Items.length) {
       Chunk.Group.userData.PriceTagsR83 = true;
@@ -170,4 +174,4 @@ const Interval = setInterval(Discover, 1000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.2";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.6";
