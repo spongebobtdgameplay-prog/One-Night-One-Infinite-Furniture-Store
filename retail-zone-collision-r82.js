@@ -32,17 +32,12 @@ function ProcessChunk(Chunk) {
 }
 
 function ProcessAll() {
-  const Seen = new Set();
-  for (const Chunk of Game.ActiveChunks.values()) {
-    Seen.add(Chunk);
-    ProcessChunk(Chunk);
-  }
-  for (const Chunk of Game.PreparedChunks.values()) if (!Seen.has(Chunk)) ProcessChunk(Chunk);
+  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 260);
+const Interval = setInterval(ProcessAll, 700);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ZONE_COLLISION_R82__ = { ProcessAll, ProcessChunk };
-window.__STORE_RETAIL_ZONE_COLLISION_BUILD__ = "V0.21.0-R82";
+window.__STORE_RETAIL_ZONE_COLLISION_BUILD__ = "V0.27.6";

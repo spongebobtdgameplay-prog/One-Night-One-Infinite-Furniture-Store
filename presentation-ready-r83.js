@@ -98,6 +98,7 @@ function LayoutOccupancyReady(Chunk) {
 
   for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
     for (const Entry of Chunk.Layout?.[GroupName] || []) {
+      if (Entry.Required === false) continue;
       if (!Placed.has(Entry.Slot)) return false;
     }
   }
@@ -195,7 +196,8 @@ export async function FinalizeChunk(Chunk) {
 async function PrimeBootWorld() {
   const Chunks = [];
   for (const Chunk of Game.ActiveChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled) Chunks.push(Chunk);
-  for (const Chunk of Game.PreparedChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled && !Chunks.includes(Chunk)) Chunks.push(Chunk);
+  // Invisible prepared chunks finalize lazily after boot instead of competing with
+  // the first visible frame for CPU and asset work.
   await Promise.allSettled(Chunks.map(Chunk => FinalizeChunk(Chunk)));
 }
 
@@ -218,8 +220,8 @@ function Discover() {
 }
 
 Discover();
-const Interval = setInterval(Discover, 180);
+const Interval = setInterval(Discover, 400);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.1";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.6";

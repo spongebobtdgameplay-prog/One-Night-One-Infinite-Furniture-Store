@@ -439,14 +439,11 @@ function AddDenseDepartmentSlots(Layout, Theme) {
       Extra.push(Slot(`Density.Kitchen.Right.Run.${Index}`, "Kitchen_Cabinet1", X, 7.85, 0));
     }
   } else if (Theme === "BATHROOMS") {
-    Extra.push(
-      Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -8.55, -0.95, 0),
-      Slot("Density.Bathroom.Left.ToiletB", "Bathroom_Toilet", -11.10, 0.95, 0),
-      Slot("Density.Bathroom.Right.ToiletA", "Bathroom_Toilet", 8.55, 0.95, Math.PI),
-      Slot("Density.Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.10, -0.95, Math.PI),
-      Slot("Density.Bathroom.Left.ToiletC", "Bathroom_Toilet", -7.05, 8.00, 0),
-      Slot("Density.Bathroom.Right.ToiletC", "Bathroom_Toilet", 7.05, -8.00, Math.PI)
-    );
+    // Repeated fixtures read as an intentional plumbing aisle instead of random duplicates.
+    for (const [Index, Z] of [-7.20, -2.40, 2.40, 7.20].entries()) {
+      Extra.push(Slot(`Density.Bathroom.Left.FixtureAisle.${Index}`, "Bathroom_Toilet", -6.35, Z, 0));
+      Extra.push(Slot(`Density.Bathroom.Right.FixtureAisle.${Index}`, "Bathroom_Toilet", 6.35, -Z, Math.PI));
+    }
   } else if (Theme === "WAREHOUSE" || Theme === "STORAGE") {
     let NumberIndex = 0;
     for (const X of [-6.35, 6.35]) {
@@ -477,30 +474,24 @@ function AddDenseDepartmentSlots(Layout, Theme) {
   Layout.Base.push(...Extra);
 }
 
-function AddCardboardBoxScatter(Layout, Theme, Index, Seed) {
+function AddCardboardBoxAisle(Layout, Theme, Index, Seed) {
   const DenseStorage = Theme === "WAREHOUSE" || Theme === "STORAGE";
-  const Candidates = DenseStorage
-    ? [
-        [-14.10, -3.05], [14.10, 3.05], [-14.10, 3.05], [14.10, -3.05],
-        [-7.85, -9.00], [7.85, 9.00]
-      ]
-    : [
-        [-6.25, -8.90], [6.25, 8.90], [-6.25, 2.85], [6.25, -2.85],
-        [-6.25, -2.85], [6.25, 2.85]
-      ];
-
-  const Count = DenseStorage ? 6 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 4 : 3);
-  const RotationChoices = [-0.20, -0.08, 0.10, 0.22];
-  const Start = Math.floor(SeedRoll(Seed, "BoxScatterStart") * Candidates.length) % Candidates.length;
+  const Side = SeedRoll(Seed, "CardboardAisleSide") < 0.5 ? -1 : 1;
+  const X = Side * (DenseStorage ? 6.15 : 6.10);
+  const ZPositions = DenseStorage
+    ? [-9.00, -7.20, -5.40, -3.60, -1.80, 0, 1.80, 3.60, 5.40, 7.20, 9.00]
+    : [-8.80, -6.60, -4.40, -2.20, 0, 2.20, 4.40, 6.60, 8.80];
+  const TargetCount = DenseStorage ? 10 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 7 : 5);
+  const RotationChoices = [-0.08, -0.03, 0.03, 0.08];
+  const Start = Math.floor(SeedRoll(Seed, "CardboardAisleStart") * ZPositions.length) % ZPositions.length;
   let Added = 0;
 
-  for (let CandidateIndex = 0; CandidateIndex < Candidates.length && Added < Count; CandidateIndex += 1) {
-    const SourceIndex = (Start + CandidateIndex) % Candidates.length;
-    const [X, Z] = Candidates[SourceIndex];
+  for (let Offset = 0; Offset < ZPositions.length && Added < TargetCount; Offset += 1) {
+    const Z = ZPositions[(Start + Offset) % ZPositions.length];
     if (Index === 0 && Z > 5.20) continue;
-    const Rotation = RotationChoices[Math.floor(SeedRoll(Seed, `BoxScatterRotation:${CandidateIndex}`) * RotationChoices.length)];
+    const Rotation = RotationChoices[Math.floor(SeedRoll(Seed, `CardboardAisleRotation:${Offset}`) * RotationChoices.length)];
     Layout.Sale.push(Slot(
-      `CardboardBox.${Added}`,
+      `CardboardAisle.${Added}`,
       "RetailCardboardBoxR84",
       X,
       Z,
@@ -713,7 +704,7 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
 
   AddDenseDepartmentSlots(Layout, ThemeName);
   ReserveEntranceTransition(Layout, Index);
-  AddCardboardBoxScatter(Layout, ThemeName, Index, Seed);
+  AddCardboardBoxAisle(Layout, ThemeName, Index, Seed);
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
@@ -741,4 +732,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.2";
+window.__STORE_LAYOUT_BUILD__ = "V0.27.6";

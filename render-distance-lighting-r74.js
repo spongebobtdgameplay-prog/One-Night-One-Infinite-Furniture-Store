@@ -17,7 +17,7 @@ function Brightness(Color) {
 function StabilizeGlow(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
+  Object.frustumCulled = true;
   Object.renderOrder = 1;
   Object.geometry?.computeBoundingSphere?.();
 
@@ -61,7 +61,7 @@ function StabilizePointLight(Object) {
 function StabilizeHorizon(Object) {
   if (!Object?.isInstancedMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
+  Object.frustumCulled = true;
   if (!Object.material) return;
 
   Object.material = Object.material.clone();
@@ -93,30 +93,29 @@ function ProcessRoot(Root) {
 function ConfigureProjection() {
   if (ProjectionConfigured) return;
   ProjectionConfigured = true;
-  Game.Camera.far = 520;
+  Game.Camera.far = 140;
   Game.Camera.updateProjectionMatrix();
-  Game.Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
 }
 
 function ConfigureAtmosphere() {
   if (Game.Scene.background?.isColor) Game.Scene.background.setHex(0x24261f);
   if (Game.Scene.fog?.isFogExp2) {
     Game.Scene.fog.color.setHex(0x24261f);
-    Game.Scene.fog.density = 0.0027;
+    Game.Scene.fog.density = 0.0062;
   }
 }
 
 function ProcessAll() {
   ConfigureProjection();
   ConfigureAtmosphere();
+  // Active chunks are already descendants of Scene. Prepared chunks are intentionally
+  // kept out of Scene, so do not traverse or style invisible buffered geometry here.
   ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
+const Interval = setInterval(ProcessAll, 1200);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll };
-window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.19.0-R78";
+window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.27.6";

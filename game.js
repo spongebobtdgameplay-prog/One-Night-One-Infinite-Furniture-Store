@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260826-151";
+import { CreateChunkLayout } from "./store-layout.js?v=20260826-155";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -54,8 +54,8 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 3;
-const CHUNKS_BEHIND = 3;
+const CHUNKS_AHEAD = 2;
+const CHUNKS_BEHIND = 1;
 const PREFETCH_CHUNKS = 1;
 const STREAM_PROMOTION_DISTANCE = 10;
 const TASK_DISTANCE = 1.85;
@@ -346,6 +346,38 @@ const PlacementProfiles = {
 };
 
 const Themes = ["LIVING ROOM", "BEDROOMS", "KITCHENS", "BATHROOMS", "WAREHOUSE", "SHOWROOM", "CLEARANCE", "STORAGE"];
+const ThemeCycleCache = new Map();
+
+function BaseThemePermutation(Cycle) {
+  const Order = Themes.map((_, Index) => Index);
+  let State = MixSeed32((WorldSeed ^ Math.imul((Cycle + 1) | 0, 0x6d2b79f5)) >>> 0);
+  for (let Index = Order.length - 1; Index > 0; Index -= 1) {
+    State = MixSeed32((State + Math.imul(Index + 1, 0x9e3779b1)) >>> 0);
+    const SwapIndex = State % (Index + 1);
+    [Order[Index], Order[SwapIndex]] = [Order[SwapIndex], Order[Index]];
+  }
+  return Order;
+}
+
+function ThemePermutation(Cycle) {
+  if (ThemeCycleCache.has(Cycle)) return ThemeCycleCache.get(Cycle);
+  const Order = BaseThemePermutation(Cycle);
+  if (Cycle > 0) {
+    const PreviousBase = BaseThemePermutation(Cycle - 1);
+    if (Order[0] === PreviousBase[PreviousBase.length - 1]) {
+      [Order[0], Order[1]] = [Order[1], Order[0]];
+    }
+  }
+  ThemeCycleCache.set(Cycle, Order);
+  return Order;
+}
+
+function ThemeForChunk(Index) {
+  const CycleLength = Themes.length;
+  const Cycle = Math.floor(Math.max(0, Index) / CycleLength);
+  const Position = Math.max(0, Index) % CycleLength;
+  return Themes[ThemePermutation(Cycle)[Position]];
+}
 
 const GenerationQueue = [];
 let GenerationRunning = false;
@@ -675,7 +707,7 @@ function CreatePreparedChunk(Index) {
   const TopZ = ChunkTopZ(Index);
   const BottomZ = ChunkBottomZ(Index);
   const Seed = ChunkSeed(Index);
-  const Theme = Themes[Math.floor(SeededRandom(Seed + 11.17) * Themes.length)];
+  const Theme = ThemeForChunk(Index);
   const Layout = CreateChunkLayout({ Index, Seed, Theme, CenterZ, TopZ, BottomZ });
   const Group = new THREE.Group();
   Group.name = Id;
@@ -799,9 +831,9 @@ function TryActivateIndex(Index) {
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
   LastChunkIndex = CurrentIndex;
-  const MinIndex = CurrentIndex - CHUNKS_BEHIND;
-  const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
-  const PrefetchMin = MinIndex - PREFETCH_CHUNKS;
+  const MinIndex = Math.max(0, CurrentIndex - CHUNKS_BEHIND);
+  const MaxIndex = Math.max(0, CurrentIndex + CHUNKS_AHEAD);
+  const PrefetchMin = Math.max(0, MinIndex - PREFETCH_CHUNKS);
   const PrefetchMax = MaxIndex + PREFETCH_CHUNKS;
   const WantedActive = new Set();
 
@@ -829,14 +861,13 @@ function EnsureChunksAroundPlayer() {
 }
 
 async function PrepareInitialWorld() {
-  const Order = [0, -1, 1, -2, 2, -3, 3];
+  const Order = [0, 1, 2];
   for (let Position = 0; Position < Order.length; Position += 1) {
     if (BootStatus) BootStatus.textContent = `Assembling buffered store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
     const Chunk = await PrepareChunk(Order[Position]);
     if (Chunk) ActivateChunk(Chunk);
   }
-  RequestChunk(-4).catch(() => {});
-  RequestChunk(4).catch(() => {});
+  RequestChunk(3).catch(() => {});
 }
 
 function NormalizeWorldSeed(Value) {
@@ -866,6 +897,7 @@ async function SetWorldSeed(Value) {
       for (const Index of [...PreparedChunks.keys()]) DropPreparedChunk(Index);
 
       PreparingChunks.clear();
+      ThemeCycleCache.clear();
       CollisionBoxes.length = 0;
       Tasks.clear();
       LoadedDisplays = 0;
@@ -1163,8 +1195,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.3";
-window.__STORE_VERSION__ = "0.13.3";
+window.__STORE_GAME_BUILD__ = "V0.13.4";
+window.__STORE_VERSION__ = "0.13.4";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1177,6 +1209,7 @@ window.__STORE_GAME__ = {
   ChunkSeed,
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
+  PlayerEyeHeight,
   PrepareChunk,
   SetStoreSeconds,
   SetCompletedTaskCount,
@@ -1184,6 +1217,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.3"
+  Version: "0.13.4"
 };
 Animate();

@@ -424,7 +424,6 @@ async function ProcessChunk(Chunk) {
 
 function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk);
 }
 
 Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key))).then(Discover);
@@ -433,4 +432,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.0";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.6";
