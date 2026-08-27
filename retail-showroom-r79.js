@@ -442,7 +442,8 @@ function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
 }
 
-Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key))).then(Discover);
+const StartupAssetKeys = Object.keys(AssetFiles).filter(Key => typeof AssetFiles[Key] === "string");
+Promise.allSettled(StartupAssetKeys.map(Key => LoadTemplate(Key))).then(Discover);
 Discover();
 const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
