@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260826-151";
+import { CreateChunkLayout } from "./store-layout.js?v=20260826-155";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -54,8 +54,8 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 3;
-const CHUNKS_BEHIND = 3;
+const CHUNKS_AHEAD = 2;
+const CHUNKS_BEHIND = 1;
 const PREFETCH_CHUNKS = 1;
 const STREAM_PROMOTION_DISTANCE = 10;
 const TASK_DISTANCE = 1.85;
@@ -799,9 +799,9 @@ function TryActivateIndex(Index) {
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
   LastChunkIndex = CurrentIndex;
-  const MinIndex = CurrentIndex - CHUNKS_BEHIND;
-  const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
-  const PrefetchMin = MinIndex - PREFETCH_CHUNKS;
+  const MinIndex = Math.max(0, CurrentIndex - CHUNKS_BEHIND);
+  const MaxIndex = Math.max(0, CurrentIndex + CHUNKS_AHEAD);
+  const PrefetchMin = Math.max(0, MinIndex - PREFETCH_CHUNKS);
   const PrefetchMax = MaxIndex + PREFETCH_CHUNKS;
   const WantedActive = new Set();
 
@@ -829,14 +829,13 @@ function EnsureChunksAroundPlayer() {
 }
 
 async function PrepareInitialWorld() {
-  const Order = [0, -1, 1, -2, 2, -3, 3];
+  const Order = [0, 1, 2];
   for (let Position = 0; Position < Order.length; Position += 1) {
     if (BootStatus) BootStatus.textContent = `Assembling buffered store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
     const Chunk = await PrepareChunk(Order[Position]);
     if (Chunk) ActivateChunk(Chunk);
   }
-  RequestChunk(-4).catch(() => {});
-  RequestChunk(4).catch(() => {});
+  RequestChunk(3).catch(() => {});
 }
 
 function NormalizeWorldSeed(Value) {
@@ -1163,8 +1162,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.3";
-window.__STORE_VERSION__ = "0.13.3";
+window.__STORE_GAME_BUILD__ = "V0.13.4";
+window.__STORE_VERSION__ = "0.13.4";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1177,6 +1176,7 @@ window.__STORE_GAME__ = {
   ChunkSeed,
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
+  PlayerEyeHeight,
   PrepareChunk,
   SetStoreSeconds,
   SetCompletedTaskCount,
@@ -1184,6 +1184,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.3"
+  Version: "0.13.4"
 };
 Animate();
