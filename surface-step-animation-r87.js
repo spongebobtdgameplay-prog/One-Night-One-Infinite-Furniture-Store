@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 const Game = window.__STORE_GAME__;
 const Player = window.__STORE_PLAYER__;
+const Collision = window.__STORE_COLLISION_UTILITY__ || null;
 if (!Game?.Scene || !Game?.Camera || !Player?.Render) throw new Error("Game and player must load before carpet step animation.");
 
 const Rugs = new Map();
@@ -89,6 +90,17 @@ function RugAt(Position) {
   return RugRecordAt(Position)?.Id || "";
 }
 
+function SurfaceHeightAt(Position, RugRecord) {
+  const Contact = Collision?.FindWalkableSurface?.(Position, 0.10, Game.CollisionBoxes || [], {
+    FloorY: 0,
+    MaxStepHeight: MAX_SURFACE_HEIGHT
+  });
+  if (Contact?.Hit) return THREE.MathUtils.clamp(Number(Contact.Height) || 0, 0, MAX_SURFACE_HEIGHT);
+  return RugRecord
+    ? THREE.MathUtils.clamp(Number(RugRecord.Bounds?.max?.y) || 0, 0, MAX_SURFACE_HEIGHT)
+    : 0;
+}
+
 function TriggerStep(Side = null, Height = MIN_VISIBLE_STEP_HEIGHT, Direction = 1) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return;
@@ -108,9 +120,7 @@ function UpdateCrossingState() {
   const NextRugId = NextRug?.Id || "";
 
   const PreviousSurfaceTarget = SurfaceTarget;
-  const NextSurfaceTarget = NextRug
-    ? THREE.MathUtils.clamp(Number(NextRug.Bounds?.max?.y) || 0, 0, MAX_SURFACE_HEIGHT)
-    : 0;
+  const NextSurfaceTarget = SurfaceHeightAt(Position, NextRug);
   SurfaceTarget = NextSurfaceTarget;
   const SurfaceAlpha = 1 - Math.exp(-Delta * 22);
   SurfaceOffset = THREE.MathUtils.lerp(SurfaceOffset, SurfaceTarget, SurfaceAlpha);
@@ -180,7 +190,7 @@ function ApplyStepPose(Root, Elapsed) {
   ApplyBoneRotation(TrailFoot, -0.12 * Trail * MotionScale, 0, 0);
   ApplyBoneRotation(Bone(Root, "Hips"), 0.045 * Body * MotionScale, 0, StepSide * 0.035 * Body);
   ApplyBoneRotation(Bone(Root, "Abdomen"), -0.028 * Body * MotionScale, StepSide * -0.018 * Body * MotionScale, 0);
-  ApplyBoneRotation(Bone(Root, "Torso"), -0.018 * Body, StepSide * 0.014 * Body, 0);
+  ApplyBoneRotation(Bone(Root, "Torso"), -0.018 * Body * MotionScale, StepSide * 0.014 * Body * MotionScale, 0);
   ApplyBoneRotation(Bone(Root, "UpperArm.L"), (0.055 * Trail - 0.035 * Lead) * MotionScale, 0, 0);
   ApplyBoneRotation(Bone(Root, "UpperArm.R"), (0.055 * Lead - 0.035 * Trail) * MotionScale, 0, 0);
   Root.updateMatrixWorld(true);
@@ -222,4 +232,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetSurfaceTarget: () => SurfaceTarget,
   GetRegisteredCount: () => Rugs.size
 };
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8-R89";
