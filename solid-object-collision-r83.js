@@ -106,6 +106,7 @@ function InstanceBoxes(Object, Limit = 80) {
 
 function ObjectKind(Object) {
   const Name = String(Object?.name || "");
+  if (Object?.userData?.CardboardBoxMarkerR88) return "";
   if (Object?.userData?.CardboardBoxInstancesR88 && Object.isInstancedMesh) return "CardboardBoxAisle";
   if (Object?.userData?.RetailSellableR84) return "RetailFurniture";
   if (Name === "DepartmentHeaderR73") return "DepartmentSign";
