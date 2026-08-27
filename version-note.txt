@@ -1,1 +1,1 @@
-V0.27.8 — scattered cardboard box clusters with contents pricing, walkable carpet step contact, and convex static collision hulls.
+V0.27.9 — modeled rugs and store fixtures, atomic chunk reveal, organized bathroom bays, modeled checkout, and finalized precise collision before presentation.
