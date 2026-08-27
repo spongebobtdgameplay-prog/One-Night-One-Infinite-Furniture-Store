@@ -125,7 +125,7 @@ function UpdateCrossingState() {
   const SurfaceAlpha = 1 - Math.exp(-Delta * 22);
   SurfaceOffset = THREE.MathUtils.lerp(SurfaceOffset, SurfaceTarget, SurfaceAlpha);
   if (Math.abs(SurfaceOffset - SurfaceTarget) < 0.0004) SurfaceOffset = SurfaceTarget;
-  Game.Camera.position.y = BaseEyeHeight + SurfaceOffset;
+  if (typeof Game.GetGroundSurfaceOffset !== "function") Game.Camera.position.y = BaseEyeHeight + SurfaceOffset;
 
   if (!HasLastPosition) {
     LastPosition.copy(Position);
@@ -232,4 +232,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetSurfaceTarget: () => SurfaceTarget,
   GetRegisteredCount: () => Rugs.size
 };
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8-R89";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8-R91";
