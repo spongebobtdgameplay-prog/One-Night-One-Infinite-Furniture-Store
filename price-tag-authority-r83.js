@@ -18,7 +18,13 @@ const RetailLabels = new Map([
   ["RetailBedroomChairR79", "BEDROOM ARMCHAIR"],
   ["RetailStorageShelfR79", "STORAGE SHELF"],
   ["RetailStorageCabinetR79", "STORAGE CABINET"],
-  ["RetailDisplayCabinetR79", "DISPLAY CABINET"]
+  ["RetailDisplayCabinetR79", "DISPLAY CABINET"],
+  ["RetailKitchenStoveSingleR90", "SINGLE-BURNER STOVE"],
+  ["RetailKitchenStoveMultiR90", "MULTI-BURNER STOVE"],
+  ["RetailKitchenStoveDecoratedR90", "DISPLAY STOVE"],
+  ["RetailKitchenOvenR90", "KITCHEN OVEN"],
+  ["RetailKitchenSinkR90", "SINK COUNTER"],
+  ["RetailKitchenSinkBacksplashR90", "SINK + BACKSPLASH"]
 ]);
 const AccentColors = [0xb77b43];
 const Rebuilding = new WeakSet();
@@ -191,4 +197,4 @@ addEventListener("pagehide", () => {
 }, { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.6";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.7";
