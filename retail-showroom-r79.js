@@ -403,9 +403,10 @@ async function PlacePlannedRetailAsset(Chunk, Entry) {
   Object.userData.LayoutAuthority = Chunk.Layout?.Authority;
   Object.userData.DecorationNoCollision = false;
   Object.userData.RetailImportedR79 = true;
+  Object.userData.RetailSellableR84 = true;
   Chunk.Group.add(Object);
   Object.updateWorldMatrix(true, true);
-  AddExactCollision(Chunk, Object, `${Entry.Name}SolidR79`);
+  ApplySolidBounds(Chunk, null, BoundsOf(Object), `${Entry.Name}SolidR79`, Object);
   return true;
 }
 
@@ -450,4 +451,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.7";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.9-R90";
