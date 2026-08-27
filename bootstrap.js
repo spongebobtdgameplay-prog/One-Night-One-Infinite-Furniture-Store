@@ -15,12 +15,14 @@ function GenerateClientWorldSeed() {
 }
 
 const ExistingSinglePlayerSeed = Number(window.__STORE_SINGLEPLAYER_WORLD_SEED__);
-const SinglePlayerSeed = Number.isFinite(ExistingSinglePlayerSeed)
-  ? ((Math.trunc(ExistingSinglePlayerSeed) >>> 0) || 1)
-  : GenerateClientWorldSeed();
+const NormalizedSinglePlayerSeed = Number.isFinite(ExistingSinglePlayerSeed)
+  ? (Math.trunc(ExistingSinglePlayerSeed) >>> 0)
+  : 0;
+const SinglePlayerSeed = NormalizedSinglePlayerSeed || GenerateClientWorldSeed();
 
 window.__STORE_SINGLEPLAYER_WORLD_SEED__ = SinglePlayerSeed;
-if (!Number.isFinite(Number(window.__STORE_WORLD_SEED__))) {
+const ExistingWorldSeed = Number(window.__STORE_WORLD_SEED__);
+if (!Number.isFinite(ExistingWorldSeed) || !(Math.trunc(ExistingWorldSeed) >>> 0)) {
   window.__STORE_WORLD_SEED__ = SinglePlayerSeed;
 }
 
