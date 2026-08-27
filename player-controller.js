@@ -374,7 +374,8 @@ function UpdateCharacterTransform(Delta) {
   if (!State.CharacterReady || !State.Pivot || !State.Camera) return;
   const CurrentX = State.Camera.position.x;
   const CurrentZ = State.Camera.position.z;
-  State.Pivot.position.set(CurrentX, 0, CurrentZ);
+  const SurfaceOffset = Number(window.__STORE_SURFACE_STEP_ANIMATION_R87__?.GetSurfaceOffset?.()) || 0;
+  State.Pivot.position.set(CurrentX, SurfaceOffset, CurrentZ);
 
   if (!State.HasPlayerPosition) {
     State.LastPlayerPosition.set(CurrentX, 0, CurrentZ);
