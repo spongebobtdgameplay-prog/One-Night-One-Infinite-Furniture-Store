@@ -643,6 +643,12 @@ function ReserveEntranceTransition(Layout, Index) {
   Layout.Sale = (Layout.Sale || []).filter(KeepSlot);
   Layout.Partitions = (Layout.Partitions || []).filter(Entry => Entry.Z + Entry.Length * 0.5 <= FrontLimit);
   Layout.Rugs = (Layout.Rugs || []).filter(Entry => Entry.Z + Entry.Depth * 0.5 <= FrontLimit);
+
+  // The entrance owns chunk 0. Department merchandise is allowed to fill the
+  // remaining bays, but it must yield to cart/basket circulation and entry displays.
+  for (const Group of [Layout.Base, Layout.Retail, Layout.Sale]) {
+    for (const Entry of Group) Entry.Required = false;
+  }
 }
 
 function AddTask(Layout, Index, Seed) {
