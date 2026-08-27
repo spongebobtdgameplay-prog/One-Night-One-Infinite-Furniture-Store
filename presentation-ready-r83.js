@@ -10,7 +10,9 @@ const FurnitureNames = new Set([
 ]);
 const RetailNames = new Set([
   "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
-  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79"
+  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79",
+  "RetailKitchenStoveSingleR90", "RetailKitchenStoveMultiR90", "RetailKitchenStoveDecoratedR90",
+  "RetailKitchenOvenR90", "RetailKitchenSinkR90", "RetailKitchenSinkBacksplashR90"
 ]);
 
 function SellableCount(Chunk) {
@@ -224,4 +226,4 @@ const Interval = setInterval(Discover, 400);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.6";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.7";
