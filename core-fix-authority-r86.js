@@ -18,7 +18,9 @@ const FurnitureNames = new Set([
 ]);
 const RetailNames = new Set([
   "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
-  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79"
+  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79",
+  "RetailKitchenStoveSingleR90", "RetailKitchenStoveMultiR90", "RetailKitchenStoveDecoratedR90",
+  "RetailKitchenOvenR90", "RetailKitchenSinkR90", "RetailKitchenSinkBacksplashR90"
 ]);
 const RemovedGeometryNames = new Set(["Window_Large1"]);
 const ProcessedCollision = new WeakMap();
@@ -78,6 +80,7 @@ function IsManagedRoot(Object) {
   if (!Object?.isObject3D || IsRugObject(Object) || Object?.userData?.CardboardBoxMarkerR88) return false;
   const Name = String(Object.name || "");
   if (FurnitureNames.has(Name) || RetailNames.has(Name)) return true;
+  if (Object.userData?.RetailCollisionManagedR91) return true;
   if (Object.userData?.RetailSellableR84) return true;
   if (Name.startsWith("RetailCoffeeTableR84") || Name.startsWith("RetailSideTableR84") || Name.startsWith("RetailDiningTableR84") || Name.startsWith("RetailBoxShelfR84")) return true;
   return false;
@@ -520,5 +523,5 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.27.8";
+window.__STORE_CORE_FIX_BUILD__ = "V0.27.8-R91";
 window.__STORE_CORE_FIX_BUILD__ = "V0.27.6-R88";
