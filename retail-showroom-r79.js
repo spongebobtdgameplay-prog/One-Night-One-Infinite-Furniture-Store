@@ -425,7 +425,7 @@ async function AddRealShowroomPieces(Chunk) {
 }
 
 async function ProcessChunk(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || RunningChunks.has(Chunk)) return;
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || RunningChunks.has(Chunk) || Chunk.Group.userData?.PresentationReadyR83) return;
   RunningChunks.add(Chunk);
   try {
     await ReplaceShelves(Chunk);
@@ -439,7 +439,9 @@ async function ProcessChunk(Chunk) {
 }
 
 function Discover() {
-  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
+  for (const Chunk of Game.ActiveChunks.values()) {
+    if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk);
+  }
 }
 
 const StartupAssetKeys = Object.keys(AssetFiles).filter(Key => typeof AssetFiles[Key] === "string");
@@ -449,4 +451,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.7";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.8-R90";
