@@ -37,6 +37,14 @@ function BoundsOf(Object) {
   return new THREE.Box3().setFromObject(Object);
 }
 
+function CircleTouchesWalkableSurface(Position, Radius, Box) {
+  const ClosestX = THREE.MathUtils.clamp(Position.x, Box.min.x, Box.max.x);
+  const ClosestZ = THREE.MathUtils.clamp(Position.z, Box.min.z, Box.max.z);
+  const DX = Position.x - ClosestX;
+  const DZ = Position.z - ClosestZ;
+  return DX * DX + DZ * DZ <= Radius * Radius;
+}
+
 function EntryBounds(Entry) {
   return Entry?.OriginalStructureBox || Entry?.OriginalBox || Entry?.Box || Entry || null;
 }
@@ -418,8 +426,12 @@ function InstallWalkableRugSurface(Chunk, Object) {
     CollisionObject: Object,
     CoreFixR87: true,
     WalkableSurfaceR88: true,
+    WalkableSurfaceCollisionR89: true,
     SurfaceTopY: StableBox.max.y,
     LegacyCollisionDisabled: true,
+    TestSurfaceContact(Position, Radius = 0.285) {
+      return CircleTouchesWalkableSurface(Position, Radius, StableBox);
+    },
     TestPlayerCollision() {
       return false;
     }
@@ -508,4 +520,5 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
+window.__STORE_CORE_FIX_BUILD__ = "V0.27.8";
 window.__STORE_CORE_FIX_BUILD__ = "V0.27.6-R88";
