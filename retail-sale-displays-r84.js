@@ -11,6 +11,12 @@ const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
 const DetailedCardboardBox = "./assets/models/cardboard_box_detailed.glb?v=20260826-154";
 let CardboardSurfaceTexture = null;
+let CardboardInstanceTemplatePromise = null;
+const TempInstanceMatrix = new THREE.Matrix4();
+const TempInstancePosition = new THREE.Vector3();
+const TempInstanceQuaternion = new THREE.Quaternion();
+const TempInstanceScale = new THREE.Vector3(1, 1, 1);
+const TempInstanceEuler = new THREE.Euler();
 
 const Assets = Object.freeze({
   CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
@@ -162,6 +168,115 @@ async function CloneAsset(Key) {
   return Clone;
 }
 
+async function CardboardInstanceTemplate() {
+  if (!CardboardInstanceTemplatePromise) {
+    CardboardInstanceTemplatePromise = (async () => {
+      const Definition = Assets.CardboardBox;
+      const Template = await LoadTemplate("CardboardBox");
+      if (!Template) throw new Error("Cardboard box template unavailable.");
+
+      const Root = Template.clone(true);
+      CloneMaterials(Root);
+      if (!NormalizeAsset(Root, Definition, 0)) throw new Error("Cardboard box template normalization failed.");
+      Root.updateWorldMatrix(true, true);
+
+      let Mesh = null;
+      Root.traverse(Object => {
+        if (!Mesh && Object?.isMesh && Object.geometry) Mesh = Object;
+      });
+      if (!Mesh) throw new Error("Detailed cardboard model contains no renderable mesh.");
+
+      const Geometry = Mesh.geometry.clone();
+      Geometry.applyMatrix4(Mesh.matrixWorld);
+      Geometry.computeBoundingBox();
+      Geometry.computeBoundingSphere();
+
+      const SourceMaterial = Array.isArray(Mesh.material) ? Mesh.material[0] : Mesh.material;
+      const Material = SourceMaterial?.clone?.() || new THREE.MeshStandardMaterial({
+        color: 0x9a744d,
+        roughness: 0.94,
+        metalness: 0
+      });
+      Material.needsUpdate = true;
+
+      return { Geometry, Material };
+    })().catch(Error => {
+      CardboardInstanceTemplatePromise = null;
+      throw Error;
+    });
+  }
+  return CardboardInstanceTemplatePromise;
+}
+
+function ExistingCardboardMarkers(Chunk) {
+  return (Chunk.Group?.children || []).filter(Object => Object?.userData?.CardboardBoxMarkerR88);
+}
+
+function RemoveCardboardAisle(Chunk) {
+  const Remove = (Chunk.Group?.children || []).filter(Object =>
+    Object?.userData?.CardboardBoxMarkerR88 ||
+    Object?.userData?.CardboardBoxInstancesR88 ||
+    String(Object?.name || "").startsWith("RetailCardboardBoxR84-")
+  );
+  for (const Object of Remove) Object.parent?.remove(Object);
+}
+
+async function EnsureCardboardAisle(Chunk, Entries) {
+  if (!Entries.length) {
+    RemoveCardboardAisle(Chunk);
+    return true;
+  }
+
+  const ExistingMesh = (Chunk.Group?.children || []).find(Object => Object?.userData?.CardboardBoxInstancesR88);
+  const ExistingMarkers = ExistingCardboardMarkers(Chunk);
+  const ExistingSlots = new Set(ExistingMarkers.map(Object => String(Object.userData?.LayoutSlot || "")));
+  if (ExistingMesh?.count === Entries.length && Entries.every(Entry => ExistingSlots.has(Entry.Slot))) return true;
+
+  RemoveCardboardAisle(Chunk);
+
+  const Template = await CardboardInstanceTemplate();
+  const Instances = new THREE.InstancedMesh(Template.Geometry, Template.Material, Entries.length);
+  Instances.name = "CardboardBoxAisleR88";
+  Instances.frustumCulled = true;
+  Instances.userData.ChunkId = Chunk.Id;
+  Instances.userData.LayoutAuthority = Chunk.Layout?.Authority;
+  Instances.userData.CardboardBoxInstancesR88 = true;
+  Instances.userData.DecorationNoCollision = false;
+  Instances.castShadow = false;
+  Instances.receiveShadow = true;
+
+  for (let Index = 0; Index < Entries.length; Index += 1) {
+    const Entry = Entries[Index];
+    TempInstancePosition.set(Entry.X, 0, Entry.Z);
+    TempInstanceEuler.set(0, Number(Entry.Rotation) || 0, 0);
+    TempInstanceQuaternion.setFromEuler(TempInstanceEuler);
+    TempInstanceMatrix.compose(TempInstancePosition, TempInstanceQuaternion, TempInstanceScale);
+    Instances.setMatrixAt(Index, TempInstanceMatrix);
+
+    const Marker = new THREE.Object3D();
+    Marker.name = `RetailCardboardBoxMarkerR88-${Index}`;
+    Marker.position.set(Entry.X, 0, Entry.Z);
+    Marker.userData.ChunkId = Chunk.Id;
+    Marker.userData.LayoutSlot = Entry.Slot;
+    Marker.userData.LayoutAuthority = Chunk.Layout?.Authority;
+    Marker.userData.RetailImportedR84 = true;
+    Marker.userData.RetailSellableR84 = Entry.Sellable !== false;
+    Marker.userData.RetailLabel = Assets.CardboardBox.Label;
+    Marker.userData.RetailPrice = Assets.CardboardBox.Price;
+    Marker.userData.RetailDescription = Assets.CardboardBox.Description;
+    Marker.userData.Source = Assets.CardboardBox.Source;
+    Marker.userData.CardboardBoxMarkerR88 = true;
+    Marker.userData.DecorationNoCollision = true;
+    Chunk.Group.add(Marker);
+  }
+
+  Instances.instanceMatrix.needsUpdate = true;
+  Instances.computeBoundingBox?.();
+  Instances.computeBoundingSphere?.();
+  Chunk.Group.add(Instances);
+  return true;
+}
+
 function NormalizeAsset(Object, Definition, RotationY = 0) {
   Object.rotation.y = RotationY;
   Object.updateWorldMatrix(true, true);
@@ -210,17 +325,25 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
 async function EnsureSaleItems(Chunk) {
   if (!Chunk.Group.userData?.RetailShowroomR79) return false;
   const Planned = Chunk.Layout?.Sale || [];
+  const CardboardEntries = Planned.filter(Entry => Entry.AssetKey === "CardboardBox");
+  const StandardEntries = Planned.filter(Entry => Entry.AssetKey !== "CardboardBox");
   const Existing = ExistingSaleItems(Chunk);
   const ExistingSlots = new Set(Existing.map(Object => String(Object.userData?.LayoutSlot || "")));
 
-  for (let Index = 0; Index < Planned.length; Index += 1) {
-    const Entry = Planned[Index];
+  for (let Index = 0; Index < StandardEntries.length; Index += 1) {
+    const Entry = StandardEntries[Index];
     if (ExistingSlots.has(Entry.Slot)) continue;
     try {
       await PlacePlannedSaleAsset(Chunk, Entry, Index);
     } catch (Error) {
       console.warn(`Planned sale asset unavailable for ${Entry.Slot}`, Error);
     }
+  }
+
+  try {
+    await EnsureCardboardAisle(Chunk, CardboardEntries);
+  } catch (Error) {
+    console.warn(`Cardboard aisle unavailable in ${Chunk.Id}`, Error);
   }
 
   const CurrentSlots = new Set(ExistingSaleItems(Chunk).map(Object => String(Object.userData?.LayoutSlot || "")));
@@ -266,4 +389,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.5";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.6";
