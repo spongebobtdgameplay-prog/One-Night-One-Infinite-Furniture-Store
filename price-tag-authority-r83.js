@@ -23,6 +23,8 @@ const RetailLabels = new Map([
 const AccentColors = [0xb77b43];
 const Rebuilding = new WeakSet();
 const Signatures = new WeakMap();
+const TAG_VISIBLE_DISTANCE = 34;
+const TagWorldPosition = new THREE.Vector3();
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -80,6 +82,16 @@ function ExistingTags(Chunk) {
     if (Object?.userData?.CompactPriceAuthorityR83) Tags.push(Object);
   });
   return Tags;
+}
+
+function UpdateTagVisibility() {
+  const MaxDistanceSq = TAG_VISIBLE_DISTANCE * TAG_VISIBLE_DISTANCE;
+  for (const Chunk of Game.ActiveChunks.values()) {
+    for (const Sign of ExistingTags(Chunk)) {
+      Sign.getWorldPosition(TagWorldPosition);
+      Sign.visible = TagWorldPosition.distanceToSquared(Game.Camera.position) <= MaxDistanceSq;
+    }
+  }
 }
 
 function RemoveOldPriceObjects(Chunk) {
@@ -165,13 +177,18 @@ export function CountSellable(Chunk) {
 }
 
 function Discover() {
-  for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) RebuildChunk(Chunk).catch(() => {});
+  // Prepared chunks are explicitly finalized by presentation-ready-r83.
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) RebuildChunk(Chunk).catch(() => {});
+  UpdateTagVisibility();
 }
 
 Discover();
 const Interval = setInterval(Discover, 1000);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
+const VisibilityInterval = setInterval(UpdateTagVisibility, 250);
+addEventListener("pagehide", () => {
+  clearInterval(Interval);
+  clearInterval(VisibilityInterval);
+}, { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
 window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.6";
