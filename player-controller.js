@@ -621,5 +621,5 @@ window.__STORE_PLAYER__ = {
   IsThirdPerson
 };
 
-window.__STORE_PLAYER_BUILD__ = "V0.11";
+window.__STORE_PLAYER_BUILD__ = "V0.27.6";
 requestAnimationFrame(Frame);
