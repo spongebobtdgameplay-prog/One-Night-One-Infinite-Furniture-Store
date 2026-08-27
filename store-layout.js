@@ -620,9 +620,9 @@ function AddRetailZone(Layout, Index, Seed) {
   const Side = SeedRoll(Seed, "EntranceRetailZoneSide") < 0.5 ? -1 : 1;
   const Facing = Side < 0 ? Math.PI / 2 : -Math.PI / 2;
   Layout.Zones.push(
-    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.75, Facing + 0.035 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.1", "Cart", Side * 13.95, 8.20, Facing - 0.045 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.2", "Cart", Side * 14.35, 9.65, Facing + 0.025 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.25, Facing + 0.035 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.1", "Cart", Side * 13.95, 8.05, Facing - 0.045 * Side, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.2", "Cart", Side * 14.35, 9.80, Facing + 0.025 * Side, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.45, -Facing + 0.02 * Side, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.Basket.0", "Basket", -Side * 12.55, 6.85, -Facing + 0.08 * Side, { Kind: "Zone", Sellable: false }),
     Slot("Entrance.Basket.1", "Basket", -Side * 12.95, 8.15, -Facing - 0.05 * Side, { Kind: "Zone", Sellable: false }),
