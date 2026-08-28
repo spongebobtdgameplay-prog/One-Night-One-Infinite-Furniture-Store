@@ -443,7 +443,12 @@ function Discover() {
   }
 }
 
-const StartupAssetKeys = Object.keys(AssetFiles).filter(Key => typeof AssetFiles[Key] === "string");
+const StartupAssetKeys = Object.keys(AssetFiles).filter(Key =>
+  typeof AssetFiles[Key] === "string" ||
+  Key === "KitchenStoveStyloo" ||
+  Key === "KitchenSink" ||
+  Key === "KitchenSinkBacksplash"
+);
 Promise.allSettled(StartupAssetKeys.map(Key => LoadTemplate(Key))).then(Discover);
 Discover();
 const Interval = setInterval(Discover, 850);
