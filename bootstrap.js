@@ -1,5 +1,5 @@
-const Cache = "20260827-162";
-const Version = "0.27.9";
+const Cache = "20260826-152";
+const Version = "0.27.3";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -7,25 +7,6 @@ const FaviconLinks = [
   { rel: "apple-touch-icon", sizes: "180x180", href: `favicon_io/apple-touch-icon.png?v=${FaviconVersion}` },
   { rel: "manifest", href: `favicon_io/site.webmanifest?v=${FaviconVersion}` }
 ];
-
-function GenerateClientWorldSeed() {
-  const Values = new Uint32Array(1);
-  crypto.getRandomValues(Values);
-  return Values[0] || 1;
-}
-
-const ExistingSinglePlayerSeed = Number(window.__STORE_SINGLEPLAYER_WORLD_SEED__);
-const NormalizedSinglePlayerSeed = Number.isFinite(ExistingSinglePlayerSeed)
-  ? (Math.trunc(ExistingSinglePlayerSeed) >>> 0)
-  : 0;
-const SinglePlayerSeed = NormalizedSinglePlayerSeed || GenerateClientWorldSeed();
-
-window.__STORE_SINGLEPLAYER_WORLD_SEED__ = SinglePlayerSeed;
-const ExistingWorldSeed = Number(window.__STORE_WORLD_SEED__);
-if (!Number.isFinite(ExistingWorldSeed) || !(Math.trunc(ExistingWorldSeed) >>> 0)) {
-  window.__STORE_WORLD_SEED__ = SinglePlayerSeed;
-}
-
 
 document.title = "The Infinity Store";
 const PromoEyebrow = document.querySelector("#BootScreen .Eyebrow");

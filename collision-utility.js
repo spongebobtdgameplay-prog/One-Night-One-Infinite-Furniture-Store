@@ -52,7 +52,6 @@ function CircleTouchesBounds(Position, Radius, Bounds) {
 
 function EntryTouchesCircle(Entry, Position, Radius) {
   if (!Entry) return false;
-  if (Entry.WalkableSurfaceR88 || /Rug|Carpet|WalkableSurface/i.test(String(Entry.Type || ""))) return false;
   const Bounds = EntryBounds(Entry);
 
   if (IsStructure(Entry) && FiniteBounds(Bounds)) return CircleTouchesBounds(Position, Radius, Bounds);
@@ -80,41 +79,6 @@ function IsCircleBlocked(Position, Radius, Entries, Options = {}) {
     if (EntryTouchesCircle(Entry, Position, Radius)) return true;
   }
   return false;
-}
-
-function FindWalkableSurface(Position, Radius, Entries, Options = {}) {
-  const FloorY = Number.isFinite(Number(Options.FloorY)) ? Number(Options.FloorY) : 0;
-  const MaxStepHeight = Math.max(0.01, Number(Options.MaxStepHeight) || 0.18);
-  let BestEntry = null;
-  let BestHeight = FloorY;
-
-  for (const Entry of Entries || []) {
-    if (!Entry?.WalkableSurfaceR88 && typeof Entry?.TestSurfaceContact !== "function") continue;
-    const Bounds = EntryBounds(Entry);
-    if (!FiniteBounds(Bounds)) continue;
-
-    const Height = Number.isFinite(Number(Entry.SurfaceTopY)) ? Number(Entry.SurfaceTopY) : Bounds.max.y;
-    if (!Number.isFinite(Height) || Height < FloorY - 0.02 || Height > FloorY + MaxStepHeight) continue;
-
-    let Touching = false;
-    if (typeof Entry.TestSurfaceContact === "function") {
-      try {
-        Touching = Entry.TestSurfaceContact(Position, Radius) === true;
-      } catch {}
-    } else {
-      Touching = CircleTouchesBounds(Position, Radius, Bounds);
-    }
-
-    if (!Touching || Height < BestHeight) continue;
-    BestEntry = Entry;
-    BestHeight = Height;
-  }
-
-  return {
-    Hit: Boolean(BestEntry),
-    Entry: BestEntry,
-    Height: BestEntry ? BestHeight : FloorY
-  };
 }
 
 function BoundsNormal(Position, Radius, Bounds, Motion, Target) {
@@ -157,18 +121,7 @@ function FindCircleContact(Position, Radius, Motion, Entries, Options = {}) {
     if (Filter && !Filter(Entry)) continue;
     if (!EntryTouchesCircle(Entry, Position, Radius)) continue;
     const Bounds = EntryBounds(Entry);
-    let HasNormal = false;
-
-    if (typeof Entry.GetCollisionNormal === "function") {
-      try {
-        Scratch.Normal.set(0, 0, 0);
-        const CustomNormal = Entry.GetCollisionNormal(Position, Radius, Motion, Scratch.Normal);
-        if (CustomNormal?.isVector3) Scratch.Normal.copy(CustomNormal);
-        HasNormal = Scratch.Normal.lengthSq() > 0.000001;
-      } catch {}
-    }
-
-    if (!HasNormal && !BoundsNormal(Position, Radius, Bounds, Motion, Scratch.Normal)) continue;
+    if (!BoundsNormal(Position, Radius, Bounds, Motion, Scratch.Normal)) continue;
     const Score = Motion?.lengthSq() > 0.000001 ? -Motion.dot(Scratch.Normal) : 1;
     if (Score <= BestScore) continue;
     BestScore = Score;
@@ -562,7 +515,6 @@ const CollisionUtility = {
   CircleTouchesBounds,
   EntryTouchesCircle,
   IsCircleBlocked,
-  FindWalkableSurface,
   FindCircleContact,
   SweepCircleFraction,
   ResolveHorizontalMove,
@@ -578,7 +530,7 @@ const CollisionUtility = {
 };
 
 window.__STORE_COLLISION_UTILITY__ = CollisionUtility;
-window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.27.8";
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.12.13";
 
 export default CollisionUtility;
 export {
@@ -588,7 +540,6 @@ export {
   CircleTouchesBounds,
   EntryTouchesCircle,
   IsCircleBlocked,
-  FindWalkableSurface,
   FindCircleContact,
   SweepCircleFraction,
   ResolveHorizontalMove,

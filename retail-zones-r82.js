@@ -237,6 +237,7 @@ export async function PreloadRetailZoneAssets() {
 }
 
 function Discover() {
+  for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk).catch(Error => console.warn("Prepared retail zone failed", Error));
   for (const Chunk of Game.ActiveChunks.values()) {
     if (!Chunk.Group?.userData?.PresentationReadyR82) ProcessChunk(Chunk).catch(Error => console.warn("Initial retail zone failed", Error));
   }
@@ -248,4 +249,4 @@ const Interval = setInterval(Discover, 700);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ZONES_R82__ = { ProcessChunk, Discover, PreloadRetailZoneAssets };
-window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.6";
+window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.2";

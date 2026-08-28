@@ -40,9 +40,9 @@ function Game() {
 }
 
 function QualityProfile() {
-  if (Settings.Graphics === "performance") return { PixelRatio: 0.75, PointLights: 3, Anisotropy: 1 };
-  if (Settings.Graphics === "high") return { PixelRatio: 1.00, PointLights: 6, Anisotropy: 4 };
-  return { PixelRatio: 0.90, PointLights: 4, Anisotropy: 2 };
+  if (Settings.Graphics === "performance") return { PixelRatio: 0.92, PointLights: 4, Anisotropy: 1 };
+  if (Settings.Graphics === "high") return { PixelRatio: 1.15, PointLights: 8, Anisotropy: 4 };
+  return { PixelRatio: 1, PointLights: 6, Anisotropy: 2 };
 }
 
 const PerfState = {
@@ -103,25 +103,16 @@ function ApplyTextureBudget() {
 function CullPointLights() {
   const CurrentGame = Game();
   if (!CurrentGame?.Scene || !CurrentGame?.Camera) return;
-
-  const Candidates = [];
-  const Seen = new Set();
-  const AddLight = Object => {
-    if (!Object?.isPointLight || Seen.has(Object)) return;
-    Seen.add(Object);
+  const Lights = [];
+  CurrentGame.Scene.traverse(Object => {
+    if (!Object.isPointLight) return;
     const Position = Object.userData.R43LightWorld ||= new THREE.Vector3();
     Object.getWorldPosition(Position);
-    Candidates.push({ Object, Distance: Position.distanceToSquared(CurrentGame.Camera.position) });
-  };
-
-  for (const Object of CurrentGame.Scene.children || []) AddLight(Object);
-  for (const Chunk of CurrentGame.ActiveChunks?.values?.() || []) {
-    for (const Light of Chunk.Lights || []) AddLight(Light);
-  }
-
-  Candidates.sort((A, B) => A.Distance - B.Distance);
+    Lights.push({ Object, Distance: Position.distanceToSquared(CurrentGame.Camera.position) });
+  });
+  Lights.sort((A, B) => A.Distance - B.Distance);
   const Limit = QualityProfile().PointLights;
-  for (let Index = 0; Index < Candidates.length; Index += 1) Candidates[Index].Object.visible = Index < Limit;
+  for (let Index = 0; Index < Lights.length; Index += 1) Lights[Index].Object.visible = Index < Limit;
 }
 
 function ApplyPerformance() {
@@ -354,8 +345,8 @@ BuildSettings();
 BuildMenu();
 addEventListener("resize", ApplyPerformance);
 addEventListener("store-settings-change", () => { PerfState.TextureStamp = ""; PerfState.Quality = ""; UpdateAmbient(); ApplyPerformance(); });
-setInterval(ApplyPerformance, 650);
+setInterval(ApplyPerformance, 450);
 setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
-window.__STORE_PERFORMANCE_BUILD__ = "V0.27.6";
-window.__STORE_SETTINGS_BUILD__ = "V0.27.6";
+window.__STORE_PERFORMANCE_BUILD__ = "V0.11-R43";
+window.__STORE_SETTINGS_BUILD__ = "V0.11-R43";

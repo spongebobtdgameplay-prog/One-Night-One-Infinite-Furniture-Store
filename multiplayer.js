@@ -13,18 +13,7 @@ const SERVER_WAKE_TIMEOUT_MS = 45_000;
 const COMPATIBILITY_CACHE_MS = 60_000;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
-const SINGLEPLAYER_WORLD_SEED = (() => {
-  const Existing = Number(window.__STORE_SINGLEPLAYER_WORLD_SEED__);
-  const ExistingSeed = Number.isFinite(Existing) ? (Math.trunc(Existing) >>> 0) : 0;
-  if (ExistingSeed) return ExistingSeed;
-
-  const Values = new Uint32Array(1);
-  crypto.getRandomValues(Values);
-  const Seed = Values[0] || 1;
-  window.__STORE_SINGLEPLAYER_WORLD_SEED__ = Seed;
-  if (!Number.isFinite(Number(window.__STORE_WORLD_SEED__))) window.__STORE_WORLD_SEED__ = Seed;
-  return Seed;
-})();
+const SINGLEPLAYER_WORLD_SEED = 1000;
 
 let SessionToken = localStorage.getItem(TOKEN_KEY) || "";
 let DesiredRoomCode = localStorage.getItem(ROOM_KEY) || "";
@@ -2108,7 +2097,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.27.5";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.27.3";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
