@@ -753,7 +753,11 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
     if (Entry.Decorations.length) Layout.Decorations[Entry.Slot] = [...Entry.Decorations];
     if (Entry.Sellable) {
       const Side = Entry.X < 0 ? -1 : 1;
-      const AnchorX = Side < 0 ? Bounds.MaxX + 0.42 : Bounds.MinX - 0.42;
+      const CandidateX = Side < 0 ? Bounds.MaxX + 0.42 : Bounds.MinX - 0.42;
+      const MinimumAisleSafeX = CENTRAL_AISLE_HALF_WIDTH + 0.78;
+      const AnchorX = Side < 0
+        ? Math.min(CandidateX, -MinimumAisleSafeX)
+        : Math.max(CandidateX, MinimumAisleSafeX);
       Layout.PriceAnchors[Entry.Slot] = {
         X: AnchorX,
         Z: Entry.Z + Entry.PriceZOffset
