@@ -1,6 +1,6 @@
 const STORE_HALF_WIDTH = 17;
-const CENTRAL_AISLE_HALF_WIDTH = 3.0;
-const DISPLAY_INNER_EDGE = 3.85;
+const CENTRAL_AISLE_HALF_WIDTH = 3.4;
+const DISPLAY_INNER_EDGE = 5.25;
 const DISPLAY_OUTER_EDGE = 15.45;
 const MERCHANDISE_Z_LIMIT = 10.45;
 const SLOT_SPACING = 0.28;
@@ -34,9 +34,6 @@ const Footprints = Object.freeze({
   RetailDiningTableR84: [2.30, 1.25],
   RetailBoxShelfR84: [1.55, 0.95],
   RetailCardboardBoxR84: [0.70, 0.62],
-  RetailKitchenStoveStylooR92: [1.18, 0.86],
-  RetailKitchenSinkR90: [1.36, 1.20],
-  RetailKitchenSinkBacksplashR90: [1.38, 1.22],
   Cart: [1.20, 1.55],
   Basket: [0.75, 0.75],
   BagShelf: [1.55, 0.95],
@@ -69,16 +66,14 @@ function SeedRoll(Seed, Key) {
 
 function Slot(SlotName, Model, X, Z, Rotation = 0, Extra = {}) {
   const Footprint = Extra.Footprint || Footprints[Model] || [1, 1];
-  const Scale = Number.isFinite(Extra.Scale) ? Math.max(0.72, Math.min(1.18, Number(Extra.Scale))) : 1;
   return {
     Slot: SlotName,
     Model,
     X,
     Z,
     Rotation,
-    Scale,
-    Width: Footprint[0] * Scale,
-    Depth: Footprint[1] * Scale,
+    Width: Footprint[0],
+    Depth: Footprint[1],
     Required: Extra.Required !== false,
     Sellable: Extra.Sellable !== false,
     AssetKey: Extra.AssetKey || "",
@@ -87,10 +82,6 @@ function Slot(SlotName, Model, X, Z, Rotation = 0, Extra = {}) {
     MaximumWidth: Extra.MaximumWidth,
     MaximumDepth: Extra.MaximumDepth,
     PriceZOffset: Number(Extra.PriceZOffset) || 0,
-    Contents: String(Extra.Contents || ""),
-    RetailLabel: String(Extra.RetailLabel || ""),
-    RetailPrice: String(Extra.RetailPrice || ""),
-    RetailDescription: String(Extra.RetailDescription || ""),
     Decorations: Array.isArray(Extra.Decorations) ? Extra.Decorations : [],
     StockStyle: Extra.StockStyle || "",
     Kind: Extra.Kind || "Base",
@@ -192,62 +183,45 @@ function BedroomTemplateB() {
   return Plan;
 }
 
-function KitchenRetailSlot(SlotName, Model, AssetKey, X, Z, Rotation, TargetHeight, MaximumWidth, MaximumDepth, Extra = {}) {
-  return Slot(SlotName, Model, X, Z, Rotation, {
-    Kind: "Retail",
-    AssetKey,
-    Name: Model,
-    TargetHeight,
-    MaximumWidth,
-    MaximumDepth,
-    ...Extra
-  });
-}
-
 function KitchenTemplateA() {
+  const LeftZ = 6.15;
+  const RightZ = -6.15;
   return {
     Name: "KitchenTemplateA",
     Base: [
-      Slot("Kitchen.Left.Fridge", "Kitchen_Fridge", -13.85, 7.10, 0)
+      Slot("Kitchen.Left.Fridge", "Kitchen_Fridge", -14.00, LeftZ, 0),
+      Slot("Kitchen.Left.CabinetA", "Kitchen_Cabinet1", -12.45, LeftZ, 0),
+      Slot("Kitchen.Left.Sink", "Kitchen_Sink", -10.85, LeftZ, 0),
+      Slot("Kitchen.Left.CabinetB", "Kitchen_Cabinet1", -9.25, LeftZ, 0),
+      Slot("Kitchen.Left.Oven", "Kitchen_Oven", -7.75, LeftZ, 0),
+      Slot("Kitchen.Right.Fridge", "Kitchen_Fridge", 14.00, RightZ, Math.PI),
+      Slot("Kitchen.Right.CabinetA", "Kitchen_Cabinet1", 12.45, RightZ, Math.PI),
+      Slot("Kitchen.Right.Sink", "Kitchen_Sink", 10.85, RightZ, Math.PI),
+      Slot("Kitchen.Right.CabinetB", "Kitchen_Cabinet1", 9.25, RightZ, Math.PI),
+      Slot("Kitchen.Right.Oven", "Kitchen_Oven", 7.75, RightZ, Math.PI)
     ],
     Rugs: [],
     Sale: [
-      Slot("Kitchen.Left.Dining", "RetailDiningTableR84", -10.40, -4.15, 0.10, { Kind: "Sale", AssetKey: "DiningTable", Name: "RetailDiningTableR84" }),
-      Slot("Kitchen.Right.SideTable", "RetailSideTableR84", 8.45, 5.55, -0.16, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" })
+      Slot("Kitchen.Left.Dining", "RetailDiningTableR84", -10.20, -1.65, 0, { Kind: "Sale", AssetKey: "DiningTable", Name: "RetailDiningTableR84" }),
+      Slot("Kitchen.Right.SideTable", "RetailSideTableR84", 9.20, 1.70, 0, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" })
     ],
     Retail: [
-      KitchenRetailSlot("Kitchen.Left.Stove", "RetailKitchenStoveStylooR92", "KitchenStoveStyloo", -4.70, 5.15, 0.16, 0.96, 1.18, 0.88),
-      KitchenRetailSlot("Kitchen.Left.Sink", "RetailKitchenSinkR90", "KitchenSink", -9.10, 1.55, -0.10, 1.02, 1.36, 1.20),
-      Slot("Kitchen.Left.DisplayCabinet", "RetailDisplayCabinetR79", -13.85, -1.95, Math.PI / 2 - 0.08, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" }),
-      KitchenRetailSlot("Kitchen.Right.Stove", "RetailKitchenStoveStylooR92", "KitchenStoveStyloo", 4.85, -5.90, Math.PI - 0.18, 0.94, 1.18, 0.88),
-      KitchenRetailSlot("Kitchen.Right.SinkBacksplash", "RetailKitchenSinkBacksplashR90", "KitchenSinkBacksplash", 9.85, -0.85, Math.PI + 0.08, 1.04, 1.38, 1.22),
-      Slot("Kitchen.Right.DisplayCabinet", "RetailDisplayCabinetR79", 13.95, 3.25, -Math.PI / 2 + 0.05, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
+      Slot("Kitchen.Right.DisplayCabinet", "RetailDisplayCabinetR79", 14.10, 1.90, -Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
     ],
     Partitions: []
   };
 }
 
 function KitchenTemplateB() {
-  return {
-    Name: "KitchenTemplateB",
-    Base: [
-      Slot("Kitchen.Right.Fridge", "Kitchen_Fridge", 13.80, 6.80, Math.PI)
-    ],
-    Rugs: [],
-    Sale: [
-      Slot("Kitchen.Right.Dining", "RetailDiningTableR84", 10.25, -4.55, -0.08, { Kind: "Sale", AssetKey: "DiningTable", Name: "RetailDiningTableR84" }),
-      Slot("Kitchen.Left.SideTable", "RetailSideTableR84", -8.30, 5.10, 0.14, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" })
-    ],
-    Retail: [
-      KitchenRetailSlot("Kitchen.Left.Stove", "RetailKitchenStoveStylooR92", "KitchenStoveStyloo", -4.75, -5.85, 0.12, 0.94, 1.18, 0.88),
-      KitchenRetailSlot("Kitchen.Left.SinkBacksplash", "RetailKitchenSinkBacksplashR90", "KitchenSinkBacksplash", -9.95, -0.75, -0.06, 1.04, 1.38, 1.22),
-      Slot("Kitchen.Left.DisplayCabinet", "RetailDisplayCabinetR79", -13.85, 3.65, Math.PI / 2 - 0.04, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" }),
-      KitchenRetailSlot("Kitchen.Right.Stove", "RetailKitchenStoveStylooR92", "KitchenStoveStyloo", 4.65, 4.95, Math.PI - 0.14, 0.96, 1.18, 0.88),
-      KitchenRetailSlot("Kitchen.Right.Sink", "RetailKitchenSinkR90", "KitchenSink", 9.15, 1.55, Math.PI + 0.10, 1.02, 1.36, 1.20),
-      Slot("Kitchen.Right.DisplayCabinet", "RetailDisplayCabinetR79", 13.85, -2.35, -Math.PI / 2 + 0.08, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
-    ],
-    Partitions: []
-  };
+  const Plan = KitchenTemplateA();
+  Plan.Name = "KitchenTemplateB";
+  for (const GroupName of ["Base", "Sale", "Retail"]) {
+    for (const Entry of Plan[GroupName]) {
+      Entry.Z *= -1;
+      if ("Rotation" in Entry) Entry.Rotation += Math.PI;
+    }
+  }
+  return Plan;
 }
 
 function BathroomTemplateA() {
@@ -283,21 +257,19 @@ function BathroomTemplateB() {
 }
 
 function WarehouseTemplateA() {
+  const Base = [];
+  let NumberIndex = 0;
+  for (const X of [-12.60, -9.35, 9.35, 12.60]) {
+    for (const Z of [-6.20, 0, 6.20]) {
+      Base.push(Slot(`Warehouse.Shelf.${NumberIndex}`, "Shelf_Large", X, Z, X < 0 ? 0 : Math.PI, { StockStyle: "Books" }));
+      NumberIndex += 1;
+    }
+  }
+  Base.push(Slot("Warehouse.Left.Bookcase", "Bookshelf", -14.35, -8.95, Math.PI / 2, { StockStyle: "Books" }));
+  Base.push(Slot("Warehouse.Right.Bookcase", "Bookshelf", 14.35, 8.95, -Math.PI / 2, { StockStyle: "Books" }));
   return {
     Name: "WarehouseTemplateA",
-    Base: [
-      Slot("Warehouse.Left.ShelfBack", "Shelf_Large", -12.20, -8.20, 0.04, { StockStyle: "Books" }),
-      Slot("Warehouse.Left.BookcaseBack", "Bookshelf", -9.45, -5.55, -0.06, { StockStyle: "Books" }),
-      Slot("Warehouse.Left.ShelfMid", "Shelf_Large", -11.35, -1.45, 0.03, { StockStyle: "Books" }),
-      Slot("Warehouse.Left.BookcaseMid", "Bookshelf", -8.85, 2.55, -0.05, { StockStyle: "Books" }),
-      Slot("Warehouse.Left.ShelfFront", "Shelf_Large", -12.55, 6.85, 0.07, { StockStyle: "Books" }),
-
-      Slot("Warehouse.Right.BookcaseBack", "Bookshelf", 11.90, -7.10, Math.PI - 0.05, { StockStyle: "Books" }),
-      Slot("Warehouse.Right.ShelfBack", "Shelf_Large", 9.15, -4.05, Math.PI + 0.06, { StockStyle: "Books" }),
-      Slot("Warehouse.Right.BookcaseMid", "Bookshelf", 12.45, 0.20, Math.PI - 0.03, { StockStyle: "Books" }),
-      Slot("Warehouse.Right.ShelfMid", "Shelf_Large", 8.85, 3.85, Math.PI + 0.05, { StockStyle: "Books" }),
-      Slot("Warehouse.Right.BookcaseFront", "Bookshelf", 11.45, 7.55, Math.PI - 0.06, { StockStyle: "Books" })
-    ],
+    Base,
     Rugs: [],
     Sale: [],
     Retail: [
@@ -311,12 +283,8 @@ function WarehouseTemplateA() {
 function WarehouseTemplateB() {
   const Plan = WarehouseTemplateA();
   Plan.Name = "WarehouseTemplateB";
-  for (const GroupName of ["Base", "Retail"]) {
-    for (const Entry of Plan[GroupName]) {
-      Entry.Z *= -1;
-      Entry.Rotation = -Entry.Rotation;
-    }
-  }
+  for (const Entry of Plan.Base) Entry.Z *= -1;
+  for (const Entry of Plan.Retail) Entry.Z *= -1;
   return Plan;
 }
 
@@ -443,221 +411,111 @@ function IncludeOptional(Seed, Entry) {
   return SeedRoll(Seed, Entry.Slot) <= Entry.Chance;
 }
 
-function AddDenseDepartmentSlots(Layout, Theme, Seed) {
-  const ExtraBase = [];
-  const ExtraRetail = [];
-  const ExtraSale = [];
-  const Variant = Math.floor(SeedRoll(Seed, `${Theme}:DensityPattern`) * 4) % 4;
-  const Patterns = [
-    {
-      LI: { X: -4.55, Z: -6.55, R: 0.20 }, LM: { X: -8.25, Z: -1.10, R: -0.10 }, LO: { X: -12.85, Z: 4.55, R: 0.08 },
-      RI: { X: 4.70, Z: 5.35, R: -0.18 }, RM: { X: 8.35, Z: 0.90, R: 0.10 }, RO: { X: 12.75, Z: -5.20, R: -0.08 }
-    },
-    {
-      LI: { X: -4.75, Z: -3.70, R: 0.10 }, LM: { X: -8.65, Z: 3.05, R: 0.16 }, LO: { X: -13.15, Z: -7.00, R: -0.08 },
-      RI: { X: 4.60, Z: 6.85, R: -0.12 }, RM: { X: 8.05, Z: -2.55, R: -0.16 }, RO: { X: 13.10, Z: 2.10, R: 0.08 }
-    },
-    {
-      LI: { X: -4.65, Z: 5.95, R: -0.16 }, LM: { X: -8.20, Z: -3.10, R: 0.12 }, LO: { X: -12.70, Z: 1.45, R: -0.10 },
-      RI: { X: 4.75, Z: -5.75, R: 0.16 }, RM: { X: 8.55, Z: 3.20, R: -0.10 }, RO: { X: 12.95, Z: -0.85, R: 0.10 }
-    },
-    {
-      LI: { X: -4.60, Z: 2.20, R: 0.14 }, LM: { X: -8.55, Z: -6.35, R: -0.14 }, LO: { X: -13.00, Z: 6.25, R: 0.06 },
-      RI: { X: 4.65, Z: -1.85, R: -0.14 }, RM: { X: 8.15, Z: 6.20, R: 0.14 }, RO: { X: 12.80, Z: -6.55, R: -0.06 }
-    }
-  ];
-  const P = Patterns[Variant];
+function AddDenseDepartmentSlots(Layout, Theme) {
+  const Extra = [];
 
   if (Theme === "LIVING ROOM") {
-    ExtraBase.push(
-      Slot("Density.Living.Left.InnerChair", "Chair_2", P.LI.X, P.LI.Z, P.LI.R),
-      Slot("Density.Living.Left.Table", "Table_RoundLarge", P.LM.X, P.LM.Z, P.LM.R),
-      Slot("Density.Living.Left.Bookshelf", "Bookshelf", P.LO.X, P.LO.Z, Math.PI / 2 + P.LO.R, { StockStyle: "Books" }),
-      Slot("Density.Living.Right.InnerChair", "Chair_2", P.RI.X, P.RI.Z, P.RI.R),
-      Slot("Density.Living.Right.Couch", "Couch_Large1", P.RM.X + 0.65, P.RM.Z, Math.PI + P.RM.R, { Decorations: ["PillowA", "PillowB"] }),
-      Slot("Density.Living.Right.Lamp", "Light_Floor1", P.RO.X, P.RO.Z, 0, { Sellable: false })
-    );
-    ExtraSale.push(
-      Slot("Density.Living.Left.SideTable", "RetailSideTableR84", P.LI.X - 1.20, P.LI.Z + 0.95, P.LI.R + 0.12, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" }),
-      Slot("Density.Living.Right.CoffeeTable", "RetailCoffeeTableR84", P.RM.X - 1.30, P.RM.Z + 1.05, P.RM.R, { Kind: "Sale", AssetKey: "CoffeeTable", Name: "RetailCoffeeTableR84" })
+    Extra.push(
+      Slot("Density.Living.Left.Table", "Table_RoundLarge", -10.10, -4.55, 0),
+      Slot("Density.Living.Left.Chair", "Chair_2", -7.45, -4.55, 0.12),
+      Slot("Density.Living.Right.Table", "Table_RoundLarge", 10.10, 4.55, 0),
+      Slot("Density.Living.Right.Chair", "Chair_2", 7.45, 4.55, -0.12),
+      Slot("Density.Living.Left.InnerChair", "Chair_2", -6.45, 0.25, 0.18),
+      Slot("Density.Living.Right.InnerChair", "Chair_2", 6.45, -0.25, -0.18)
     );
   } else if (Theme === "BEDROOMS") {
-    ExtraBase.push(
-      Slot("Density.Bedroom.Left.Stand", "NightStand_2", P.LI.X, P.LI.Z, P.LI.R, { Decorations: ["TableLamp"] }),
-      Slot("Density.Bedroom.Left.Single", "Bed_Single", P.LM.X - 0.55, P.LM.Z, P.LM.R, { Decorations: ["PillowB"] }),
-      Slot("Density.Bedroom.Left.Chair", "Chair_2", P.LO.X, P.LO.Z, P.LO.R),
-      Slot("Density.Bedroom.Right.Stand", "NightStand_2", P.RI.X, P.RI.Z, P.RI.R, { Decorations: ["TableLamp"] }),
-      Slot("Density.Bedroom.Right.Single", "Bed_Single", P.RM.X + 0.45, P.RM.Z, Math.PI + P.RM.R, { Decorations: ["PillowB"] }),
-      Slot("Density.Bedroom.Right.Chair", "Chair_2", P.RO.X, P.RO.Z, P.RO.R)
-    );
-    ExtraRetail.push(
-      Slot("Density.Bedroom.Left.Cabinet", "RetailBedroomCabinetR79", P.LO.X + 0.35, P.LO.Z - 2.05, Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailBedroomCabinetR79", TargetHeight: 1.32, MaximumWidth: 1.30, MaximumDepth: 0.82 }),
-      Slot("Density.Bedroom.Right.Accent", "RetailBedroomChairR79", P.RI.X + 1.65, P.RI.Z - 1.05, P.RI.R, { Kind: "Retail", AssetKey: "ArmchairPillows", Name: "RetailBedroomChairR79", TargetHeight: 0.90, MaximumWidth: 1.30, MaximumDepth: 1.30 })
+    Extra.push(
+      Slot("Density.Bedroom.Right.Single", "Bed_Single", 10.25, 4.35, Math.PI, { Decorations: ["PillowB"] }),
+      Slot("Density.Bedroom.Right.Nightstand", "NightStand_2", 8.55, 4.35, 0, { Decorations: ["TableLamp"] }),
+      Slot("Density.Bedroom.Left.SingleStand", "NightStand_2", -8.55, -4.25, 0, { Decorations: ["TableLamp"] }),
+      Slot("Density.Bedroom.Left.Chair", "Chair_2", -6.55, -7.75, 0.10),
+      Slot("Density.Bedroom.Right.Chair", "Chair_2", 6.55, 7.75, -0.10)
     );
   } else if (Theme === "KITCHENS") {
-    ExtraRetail.push(
-      KitchenRetailSlot("Density.Kitchen.Left.Stove", "RetailKitchenStoveStylooR92", "KitchenStoveStyloo", P.LI.X, P.LI.Z, P.LI.R, 0.94, 1.18, 0.88),
-      KitchenRetailSlot("Density.Kitchen.Left.Sink", "RetailKitchenSinkR90", "KitchenSink", P.LM.X, P.LM.Z, P.LM.R, 1.02, 1.36, 1.20),
-      Slot("Density.Kitchen.Left.Cabinet", "RetailDisplayCabinetR79", P.LO.X, P.LO.Z, Math.PI / 2 + P.LO.R, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78 }),
-      KitchenRetailSlot("Density.Kitchen.Right.Stove", "RetailKitchenStoveStylooR92", "KitchenStoveStyloo", P.RI.X, P.RI.Z, Math.PI + P.RI.R, 0.96, 1.18, 0.88),
-      KitchenRetailSlot("Density.Kitchen.Right.Sink", "RetailKitchenSinkBacksplashR90", "KitchenSinkBacksplash", P.RM.X, P.RM.Z, Math.PI + P.RM.R, 1.04, 1.38, 1.22),
-      Slot("Density.Kitchen.Right.Cabinet", "RetailDisplayCabinetR79", P.RO.X, P.RO.Z, -Math.PI / 2 + P.RO.R, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78 })
-    );
-    ExtraSale.push(
-      Slot("Density.Kitchen.Left.Dining", "RetailDiningTableR84", P.LM.X - 0.20, P.LM.Z + 2.45, P.LM.R + 0.12, { Kind: "Sale", AssetKey: "DiningTable", Name: "RetailDiningTableR84" }),
-      Slot("Density.Kitchen.Right.SideTable", "RetailSideTableR84", P.RI.X + 1.55, P.RI.Z + 1.25, P.RI.R, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" })
-    );
+    for (const [Index, X] of [-13.35, -11.85, -10.35, -8.85].entries()) {
+      Extra.push(Slot(`Density.Kitchen.Left.Run.${Index}`, "Kitchen_Cabinet1", X, -7.85, Math.PI));
+    }
+    for (const [Index, X] of [8.85, 10.35, 11.85, 13.35].entries()) {
+      Extra.push(Slot(`Density.Kitchen.Right.Run.${Index}`, "Kitchen_Cabinet1", X, 7.85, 0));
+    }
   } else if (Theme === "BATHROOMS") {
-    ExtraBase.push(
-      Slot("Density.Bathroom.Left.Toilet", "Bathroom_Toilet", P.LI.X, P.LI.Z, P.LI.R),
-      Slot("Density.Bathroom.Left.Tub", "Bathroom_Bathtub", P.LM.X, P.LM.Z, Math.PI / 2 + P.LM.R),
-      Slot("Density.Bathroom.Right.Toilet", "Bathroom_Toilet", P.RI.X, P.RI.Z, Math.PI + P.RI.R),
-      Slot("Density.Bathroom.Right.Tub", "Bathroom_Bathtub", P.RM.X, P.RM.Z, -Math.PI / 2 + P.RM.R)
-    );
-    ExtraRetail.push(
-      Slot("Density.Bathroom.Left.Cabinet", "RetailDisplayCabinetR79", P.LO.X, P.LO.Z, Math.PI / 2 + P.LO.R, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.20, MaximumWidth: 1.25, MaximumDepth: 0.78 }),
-      Slot("Density.Bathroom.Right.Cabinet", "RetailDisplayCabinetR79", P.RO.X, P.RO.Z, -Math.PI / 2 + P.RO.R, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.20, MaximumWidth: 1.25, MaximumDepth: 0.78 })
+    Extra.push(
+      Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -8.55, -0.95, 0),
+      Slot("Density.Bathroom.Left.ToiletB", "Bathroom_Toilet", -11.10, 0.95, 0),
+      Slot("Density.Bathroom.Right.ToiletA", "Bathroom_Toilet", 8.55, 0.95, Math.PI),
+      Slot("Density.Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.10, -0.95, Math.PI),
+      Slot("Density.Bathroom.Left.ToiletC", "Bathroom_Toilet", -7.05, 8.00, 0),
+      Slot("Density.Bathroom.Right.ToiletC", "Bathroom_Toilet", 7.05, -8.00, Math.PI)
     );
   } else if (Theme === "WAREHOUSE" || Theme === "STORAGE") {
-    ExtraBase.push(
-      Slot("Density.Warehouse.Left.InnerShelf", "Shelf_Large", P.LI.X + 0.45, P.LI.Z, P.LI.R, { StockStyle: "Books" }),
-      Slot("Density.Warehouse.Left.Bookcase", "Bookshelf", P.LM.X, P.LM.Z, P.LM.R, { StockStyle: "Books" }),
-      Slot("Density.Warehouse.Right.InnerShelf", "Shelf_Large", P.RI.X - 0.35, P.RI.Z, Math.PI + P.RI.R, { StockStyle: "Books" }),
-      Slot("Density.Warehouse.Right.Bookcase", "Bookshelf", P.RM.X, P.RM.Z, Math.PI + P.RM.R, { StockStyle: "Books" })
-    );
-    ExtraRetail.push(
-      Slot("Density.Warehouse.Left.RetailShelf", "RetailStorageShelfR79", P.LO.X, P.LO.Z, Math.PI / 2 + P.LO.R, { Kind: "Retail", AssetKey: "ShelfSmallDecorated", Name: "RetailStorageShelfR79", TargetHeight: 1.52, MaximumWidth: 1.35, MaximumDepth: 0.78, StockStyle: "Books" }),
-      Slot("Density.Warehouse.Right.RetailCabinet", "RetailStorageCabinetR79", P.RO.X, P.RO.Z, -Math.PI / 2 + P.RO.R, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailStorageCabinetR79", TargetHeight: 1.18, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
-    );
+    let NumberIndex = 0;
+    for (const X of [-6.35, 6.35]) {
+      for (const Z of [-6.20, 0, 6.20]) {
+        Extra.push(Slot(`Density.Warehouse.InnerShelf.${NumberIndex}`, "Shelf_Large", X, Z, X < 0 ? 0 : Math.PI, { StockStyle: "Books" }));
+        NumberIndex += 1;
+      }
+    }
   } else if (Theme === "SHOWROOM") {
-    ExtraBase.push(
-      Slot("Density.Showroom.Left.InnerChair", "Chair_2", P.LI.X, P.LI.Z, P.LI.R),
-      Slot("Density.Showroom.Left.Table", "Table_RoundLarge", P.LM.X, P.LM.Z, P.LM.R),
-      Slot("Density.Showroom.Left.Bookshelf", "Bookshelf", P.LO.X, P.LO.Z, Math.PI / 2 + P.LO.R, { StockStyle: "Books" }),
-      Slot("Density.Showroom.Right.Couch", "Couch_Large1", P.RM.X + 0.65, P.RM.Z, Math.PI + P.RM.R, { Decorations: ["PillowA", "PillowB"] }),
-      Slot("Density.Showroom.Right.InnerChair", "Chair_2", P.RI.X, P.RI.Z, P.RI.R),
-      Slot("Density.Showroom.Right.Nightstand", "NightStand_2", P.RO.X, P.RO.Z, P.RO.R)
-    );
-    ExtraRetail.push(
-      Slot("Density.Showroom.Left.Accent", "RetailArmchairR79", P.LI.X + 1.55, P.LI.Z + 1.25, P.LI.R, { Kind: "Retail", AssetKey: "ArmchairPillows", Name: "RetailArmchairR79", TargetHeight: 0.96, MaximumWidth: 1.35, MaximumDepth: 1.35 })
-    );
-    ExtraSale.push(
-      Slot("Density.Showroom.Right.Coffee", "RetailCoffeeTableR84", P.RM.X - 1.25, P.RM.Z + 1.00, P.RM.R, { Kind: "Sale", AssetKey: "CoffeeTable", Name: "RetailCoffeeTableR84" })
+    Extra.push(
+      Slot("Density.Showroom.Right.Couch", "Couch_Large1", 11.10, 6.75, Math.PI, { Decorations: ["PillowA", "PillowB"] }),
+      Slot("Density.Showroom.Right.Chair", "Chair_2", 7.20, 6.75, -0.12),
+      Slot("Density.Showroom.Left.Bookshelf", "Bookshelf", -14.05, 0.35, Math.PI / 2, { StockStyle: "Books" }),
+      Slot("Density.Showroom.Left.InnerChair", "Chair_2", -6.55, 0.20, 0.10),
+      Slot("Density.Showroom.Right.Table", "Table_RoundLarge", 10.00, 0.15, 0)
     );
   } else if (Theme === "CLEARANCE") {
-    ExtraBase.push(
-      Slot("Density.Clearance.Left.Chair", "Chair_2", P.LI.X, P.LI.Z, P.LI.R),
-      Slot("Density.Clearance.Left.Nightstand", "NightStand_2", P.LM.X, P.LM.Z, P.LM.R),
-      Slot("Density.Clearance.Left.Bookshelf", "Bookshelf", P.LO.X, P.LO.Z, Math.PI / 2 + P.LO.R, { StockStyle: "Books" }),
-      Slot("Density.Clearance.Right.Table", "Table_RoundLarge", P.RM.X, P.RM.Z, P.RM.R),
-      Slot("Density.Clearance.Right.Chair", "Chair_2", P.RI.X, P.RI.Z, P.RI.R),
-      Slot("Density.Clearance.Right.Bookshelf", "Bookshelf", P.RO.X, P.RO.Z, -Math.PI / 2 + P.RO.R, { StockStyle: "Books" })
-    );
-    ExtraSale.push(
-      Slot("Density.Clearance.Left.SideTable", "RetailSideTableR84", P.LI.X - 1.25, P.LI.Z + 1.00, P.LI.R, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" }),
-      Slot("Density.Clearance.Right.CoffeeTable", "RetailCoffeeTableR84", P.RM.X - 1.35, P.RM.Z + 1.10, P.RM.R, { Kind: "Sale", AssetKey: "CoffeeTable", Name: "RetailCoffeeTableR84" })
+    Extra.push(
+      Slot("Density.Clearance.Left.Bookshelf", "Bookshelf", -13.80, -7.85, Math.PI / 2, { StockStyle: "Books" }),
+      Slot("Density.Clearance.Left.Chair", "Chair_2", -6.55, -7.55, 0.15),
+      Slot("Density.Clearance.Right.Chair", "Chair_2", 6.55, 7.55, -0.15),
+      Slot("Density.Clearance.Right.Table", "Table_RoundLarge", 9.80, 0.00, 0),
+      Slot("Density.Clearance.Left.Nightstand", "NightStand_2", -6.45, 3.20, 0)
     );
   }
 
-  for (const Entry of ExtraBase) Entry.Required = false;
-  for (const Entry of ExtraRetail) Entry.Required = false;
-  for (const Entry of ExtraSale) Entry.Required = false;
-  Layout.Base.push(...ExtraBase);
-  Layout.Retail.push(...ExtraRetail);
-  Layout.Sale.push(...ExtraSale);
+  for (const Entry of Extra) Entry.Required = false;
+  Layout.Base.push(...Extra);
 }
 
-function AddCardboardBoxClusters(Layout, Theme, Index, Seed) {
+function AddCardboardBoxScatter(Layout, Theme, Index, Seed) {
   const DenseStorage = Theme === "WAREHOUSE" || Theme === "STORAGE";
-  const TargetCount = DenseStorage ? 10 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 7 : 5);
-  const ClusterZ = DenseStorage
-    ? [-8.10, -4.05, -0.10, 3.95, 7.90]
-    : [-7.35, -2.20, 3.05, 7.10];
-  const LocalOffsets = [
-    { X: 0.00, Z: -0.40 },
-    { X: 0.82, Z: 0.34 },
-    { X: 0.26, Z: 0.92 }
-  ];
-  const RotationChoices = [-0.34, -0.22, -0.11, 0.06, 0.18, 0.29];
-  const ScaleChoices = [0.88, 0.94, 1.00, 1.06, 1.11];
-  const Contents = [
-    { Name: "SIDE TABLE", Price: "$39.99" },
-    { Name: "FLOOR LAMP", Price: "$24.99" },
-    { Name: "DINING CHAIR", Price: "$49.99" },
-    { Name: "NIGHTSTAND", Price: "$59.99" },
-    { Name: "BOOKSHELF", Price: "$79.99" },
-    { Name: "STORAGE CABINET", Price: "$99.99" },
-    { Name: "COFFEE TABLE", Price: "$89.99" },
-    { Name: "BED FRAME PARTS", Price: "$129.99" }
-  ];
-  const StartCluster = Math.floor(SeedRoll(Seed, "CardboardClusterStart") * ClusterZ.length) % ClusterZ.length;
-  const BaseSide = SeedRoll(Seed, "CardboardClusterBaseSide") < 0.5 ? -1 : 1;
+  const Candidates = DenseStorage
+    ? [
+        [-14.10, -3.05], [14.10, 3.05], [-14.10, 3.05], [14.10, -3.05],
+        [-7.85, -9.00], [7.85, 9.00]
+      ]
+    : [
+        [-6.25, -8.90], [6.25, 8.90], [-6.25, 2.85], [6.25, -2.85],
+        [-6.25, -2.85], [6.25, 2.85]
+      ];
 
-  for (let Added = 0; Added < TargetCount; Added += 1) {
-    const ClusterOrder = Math.floor(Added / 2);
-    const ClusterIndex = (StartCluster + ClusterOrder) % ClusterZ.length;
-    const LocalIndex = Added % 2;
-    const Side = ClusterOrder % 2 === 0 ? BaseSide : -BaseSide;
-    const Offset = LocalOffsets[(LocalIndex + ClusterOrder) % LocalOffsets.length];
-    const XJitter = (SeedRoll(Seed, `CardboardClusterX:${Added}`) - 0.5) * 0.20;
-    const ZJitter = (SeedRoll(Seed, `CardboardClusterZ:${Added}`) - 0.5) * 0.24;
-    const X = Side * (5.72 + Offset.X + XJitter);
-    const Z = ClusterZ[ClusterIndex] + Offset.Z + ZJitter;
+  const Count = DenseStorage ? 6 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 4 : 3);
+  const RotationChoices = [-0.20, -0.08, 0.10, 0.22];
+  const Start = Math.floor(SeedRoll(Seed, "BoxScatterStart") * Candidates.length) % Candidates.length;
+  let Added = 0;
+
+  for (let CandidateIndex = 0; CandidateIndex < Candidates.length && Added < Count; CandidateIndex += 1) {
+    const SourceIndex = (Start + CandidateIndex) % Candidates.length;
+    const [X, Z] = Candidates[SourceIndex];
     if (Index === 0 && Z > 5.20) continue;
-
-    const RotationIndex = Math.floor(SeedRoll(Seed, `CardboardClusterRotation:${Added}`) * RotationChoices.length) % RotationChoices.length;
-    const ScaleIndex = Math.floor(SeedRoll(Seed, `CardboardClusterScale:${Added}`) * ScaleChoices.length) % ScaleChoices.length;
-    const ContentsIndex = Math.floor(SeedRoll(Seed, `CardboardClusterContents:${Added}`) * Contents.length) % Contents.length;
-    const PackedItem = Contents[ContentsIndex];
-
+    const Rotation = RotationChoices[Math.floor(SeedRoll(Seed, `BoxScatterRotation:${CandidateIndex}`) * RotationChoices.length)];
     Layout.Sale.push(Slot(
-      `CardboardCluster.${Added}`,
+      `CardboardBox.${Added}`,
       "RetailCardboardBoxR84",
       X,
       Z,
-      RotationChoices[RotationIndex] * Side,
+      Rotation,
       {
         Kind: "Sale",
         AssetKey: "CardboardBox",
         Name: "RetailCardboardBoxR84",
         Sellable: true,
         Required: false,
-        Footprint: [0.70, 0.62],
-        Scale: ScaleChoices[ScaleIndex],
-        PriceZOffset: LocalIndex === 0 ? -0.18 : 0.18,
-        Contents: PackedItem.Name,
-        RetailLabel: `BOXED ${PackedItem.Name}`,
-        RetailPrice: PackedItem.Price,
-        RetailDescription: `CONTAINS ${PackedItem.Name}`
+        Footprint: [0.70, 0.62]
       }
     ));
+    Added += 1;
   }
-}
-
-function AddEntranceDisplayPods(Layout, Index, Seed) {
-  if (Index !== 0) return;
-  const Flip = SeedRoll(Seed, "EntranceDisplayFlip") < 0.5;
-
-  const LeftBase = Flip
-    ? Slot("Entrance.Display.Left.Chair", "Chair_2", -5.45, 3.25, 0.16)
-    : Slot("Entrance.Display.Left.Table", "Table_RoundLarge", -6.10, 2.85, 0.08);
-  const RightBase = Flip
-    ? Slot("Entrance.Display.Right.Table", "Table_RoundLarge", 6.10, 2.75, -0.08)
-    : Slot("Entrance.Display.Right.Chair", "Chair_2", 5.45, 3.35, -0.16);
-
-  LeftBase.Required = false;
-  RightBase.Required = false;
-  Layout.Base.push(LeftBase, RightBase);
-
-  const LeftSale = Slot("Entrance.Display.Left.SideTable", "RetailSideTableR84", -8.15, 2.20, 0.05, {
-    Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84", Required: false
-  });
-  const RightRetail = Slot("Entrance.Display.Right.Armchair", "RetailArmchairR79", 8.10, 2.35, -0.08, {
-    Kind: "Retail", AssetKey: "ArmchairPillows", Name: "RetailArmchairR79",
-    TargetHeight: 0.96, MaximumWidth: 1.35, MaximumDepth: 1.35, Required: false
-  });
-  Layout.Sale.push(LeftSale);
-  Layout.Retail.push(RightRetail);
 }
 
 function AddRetailZone(Layout, Index, Seed) {
@@ -665,13 +523,13 @@ function AddRetailZone(Layout, Index, Seed) {
   const Side = SeedRoll(Seed, "EntranceRetailZoneSide") < 0.5 ? -1 : 1;
   const Facing = Side < 0 ? Math.PI / 2 : -Math.PI / 2;
   Layout.Zones.push(
-    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.25, Facing + 0.035 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.1", "Cart", Side * 13.95, 8.05, Facing - 0.045 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Cart.2", "Cart", Side * 14.35, 9.80, Facing + 0.025 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.45, -Facing + 0.02 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.0", "Basket", -Side * 12.55, 6.85, -Facing + 0.08 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.1", "Basket", -Side * 12.95, 8.15, -Facing - 0.05 * Side, { Kind: "Zone", Sellable: false }),
-    Slot("Entrance.Basket.2", "Basket", -Side * 12.50, 9.45, -Facing + 0.10 * Side, { Kind: "Zone", Sellable: false })
+    Slot("Entrance.Cart.0", "Cart", Side * 14.25, 6.80, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.1", "Cart", Side * 14.25, 8.30, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Cart.2", "Cart", Side * 14.25, 9.80, Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.BagShelf", "BagShelf", -Side * 14.15, 8.30, -Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.0", "Basket", -Side * 12.75, 6.90, -Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.1", "Basket", -Side * 12.75, 8.30, -Facing, { Kind: "Zone", Sellable: false }),
+    Slot("Entrance.Basket.2", "Basket", -Side * 12.75, 9.70, -Facing, { Kind: "Zone", Sellable: false })
   );
   Layout.ZoneHeaders.push(
     { Slot: "Entrance.CartHeader", Text: "CART RETURN", X: Side * 16.84, Z: 8.55, Rotation: Facing, WallMounted: true },
@@ -688,12 +546,6 @@ function ReserveEntranceTransition(Layout, Index) {
   Layout.Sale = (Layout.Sale || []).filter(KeepSlot);
   Layout.Partitions = (Layout.Partitions || []).filter(Entry => Entry.Z + Entry.Length * 0.5 <= FrontLimit);
   Layout.Rugs = (Layout.Rugs || []).filter(Entry => Entry.Z + Entry.Depth * 0.5 <= FrontLimit);
-
-  // The entrance owns chunk 0. Department merchandise is allowed to fill the
-  // remaining bays, but it must yield to cart/basket circulation and entry displays.
-  for (const Group of [Layout.Base, Layout.Retail, Layout.Sale]) {
-    for (const Entry of Group) Entry.Required = false;
-  }
 }
 
 function AddTask(Layout, Index, Seed) {
@@ -722,13 +574,7 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
     ...Layout.Sale,
     ...Layout.Zones,
     ...(Layout.Task ? [Layout.Task] : [])
-  ].map((Entry, Order) => ({ Entry, Order }))
-    .sort((A, B) => {
-      const ARequired = A.Entry.Required !== false ? 1 : 0;
-      const BRequired = B.Entry.Required !== false ? 1 : 0;
-      return BRequired - ARequired || A.Order - B.Order;
-    })
-    .map(Item => Item.Entry);
+  ];
 
   Layout.ValidationErrors = [];
   Layout.Slots = Object.create(null);
@@ -753,11 +599,7 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
     if (Entry.Decorations.length) Layout.Decorations[Entry.Slot] = [...Entry.Decorations];
     if (Entry.Sellable) {
       const Side = Entry.X < 0 ? -1 : 1;
-      const CandidateX = Side < 0 ? Bounds.MaxX + 0.42 : Bounds.MinX - 0.42;
-      const MinimumAisleSafeX = CENTRAL_AISLE_HALF_WIDTH + 0.78;
-      const AnchorX = Side < 0
-        ? Math.min(CandidateX, -MinimumAisleSafeX)
-        : Math.max(CandidateX, MinimumAisleSafeX);
+      const AnchorX = Side < 0 ? Bounds.MaxX + 0.42 : Bounds.MinX - 0.42;
       Layout.PriceAnchors[Entry.Slot] = {
         X: AnchorX,
         Z: Entry.Z + Entry.PriceZOffset
@@ -769,6 +611,12 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
   Layout.Base = FilterGroup(Layout.Base);
   Layout.Retail = FilterGroup(Layout.Retail);
   Layout.Sale = FilterGroup(Layout.Sale);
+  const CardboardBoxes = Layout.Sale.filter(Entry => Entry.AssetKey === "CardboardBox");
+  for (let Index = 0; Index < CardboardBoxes.length; Index += 1) {
+    const Entry = CardboardBoxes[Index];
+    Entry.Sellable = Index === 0;
+    if (Index > 0) delete Layout.PriceAnchors[Entry.Slot];
+  }
   Layout.Zones = FilterGroup(Layout.Zones);
   if (Layout.Task && !Layout.Slots[Layout.Task.Slot]) Layout.Task = null;
 
@@ -863,10 +711,9 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
     Task: null
   };
 
-  AddDenseDepartmentSlots(Layout, ThemeName, Seed);
+  AddDenseDepartmentSlots(Layout, ThemeName);
   ReserveEntranceTransition(Layout, Index);
-  AddEntranceDisplayPods(Layout, Index, Seed);
-  AddCardboardBoxClusters(Layout, ThemeName, Index, Seed);
+  AddCardboardBoxScatter(Layout, ThemeName, Index, Seed);
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
@@ -894,4 +741,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.9";
+window.__STORE_LAYOUT_BUILD__ = "V0.27.2";

@@ -18,19 +18,11 @@ const RetailLabels = new Map([
   ["RetailBedroomChairR79", "BEDROOM ARMCHAIR"],
   ["RetailStorageShelfR79", "STORAGE SHELF"],
   ["RetailStorageCabinetR79", "STORAGE CABINET"],
-  ["RetailDisplayCabinetR79", "DISPLAY CABINET"],
-  ["RetailKitchenStoveSingleR90", "SINGLE-BURNER STOVE"],
-  ["RetailKitchenStoveMultiR90", "MULTI-BURNER STOVE"],
-  ["RetailKitchenStoveDecoratedR90", "DISPLAY STOVE"],
-  ["RetailKitchenOvenR90", "KITCHEN OVEN"],
-  ["RetailKitchenSinkR90", "SINK COUNTER"],
-  ["RetailKitchenSinkBacksplashR90", "SINK + BACKSPLASH"]
+  ["RetailDisplayCabinetR79", "DISPLAY CABINET"]
 ]);
 const AccentColors = [0xb77b43];
 const Rebuilding = new WeakSet();
 const Signatures = new WeakMap();
-const TAG_VISIBLE_DISTANCE = 34;
-const TagWorldPosition = new THREE.Vector3();
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -71,13 +63,9 @@ function ItemPrice(Item, Chunk, Index) {
   return Fixed || FurniturePrice(Item.name, Chunk.Index, Index);
 }
 
-function SignatureOf(Items, Chunk) {
+function SignatureOf(Items) {
   return Items.map(Item => {
-    const SlotName = String(Item.userData?.LayoutSlot || "");
-    const Slot = Chunk.Layout?.Slots?.[SlotName];
-    const C = Slot
-      ? { x: Number(Slot.X) || 0, z: Number(Slot.Z) || 0 }
-      : BoundsOf(Item).getCenter(new THREE.Vector3());
+    const C = BoundsOf(Item).getCenter(new THREE.Vector3());
     return `${Item.uuid}:${C.x.toFixed(2)}:${C.z.toFixed(2)}:${ItemLabel(Item)}:${Item.userData?.RetailPrice || ""}:${Item.userData?.RetailDescription || ""}`;
   }).join("|");
 }
@@ -88,16 +76,6 @@ function ExistingTags(Chunk) {
     if (Object?.userData?.CompactPriceAuthorityR83) Tags.push(Object);
   });
   return Tags;
-}
-
-function UpdateTagVisibility() {
-  const MaxDistanceSq = TAG_VISIBLE_DISTANCE * TAG_VISIBLE_DISTANCE;
-  for (const Chunk of Game.ActiveChunks.values()) {
-    for (const Sign of ExistingTags(Chunk)) {
-      Sign.getWorldPosition(TagWorldPosition);
-      Sign.visible = TagWorldPosition.distanceToSquared(Game.Camera.position) <= MaxDistanceSq;
-    }
-  }
 }
 
 function RemoveOldPriceObjects(Chunk) {
@@ -129,7 +107,7 @@ export async function RebuildChunk(Chunk) {
   Rebuilding.add(Chunk);
   try {
     const Items = SellableItems(Chunk);
-    const Signature = SignatureOf(Items, Chunk);
+    const Signature = SignatureOf(Items);
     const Existing = ExistingTags(Chunk);
     if (Signatures.get(Chunk) === Signature && Existing.length === Items.length) {
       Chunk.Group.userData.PriceTagsR83 = true;
@@ -183,18 +161,13 @@ export function CountSellable(Chunk) {
 }
 
 function Discover() {
-  // Prepared chunks are explicitly finalized by presentation-ready-r83.
+  for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) RebuildChunk(Chunk).catch(() => {});
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) RebuildChunk(Chunk).catch(() => {});
-  UpdateTagVisibility();
 }
 
 Discover();
 const Interval = setInterval(Discover, 1000);
-const VisibilityInterval = setInterval(UpdateTagVisibility, 250);
-addEventListener("pagehide", () => {
-  clearInterval(Interval);
-  clearInterval(VisibilityInterval);
-}, { once: true });
+addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.7";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.2";

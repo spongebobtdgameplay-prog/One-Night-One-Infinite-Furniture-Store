@@ -374,8 +374,7 @@ function UpdateCharacterTransform(Delta) {
   if (!State.CharacterReady || !State.Pivot || !State.Camera) return;
   const CurrentX = State.Camera.position.x;
   const CurrentZ = State.Camera.position.z;
-  const SurfaceOffset = Number(window.__STORE_SURFACE_STEP_ANIMATION_R87__?.GetSurfaceOffset?.()) || 0;
-  State.Pivot.position.set(CurrentX, SurfaceOffset, CurrentZ);
+  State.Pivot.position.set(CurrentX, 0, CurrentZ);
 
   if (!State.HasPlayerPosition) {
     State.LastPlayerPosition.set(CurrentX, 0, CurrentZ);
@@ -621,5 +620,5 @@ window.__STORE_PLAYER__ = {
   IsThirdPerson
 };
 
-window.__STORE_PLAYER_BUILD__ = "V0.27.6";
+window.__STORE_PLAYER_BUILD__ = "V0.11";
 requestAnimationFrame(Frame);

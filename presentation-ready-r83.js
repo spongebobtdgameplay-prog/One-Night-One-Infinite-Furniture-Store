@@ -10,9 +10,7 @@ const FurnitureNames = new Set([
 ]);
 const RetailNames = new Set([
   "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
-  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79",
-  "RetailKitchenStoveSingleR90", "RetailKitchenStoveMultiR90", "RetailKitchenStoveDecoratedR90",
-  "RetailKitchenOvenR90", "RetailKitchenSinkR90", "RetailKitchenSinkBacksplashR90"
+  "RetailStorageShelfR79", "RetailStorageCabinetR79", "RetailDisplayCabinetR79"
 ]);
 
 function SellableCount(Chunk) {
@@ -100,7 +98,6 @@ function LayoutOccupancyReady(Chunk) {
 
   for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
     for (const Entry of Chunk.Layout?.[GroupName] || []) {
-      if (Entry.Required === false) continue;
       if (!Placed.has(Entry.Slot)) return false;
     }
   }
@@ -182,16 +179,8 @@ export async function FinalizeChunk(Chunk) {
     await RunWorldPasses(Chunk);
     await Delay(140);
     UpdateStability(Chunk);
+    if (!CoreReady(Chunk)) console.warn(`Chunk ${Chunk.Id} presentation timed out after final R86 fix pass.`);
 
-    if (!CoreReady(Chunk)) {
-      Chunk.Group.userData.PresentationReadyR83 = false;
-      Chunk.Group.userData.PresentationReadyR82 = false;
-      Chunk.Group.userData.PresentationRetryR90 = true;
-      console.warn(`Chunk ${Chunk.Id} is still incomplete; keeping it buffered instead of revealing a regenerating aisle.`);
-      return;
-    }
-
-    Chunk.Group.userData.PresentationRetryR90 = false;
     Chunk.Group.userData.PresentationReadyR83 = true;
     Chunk.Group.userData.PresentationReadyR82 = true;
     Chunk.Group.userData.PresentationReadyAt = performance.now();
@@ -206,8 +195,7 @@ export async function FinalizeChunk(Chunk) {
 async function PrimeBootWorld() {
   const Chunks = [];
   for (const Chunk of Game.ActiveChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled) Chunks.push(Chunk);
-  // Invisible prepared chunks finalize lazily after boot instead of competing with
-  // the first visible frame for CPU and asset work.
+  for (const Chunk of Game.PreparedChunks.values()) if (Chunk?.Ready && !Chunk.Cancelled && !Chunks.includes(Chunk)) Chunks.push(Chunk);
   await Promise.allSettled(Chunks.map(Chunk => FinalizeChunk(Chunk)));
 }
 
@@ -230,8 +218,8 @@ function Discover() {
 }
 
 Discover();
-const Interval = setInterval(Discover, 400);
+const Interval = setInterval(Discover, 180);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.8-R90";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.1";

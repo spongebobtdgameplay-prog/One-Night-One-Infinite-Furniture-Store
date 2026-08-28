@@ -32,6 +32,7 @@ export async function ProcessChunk(Chunk) {
 }
 
 function Discover() {
+  for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
 }
 
@@ -40,4 +41,4 @@ const Interval = setInterval(Discover, 1100);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ORGANIZATION_R83__ = { ProcessChunk, Discover };
-window.__STORE_RETAIL_ORGANIZATION_BUILD__ = "V0.27.6";
+window.__STORE_RETAIL_ORGANIZATION_BUILD__ = "V0.27.0";

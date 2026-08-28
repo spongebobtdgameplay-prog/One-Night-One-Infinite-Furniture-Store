@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260827-162";
+import { CreateChunkLayout } from "./store-layout.js?v=20260826-151";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -47,8 +47,6 @@ const PreparedChunks = new Map();
 const PreparingChunks = new Map();
 const Tasks = new Map();
 const PlayerApi = window.__STORE_PLAYER__ || null;
-let GroundSurfaceOffset = 0;
-let GroundSurfaceTarget = 0;
 
 window.__STORE_COLLISION_BOXES__ = CollisionBoxes;
 
@@ -56,8 +54,8 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 2;
-const CHUNKS_BEHIND = 1;
+const CHUNKS_AHEAD = 3;
+const CHUNKS_BEHIND = 3;
 const PREFETCH_CHUNKS = 1;
 const STREAM_PROMOTION_DISTANCE = 10;
 const TASK_DISTANCE = 1.85;
@@ -65,33 +63,7 @@ const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
-function InitialSeedValue(Value) {
-  if (Value === undefined || Value === null || Value === "") return 0;
-  const NumberValue = Number(Value);
-  if (!Number.isFinite(NumberValue)) return 0;
-  return Math.trunc(NumberValue) >>> 0;
-}
-
-function GenerateClientWorldSeed() {
-  const Values = new Uint32Array(1);
-  crypto.getRandomValues(Values);
-  return Values[0] || 1;
-}
-
-function ResolveInitialWorldSeed() {
-  const ExplicitWorldSeed = InitialSeedValue(window.__STORE_WORLD_SEED__);
-  if (ExplicitWorldSeed) return ExplicitWorldSeed;
-
-  let SinglePlayerSeed = InitialSeedValue(window.__STORE_SINGLEPLAYER_WORLD_SEED__);
-  if (!SinglePlayerSeed) {
-    SinglePlayerSeed = GenerateClientWorldSeed();
-    window.__STORE_SINGLEPLAYER_WORLD_SEED__ = SinglePlayerSeed;
-  }
-  window.__STORE_WORLD_SEED__ = SinglePlayerSeed;
-  return SinglePlayerSeed;
-}
-
-let WorldSeed = ResolveInitialWorldSeed();
+let WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -348,38 +320,6 @@ const PlacementProfiles = {
 };
 
 const Themes = ["LIVING ROOM", "BEDROOMS", "KITCHENS", "BATHROOMS", "WAREHOUSE", "SHOWROOM", "CLEARANCE", "STORAGE"];
-const ThemeCycleCache = new Map();
-
-function BaseThemePermutation(Cycle) {
-  const Order = Themes.map((_, Index) => Index);
-  let State = MixSeed32((WorldSeed ^ Math.imul((Cycle + 1) | 0, 0x6d2b79f5)) >>> 0);
-  for (let Index = Order.length - 1; Index > 0; Index -= 1) {
-    State = MixSeed32((State + Math.imul(Index + 1, 0x9e3779b1)) >>> 0);
-    const SwapIndex = State % (Index + 1);
-    [Order[Index], Order[SwapIndex]] = [Order[SwapIndex], Order[Index]];
-  }
-  return Order;
-}
-
-function ThemePermutation(Cycle) {
-  if (ThemeCycleCache.has(Cycle)) return ThemeCycleCache.get(Cycle);
-  const Order = BaseThemePermutation(Cycle);
-  if (Cycle > 0) {
-    const PreviousBase = BaseThemePermutation(Cycle - 1);
-    if (Order[0] === PreviousBase[PreviousBase.length - 1]) {
-      [Order[0], Order[1]] = [Order[1], Order[0]];
-    }
-  }
-  ThemeCycleCache.set(Cycle, Order);
-  return Order;
-}
-
-function ThemeForChunk(Index) {
-  const CycleLength = Themes.length;
-  const Cycle = Math.floor(Math.max(0, Index) / CycleLength);
-  const Position = Math.max(0, Index) % CycleLength;
-  return Themes[ThemePermutation(Cycle)[Position]];
-}
 
 const GenerationQueue = [];
 let GenerationRunning = false;
@@ -633,11 +573,10 @@ function AddPlannedRug(Chunk, Entry) {
   const Colors = [0x574236, 0x37494b, 0x4a3d50, 0x4c493a, 0x3e4740, 0x493d35];
   const ColorIndex = Math.floor(SeededRandom(Chunk.Seed + Entry.Variant * 17 + 31) * Colors.length);
   const Material = new THREE.MeshStandardMaterial({ color: Colors[ColorIndex], roughness: 1 });
-  const RugHeight = 0.060;
   const Rug = Box(
     `ShowroomRug-${Entry.Slot}`,
-    new THREE.Vector3(Entry.Width, RugHeight, Entry.Depth),
-    new THREE.Vector3(Entry.X, RugHeight * 0.5, Entry.Z),
+    new THREE.Vector3(Entry.Width, 0.018, Entry.Depth),
+    new THREE.Vector3(Entry.X, 0.012, Entry.Z),
     Material,
     Chunk
   );
@@ -710,7 +649,7 @@ function CreatePreparedChunk(Index) {
   const TopZ = ChunkTopZ(Index);
   const BottomZ = ChunkBottomZ(Index);
   const Seed = ChunkSeed(Index);
-  const Theme = ThemeForChunk(Index);
+  const Theme = Themes[Math.floor(SeededRandom(Seed + 11.17) * Themes.length)];
   const Layout = CreateChunkLayout({ Index, Seed, Theme, CenterZ, TopZ, BottomZ });
   const Group = new THREE.Group();
   Group.name = Id;
@@ -834,9 +773,9 @@ function TryActivateIndex(Index) {
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
   LastChunkIndex = CurrentIndex;
-  const MinIndex = Math.max(0, CurrentIndex - CHUNKS_BEHIND);
-  const MaxIndex = Math.max(0, CurrentIndex + CHUNKS_AHEAD);
-  const PrefetchMin = Math.max(0, MinIndex - PREFETCH_CHUNKS);
+  const MinIndex = CurrentIndex - CHUNKS_BEHIND;
+  const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
+  const PrefetchMin = MinIndex - PREFETCH_CHUNKS;
   const PrefetchMax = MaxIndex + PREFETCH_CHUNKS;
   const WantedActive = new Set();
 
@@ -864,13 +803,14 @@ function EnsureChunksAroundPlayer() {
 }
 
 async function PrepareInitialWorld() {
-  const Order = [0, 1, 2];
+  const Order = [0, -1, 1, -2, 2, -3, 3];
   for (let Position = 0; Position < Order.length; Position += 1) {
     if (BootStatus) BootStatus.textContent = `Assembling buffered store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
     const Chunk = await PrepareChunk(Order[Position]);
     if (Chunk) ActivateChunk(Chunk);
   }
-  RequestChunk(3).catch(() => {});
+  RequestChunk(-4).catch(() => {});
+  RequestChunk(4).catch(() => {});
 }
 
 function NormalizeWorldSeed(Value) {
@@ -900,7 +840,6 @@ async function SetWorldSeed(Value) {
       for (const Index of [...PreparedChunks.keys()]) DropPreparedChunk(Index);
 
       PreparingChunks.clear();
-      ThemeCycleCache.clear();
       CollisionBoxes.length = 0;
       Tasks.clear();
       LoadedDisplays = 0;
@@ -913,8 +852,6 @@ async function SetWorldSeed(Value) {
       window.__STORE_WORLD_SEED__ = WorldSeed;
       if (window.__STORE_GAME__) window.__STORE_GAME__.WorldSeed = WorldSeed;
 
-      GroundSurfaceOffset = 0;
-      GroundSurfaceTarget = 0;
       Camera.position.set(0, PlayerEyeHeight, 8);
       await PrepareInitialWorld();
       ResetTaskProgress();
@@ -1107,20 +1044,6 @@ function MoveAxis(ForwardDistance, RightDistance) {
   }
 }
 
-function UpdateGroundSurface(Delta) {
-  const Collision = window.__STORE_COLLISION_UTILITY__ || null;
-  const Radius = PlayerApi?.GetPlayerRadius?.() || 0.285;
-  const Surface = Collision?.FindWalkableSurface?.(Camera.position, Radius, CollisionBoxes, {
-    FloorY: 0,
-    MaxStepHeight: 0.22
-  });
-  GroundSurfaceTarget = Surface?.Hit ? THREE.MathUtils.clamp(Number(Surface.Height) || 0, 0, 0.22) : 0;
-  const Alpha = 1 - Math.exp(-Math.max(0.001, Delta) * 20);
-  GroundSurfaceOffset = THREE.MathUtils.lerp(GroundSurfaceOffset, GroundSurfaceTarget, Alpha);
-  if (Math.abs(GroundSurfaceOffset - GroundSurfaceTarget) < 0.0005) GroundSurfaceOffset = GroundSurfaceTarget;
-  Camera.position.y = PlayerEyeHeight + GroundSurfaceOffset;
-}
-
 function UpdateMovement(Delta) {
   if (!Controls.isLocked) return;
   let Forward = 0;
@@ -1140,7 +1063,7 @@ function UpdateMovement(Delta) {
   const ForwardStep = Forward * Distance / StepCount;
   const RightStep = Right * Distance / StepCount;
   for (let Step = 0; Step < StepCount; Step += 1) MoveAxis(ForwardStep, RightStep);
-  UpdateGroundSurface(Delta);
+  Camera.position.y = PlayerEyeHeight;
 }
 
 function ShowError(Message) {
@@ -1214,8 +1137,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.5";
-window.__STORE_VERSION__ = "0.13.5";
+window.__STORE_GAME_BUILD__ = "V0.13.2";
+window.__STORE_VERSION__ = "0.13.2";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1228,9 +1151,6 @@ window.__STORE_GAME__ = {
   ChunkSeed,
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
-  PlayerEyeHeight,
-  GetGroundSurfaceOffset: () => GroundSurfaceOffset,
-  GetGroundSurfaceTarget: () => GroundSurfaceTarget,
   PrepareChunk,
   SetStoreSeconds,
   SetCompletedTaskCount,
@@ -1238,6 +1158,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.5"
+  Version: "0.13.2"
 };
 Animate();

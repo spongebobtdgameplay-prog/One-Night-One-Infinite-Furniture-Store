@@ -1,41 +1,21 @@
 # Asset Credits
 
-## Detailed cardboard box
+## Cardboard Box 01
 
-The cardboard display now uses a local copy of a different detailed box model:
+Primary cardboard-box display model:
+- **Cardboard Box 01**
+- Author: Rahul Chaudhary
+- Source: Poly Haven
+- License: CC0 1.0
+- Asset page: https://polyhaven.com/a/cardboard_box_01
 
-- Original file: `assets/misc/cardboard_box.glb`
-- Source project: **Garage42**
-- Creator: **IcterusGames**
-- Source repository: https://github.com/IcterusGames/Garage42
-- Asset license: **CC BY 4.0** for the Garage42 garage model and extras, as stated in the source project's credits
-- Local game copy: `assets/models/cardboard_box_detailed.glb`
+The game uses the 1K glTF version when available.
 
-The source model contains detailed geometry and UV coordinates. The Infinity Store applies its own neutral corrugated-cardboard fiber material at runtime so the model does not depend on the old broken box texture/model combination.
+Fallback cardboard-box model and matching color texture:
+- **cardboard_box.glb**
+- **cardboard_box.png**
+- Source: Microsoft experimental-pcf-control-assets
+- License: CC BY 4.0
+- Repository: https://github.com/microsoft/experimental-pcf-control-assets
 
-
-## Styloo Food & Kitchen Props stove
-
-The kitchen showroom now uses a local copy of the textured **stove.glb** from Styloo's Food & Kitchen Props free pack:
-
-- Local path: `assets/models/kitchen/styloo/stove.glb`
-- Original asset page: https://styloo.itch.io/food
-- Creator: **styloo / Styl0o**
-- License: **CC0 1.0 Universal**
-- The source GLB includes its own UVs and embedded textures.
-
-This replaces the blockier KayKit stove variants in active showroom generation.
-
-## KayKit Restaurant Bits remaining kitchen fixtures
-
-The kitchen showroom still uses selected sink/counter models from **KayKit Restaurant Bits** by Kay Lousberg / KayKit:
-
-- `kitchencounter_sink.gltf`
-- `kitchencounter_sink_backsplash.gltf`
-- shared `restaurantbits_texture.png`
-
-Local path: `assets/models/kitchen/kaykit/`
-
-Original asset page: https://kaylousberg.itch.io/restaurant-bits
-
-License: **CC0** — free for personal and commercial use; attribution is not required.
+The fallback pair is used when the primary Poly Haven model does not load with a usable color texture. The game applies the matching PNG explicitly so the fallback cannot render as an untextured white box.

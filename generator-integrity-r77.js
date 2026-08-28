@@ -159,7 +159,7 @@ function ChunkSignature(Chunk) {
 }
 
 export function ProcessChunk(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || Chunk.Group?.userData?.PresentationReadyR83 || !Chunk.Group?.userData?.WorldPolishR72 || !Chunk.Layout) return;
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group?.userData?.WorldPolishR72 || !Chunk.Layout) return;
   const Signature = ChunkSignature(Chunk);
   if (State.get(Chunk) === Signature) return;
   ValidatePlannedObjects(Chunk);
@@ -181,4 +181,4 @@ const Interval = setInterval(ProcessAll, 240);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_GENERATOR_INTEGRITY_R77__ = { ProcessAll, ProcessChunk };
-window.__STORE_GENERATOR_INTEGRITY_BUILD__ = "V0.27.8-R90";
+window.__STORE_GENERATOR_INTEGRITY_BUILD__ = "V0.27.0";
