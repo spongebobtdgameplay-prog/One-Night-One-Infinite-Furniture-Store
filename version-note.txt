@@ -1,1 +1,1 @@
-V0.27.8 — rugs now act as real walkable raised surfaces; imported kitchen sinks and appliances receive exact visible-model collision.
+V0.27.9 — mixed staggered showroom clusters reduce rigid duplicate rows; dead aisle shoulders are tightened; blocky kitchen stoves are replaced by a textured CC0 Styloo stove model.
