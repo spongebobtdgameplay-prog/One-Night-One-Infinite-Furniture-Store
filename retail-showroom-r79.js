@@ -11,6 +11,8 @@ const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-
 const KayKitSource = "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0";
 const KayKitRestaurantBase = "./assets/models/kitchen/kaykit/";
 const KayKitRestaurantSource = "https://kaylousberg.itch.io/restaurant-bits";
+const StylooKitchenBase = "./assets/models/kitchen/styloo/";
+const StylooKitchenSource = "https://styloo.itch.io/food";
 const Loader = new GLTFLoader();
 const Templates = new Map();
 const RunningChunks = new WeakSet();
@@ -26,10 +28,7 @@ const AssetFiles = Object.freeze({
   CabinetMedium: "cabinet_medium.gltf",
   CabinetSmallDecorated: "cabinet_small_decorated.gltf",
   ArmchairPillows: "armchair_pillows.gltf",
-  KitchenStoveSingle: { Url: `${KayKitRestaurantBase}stove_single.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
-  KitchenStoveMulti: { Url: `${KayKitRestaurantBase}stove_multi.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
-  KitchenStoveDecorated: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
-  KitchenOven: { Url: `${KayKitRestaurantBase}oven.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
+  KitchenStoveStyloo: { Url: `${StylooKitchenBase}stove.glb?v=20260827-162`, Source: StylooKitchenSource },
   KitchenSink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf?v=20260826-156`, Source: KayKitRestaurantSource },
   KitchenSinkBacksplash: { Url: `${KayKitRestaurantBase}kitchencounter_sink_backsplash.gltf?v=20260826-156`, Source: KayKitRestaurantSource }
 });
@@ -88,7 +87,7 @@ async function LoadTemplate(Key) {
   if (!Templates.has(Key)) {
     Templates.set(Key, Loader.loadAsync(Definition.Url).then(Gltf => {
       const Root = Gltf.scene;
-      Root.name = `KayKitRetailTemplate-${Key}`;
+      Root.name = `RetailShowroomTemplate-${Key}`;
       CloneMaterials(Root);
       Root.userData.Source = Definition.Source;
       Root.userData.License = Definition.License;
@@ -451,4 +450,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.8-R91";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.9-R92";
