@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
 
 const BasePlayer = window.__STORE_PLAYER__;
+const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
 const Canvas = document.getElementById("GameCanvas");
 const Crosshair = document.querySelector(".Crosshair");
 const CameraMode = document.getElementById("CameraModeValue");
@@ -528,25 +529,25 @@ function SegmentAabbDistance(Start, End, Bounds, Padding = CAMERA_PADDING) {
   return TMin;
 }
 
-function ClampFirstPersonTargetToStructures(Target) {
-  if (!State.Camera) return Target;
+function ClampFirstPersonTargetToContacts(Target, Start) {
+  if (!State.Camera || !Start?.isVector3) return Target;
   const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
-  const Length = State.Camera.position.distanceTo(Target);
+  const Entries = Physics?.GetBodyContactEntries?.(Collisions, Start, 1.65) || Collisions;
+  const Length = Start.distanceTo(Target);
   if (Length <= 0.0001) return Target;
   let Allowed = Length;
 
-  for (const Entry of Collisions) {
-    if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type)) continue;
-    const Bounds = Entry.OriginalStructureBox || Entry.OriginalBox || Entry.Box || Entry;
+  for (const Entry of Entries) {
+    const Bounds = Entry?.OriginalStructureBox || Entry?.OriginalBox || Entry?.Box || Entry;
     if (!Bounds?.min || !Bounds?.max) continue;
     if (![Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite)) continue;
-    const Hit = SegmentAabbDistance(State.Camera.position, Target, Bounds, ARM_WALL_PADDING);
+    const Hit = SegmentAabbDistance(Start, Target, Bounds, ARM_WALL_PADDING);
     if (Hit === null) continue;
-    Allowed = Math.min(Allowed, Math.max(0.05, Hit * Length - ARM_WALL_GAP));
+    Allowed = Math.min(Allowed, Math.max(0.035, Hit * Length - ARM_WALL_GAP));
   }
 
   if (Allowed < Length) {
-    Target.sub(State.Camera.position).normalize().multiplyScalar(Allowed).add(State.Camera.position);
+    Target.sub(Start).normalize().multiplyScalar(Allowed).add(Start);
   }
   return Target;
 }
@@ -585,10 +586,20 @@ function PoseFirstPersonArm(Side, Swing) {
     .addScaledVector(State.TempViewRight, WristSide)
     .addScaledVector(State.TempViewUp, -WristDown);
 
-  ClampFirstPersonTargetToStructures(State.TempElbowTarget);
-  ClampFirstPersonTargetToStructures(State.TempWristTarget);
+  const UpperBone = State.Bones.get(Upper);
+  const LowerBone = State.Bones.get(Lower);
 
+  if (UpperBone) {
+    UpperBone.getWorldPosition(State.TempStart);
+    ClampFirstPersonTargetToContacts(State.TempElbowTarget, State.TempStart);
+  }
   RotateBoneToward(Upper, Lower, State.TempElbowTarget);
+
+  State.Pivot?.updateMatrixWorld(true);
+  if (LowerBone) {
+    LowerBone.getWorldPosition(State.TempStart);
+    ClampFirstPersonTargetToContacts(State.TempWristTarget, State.TempStart);
+  }
   RotateBoneToward(Lower, Wrist, State.TempWristTarget);
 }
 
@@ -816,4 +827,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.4-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.5-PHYSICS";
