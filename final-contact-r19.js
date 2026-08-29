@@ -21,6 +21,16 @@ const BodyPoints = [
   { Bone: "UpperLeg.R", Radius: 0.175 }
 ];
 
+const BodyLinks = [
+  { A: "Hips", B: "Abdomen", Radius: 0.220 },
+  { A: "Abdomen", B: "Torso", Radius: 0.228 },
+  { A: "Torso", B: "Chest", Radius: 0.238 },
+  { A: "Chest", B: "Shoulder.L", Radius: 0.190 },
+  { A: "Chest", B: "Shoulder.R", Radius: 0.190 },
+  { A: "Hips", B: "UpperLeg.L", Radius: 0.185 },
+  { A: "Hips", B: "UpperLeg.R", Radius: 0.185 }
+];
+
 const Segments = [
   { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.126 },
   { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.134 },
@@ -51,6 +61,9 @@ const Scratch = {
   PivotCenter: new THREE.Vector3(),
   ExtendedEnd: new THREE.Vector3(),
   BodyPoint: new THREE.Vector3(),
+  LinkStart: new THREE.Vector3(),
+  LinkEnd: new THREE.Vector3(),
+  LinkPoint: new THREE.Vector3(),
   Separation: new THREE.Vector3(),
   BestSeparation: new THREE.Vector3(),
   SavedPivotPosition: new THREE.Vector3(),
@@ -112,7 +125,7 @@ function SeparateBodyShell(Pivot, Entries) {
   SavePivotPosition(Pivot);
   let TotalPush = 0;
 
-  for (let Pass = 0; Pass < 4 && TotalPush < 0.18; Pass += 1) {
+  for (let Pass = 0; Pass < 5 && TotalPush < 0.20; Pass += 1) {
     let BestDepth = 0;
     Scratch.BestSeparation.set(0, 0, 0);
     Pivot.updateMatrixWorld(true);
@@ -131,9 +144,29 @@ function SeparateBodyShell(Pivot, Entries) {
       }
     }
 
+    for (const Link of BodyLinks) {
+      const BoneA = Pivot.getObjectByName(Link.A);
+      const BoneB = Pivot.getObjectByName(Link.B);
+      if (!BoneA?.isBone || !BoneB?.isBone) continue;
+
+      BoneA.getWorldPosition(Scratch.LinkStart);
+      BoneB.getWorldPosition(Scratch.LinkEnd);
+
+      for (const T of [0.20, 0.40, 0.60, 0.80]) {
+        Scratch.LinkPoint.copy(Scratch.LinkStart).lerp(Scratch.LinkEnd, T);
+        for (const Entry of Entries) {
+          if (!BodyCollision(Entry)) continue;
+          const Depth = PointSeparation(Scratch.LinkPoint, Link.Radius, EntryBounds(Entry), Scratch.Separation);
+          if (Depth <= BestDepth) continue;
+          BestDepth = Depth;
+          Scratch.BestSeparation.copy(Scratch.Separation);
+        }
+      }
+    }
+
     if (BestDepth <= 0.0005) break;
-    const Remaining = Math.max(0, 0.18 - TotalPush);
-    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.075, Remaining);
+    const Remaining = Math.max(0, 0.20 - TotalPush);
+    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.070, Remaining);
     if (PushLength <= 0.0005) break;
 
     Scratch.BestSeparation.setLength(PushLength);
@@ -317,4 +350,4 @@ window.__STORE_FINAL_CONTACT__ = {
   State: SegmentState,
   Apply: ApplyMeshSafeNerves
 };
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.6-PHYSICS";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.7-PHYSICS";
