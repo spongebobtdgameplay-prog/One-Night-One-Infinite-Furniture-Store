@@ -5,48 +5,55 @@ const Player = window.__STORE_PLAYER__;
 const Collision = window.__STORE_COLLISION_UTILITY__;
 const SurfaceContact = window.__STORE_SURFACE_CONTACT_UTILITY__;
 const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
+
 if (!Game?.Scene || !Player || !Collision || !SurfaceContact) {
   throw new Error("Game, player, and contact utilities must load before final contact pass.");
 }
 
-const BodyPoints = [
-  { Bone: "Hips", Radius: 0.205 },
-  { Bone: "Abdomen", Radius: 0.215 },
-  { Bone: "Torso", Radius: 0.225 },
-  { Bone: "Chest", Radius: 0.235 },
-  { Bone: "Neck", Radius: 0.155 },
-  { Bone: "Shoulder.L", Radius: 0.165 },
-  { Bone: "Shoulder.R", Radius: 0.165 },
-  { Bone: "UpperLeg.L", Radius: 0.175 },
-  { Bone: "UpperLeg.R", Radius: 0.175 }
-];
-
-const BodyLinks = [
-  { A: "Hips", B: "Abdomen", Radius: 0.220 },
-  { A: "Abdomen", B: "Torso", Radius: 0.228 },
+const ForceCapsules = [
+  { A: "Neck", B: "Head", Radius: 0.155, EndExtension: 0.09 },
+  { A: "Chest", B: "Neck", Radius: 0.190 },
   { A: "Torso", B: "Chest", Radius: 0.238 },
+  { A: "Abdomen", B: "Torso", Radius: 0.230 },
+  { A: "Hips", B: "Abdomen", Radius: 0.222 },
+
   { A: "Chest", B: "Shoulder.L", Radius: 0.190 },
+  { A: "Shoulder.L", B: "UpperArm.L", Radius: 0.145 },
+  { A: "UpperArm.L", B: "LowerArm.L", Radius: 0.138 },
+  { A: "LowerArm.L", B: "Wrist.L", Radius: 0.128, EndExtension: 0.18 },
+
   { A: "Chest", B: "Shoulder.R", Radius: 0.190 },
-  { A: "Hips", B: "UpperLeg.L", Radius: 0.185 },
-  { A: "Hips", B: "UpperLeg.R", Radius: 0.185 }
+  { A: "Shoulder.R", B: "UpperArm.R", Radius: 0.145 },
+  { A: "UpperArm.R", B: "LowerArm.R", Radius: 0.138 },
+  { A: "LowerArm.R", B: "Wrist.R", Radius: 0.128, EndExtension: 0.18 },
+
+  { A: "Hips", B: "UpperLeg.L", Radius: 0.190 },
+  { A: "UpperLeg.L", B: "LowerLeg.L", Radius: 0.158 },
+  { A: "LowerLeg.L", B: "Foot.L", Radius: 0.140, EndExtension: 0.21 },
+
+  { A: "Hips", B: "UpperLeg.R", Radius: 0.190 },
+  { A: "UpperLeg.R", B: "LowerLeg.R", Radius: 0.158 },
+  { A: "LowerLeg.R", B: "Foot.R", Radius: 0.140, EndExtension: 0.21 }
 ];
 
-const Segments = [
-  { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.126 },
-  { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.134 },
-  { Joint: "LowerArm.L", Child: "Wrist.L", Radius: 0.126, EndExtension: 0.16 },
-  { Joint: "Shoulder.R", Child: "UpperArm.R", Radius: 0.126 },
-  { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.134 },
-  { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.126, EndExtension: 0.16 },
-  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.150 },
-  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.136, EndExtension: 0.19 },
-  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.150 },
-  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.136, EndExtension: 0.19 }
+const PoseSegments = [
+  { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.130 },
+  { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.138 },
+  { Joint: "LowerArm.L", Child: "Wrist.L", Radius: 0.130, EndExtension: 0.18 },
+  { Joint: "Shoulder.R", Child: "UpperArm.R", Radius: 0.130 },
+  { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.138 },
+  { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.130, EndExtension: 0.18 },
+  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.156 },
+  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.140, EndExtension: 0.21 },
+  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.156 },
+  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.140, EndExtension: 0.21 }
 ];
 
 const Scratch = {
   Start: new THREE.Vector3(),
   End: new THREE.Vector3(),
+  ExtendedEnd: new THREE.Vector3(),
+  Sample: new THREE.Vector3(),
   SafeEnd: new THREE.Vector3(),
   CurrentDirection: new THREE.Vector3(),
   TargetDirection: new THREE.Vector3(),
@@ -55,18 +62,13 @@ const Scratch = {
   DeltaQuaternion: new THREE.Quaternion(),
   DesiredQuaternion: new THREE.Quaternion(),
   LocalQuaternion: new THREE.Quaternion(),
+  Separation: new THREE.Vector3(),
+  BestSeparation: new THREE.Vector3(),
+  PivotCenter: new THREE.Vector3(),
+  SavedPivotPosition: new THREE.Vector3(),
   SavedQuaternions: new Map(),
   SavedScales: new Map(),
   SavedVisibility: new Map(),
-  PivotCenter: new THREE.Vector3(),
-  ExtendedEnd: new THREE.Vector3(),
-  BodyPoint: new THREE.Vector3(),
-  LinkStart: new THREE.Vector3(),
-  LinkEnd: new THREE.Vector3(),
-  LinkPoint: new THREE.Vector3(),
-  Separation: new THREE.Vector3(),
-  BestSeparation: new THREE.Vector3(),
-  SavedPivotPosition: new THREE.Vector3(),
   PivotPositionSaved: false
 };
 
@@ -103,16 +105,41 @@ function PointSeparation(Point, Radius, Bounds, Target) {
     Point.z <= MinZ || Point.z >= MaxZ
   ) return 0;
 
-  const Distances = [
-    [Point.x - MinX, -1, 0, 0],
-    [MaxX - Point.x, 1, 0, 0],
-    [Point.z - MinZ, 0, 0, -1],
-    [MaxZ - Point.z, 0, 0, 1]
-  ];
-  Distances.sort((Left, Right) => Left[0] - Right[0]);
-  const Depth = Distances[0][0] + 0.006;
-  Target.set(Distances[0][1] * Depth, Distances[0][2] * Depth, Distances[0][3] * Depth);
-  return Depth;
+  const Left = Point.x - MinX;
+  const Right = MaxX - Point.x;
+  const Back = Point.z - MinZ;
+  const Front = MaxZ - Point.z;
+  const Minimum = Math.min(Left, Right, Back, Front) + 0.008;
+
+  if (Minimum === Left + 0.008) Target.set(-Minimum, 0, 0);
+  else if (Minimum === Right + 0.008) Target.set(Minimum, 0, 0);
+  else if (Minimum === Back + 0.008) Target.set(0, 0, -Minimum);
+  else Target.set(0, 0, Minimum);
+
+  return Minimum;
+}
+
+function CapsuleSampleSeparation(Start, End, Radius, Entries, Target) {
+  let BestDepth = 0;
+  Target.set(0, 0, 0);
+
+  const Length = Start.distanceTo(End);
+  const Samples = THREE.MathUtils.clamp(Math.ceil(Length / Math.max(0.075, Radius * 0.72)), 3, 8);
+
+  for (let Index = 0; Index <= Samples; Index += 1) {
+    const T = Index / Samples;
+    Scratch.Sample.lerpVectors(Start, End, T);
+
+    for (const Entry of Entries) {
+      if (!BodyCollision(Entry)) continue;
+      const Depth = PointSeparation(Scratch.Sample, Radius, EntryBounds(Entry), Scratch.Separation);
+      if (Depth <= BestDepth) continue;
+      BestDepth = Depth;
+      Target.copy(Scratch.Separation);
+    }
+  }
+
+  return BestDepth;
 }
 
 function SavePivotPosition(Pivot) {
@@ -121,52 +148,48 @@ function SavePivotPosition(Pivot) {
   Scratch.PivotPositionSaved = true;
 }
 
-function SeparateBodyShell(Pivot, Entries) {
+function ForceWholeRigOut(Pivot, Entries) {
   SavePivotPosition(Pivot);
   let TotalPush = 0;
 
-  for (let Pass = 0; Pass < 5 && TotalPush < 0.20; Pass += 1) {
+  for (let Pass = 0; Pass < 5 && TotalPush < 0.22; Pass += 1) {
     let BestDepth = 0;
     Scratch.BestSeparation.set(0, 0, 0);
     Pivot.updateMatrixWorld(true);
 
-    for (const Sample of BodyPoints) {
-      const Bone = Pivot.getObjectByName(Sample.Bone);
-      if (!Bone?.isBone) continue;
-      Bone.getWorldPosition(Scratch.BodyPoint);
-
-      for (const Entry of Entries) {
-        if (!BodyCollision(Entry)) continue;
-        const Depth = PointSeparation(Scratch.BodyPoint, Sample.Radius, EntryBounds(Entry), Scratch.Separation);
-        if (Depth <= BestDepth) continue;
-        BestDepth = Depth;
-        Scratch.BestSeparation.copy(Scratch.Separation);
-      }
-    }
-
-    for (const Link of BodyLinks) {
-      const BoneA = Pivot.getObjectByName(Link.A);
-      const BoneB = Pivot.getObjectByName(Link.B);
+    for (const Capsule of ForceCapsules) {
+      const BoneA = Pivot.getObjectByName(Capsule.A);
+      const BoneB = Pivot.getObjectByName(Capsule.B);
       if (!BoneA?.isBone || !BoneB?.isBone) continue;
 
-      BoneA.getWorldPosition(Scratch.LinkStart);
-      BoneB.getWorldPosition(Scratch.LinkEnd);
+      BoneA.getWorldPosition(Scratch.Start);
+      BoneB.getWorldPosition(Scratch.End);
+      Scratch.ExtendedEnd.copy(Scratch.End);
 
-      for (const T of [0.20, 0.40, 0.60, 0.80]) {
-        Scratch.LinkPoint.copy(Scratch.LinkStart).lerp(Scratch.LinkEnd, T);
-        for (const Entry of Entries) {
-          if (!BodyCollision(Entry)) continue;
-          const Depth = PointSeparation(Scratch.LinkPoint, Link.Radius, EntryBounds(Entry), Scratch.Separation);
-          if (Depth <= BestDepth) continue;
-          BestDepth = Depth;
-          Scratch.BestSeparation.copy(Scratch.Separation);
+      if (Capsule.EndExtension > 0) {
+        Scratch.CurrentDirection.copy(Scratch.End).sub(Scratch.Start);
+        if (Scratch.CurrentDirection.lengthSq() > 0.000001) {
+          Scratch.ExtendedEnd.addScaledVector(Scratch.CurrentDirection.normalize(), Capsule.EndExtension);
         }
       }
+
+      const Depth = CapsuleSampleSeparation(
+        Scratch.Start,
+        Scratch.ExtendedEnd,
+        Capsule.Radius,
+        Entries,
+        Scratch.Separation
+      );
+
+      if (Depth <= BestDepth) continue;
+      BestDepth = Depth;
+      Scratch.BestSeparation.copy(Scratch.Separation);
     }
 
-    if (BestDepth <= 0.0005) break;
-    const Remaining = Math.max(0, 0.20 - TotalPush);
-    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.070, Remaining);
+    if (BestDepth <= 0.0005 || Scratch.BestSeparation.lengthSq() <= 0.000001) break;
+
+    const Remaining = Math.max(0, 0.22 - TotalPush);
+    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.075, Remaining);
     if (PushLength <= 0.0005) break;
 
     Scratch.BestSeparation.setLength(PushLength);
@@ -181,6 +204,7 @@ function StateFor(Segment) {
   const Key = `${Segment.Joint}>${Segment.Child}`;
   let State = SegmentState.get(Key);
   if (State) return State;
+
   State = {
     PreviousDirection: new THREE.Vector3(),
     HasPrevious: false
@@ -196,11 +220,14 @@ function SaveBone(Bone) {
 
 function RotateJointToTarget(Pivot, Joint, Child, Target) {
   if (!Joint?.isBone || !Child?.isBone || !Joint.parent) return false;
+
   Pivot.updateMatrixWorld(true);
   Joint.getWorldPosition(Scratch.Start);
   Child.getWorldPosition(Scratch.End);
+
   Scratch.CurrentDirection.copy(Scratch.End).sub(Scratch.Start);
   Scratch.TargetDirection.copy(Target).sub(Scratch.Start);
+
   if (Scratch.CurrentDirection.lengthSq() <= 0.000001 || Scratch.TargetDirection.lengthSq() <= 0.000001) return false;
 
   Scratch.CurrentDirection.normalize();
@@ -210,8 +237,10 @@ function RotateJointToTarget(Pivot, Joint, Child, Target) {
   Scratch.DeltaQuaternion.setFromUnitVectors(Scratch.CurrentDirection, Scratch.TargetDirection);
   Joint.getWorldQuaternion(Scratch.JointQuaternion);
   Scratch.DesiredQuaternion.copy(Scratch.DeltaQuaternion).multiply(Scratch.JointQuaternion);
+
   Joint.parent.getWorldQuaternion(Scratch.ParentQuaternion).invert();
   Scratch.LocalQuaternion.copy(Scratch.ParentQuaternion).multiply(Scratch.DesiredQuaternion).normalize();
+
   Joint.quaternion.copy(Scratch.LocalQuaternion);
   Pivot.updateMatrixWorld(true);
   return true;
@@ -224,23 +253,25 @@ function RememberDirection(State, Start, End) {
   State.HasPrevious = true;
 }
 
-function ConstrainSegment(Pivot, Segment, Entries) {
+function ConstrainPoseSegment(Pivot, Segment, Entries) {
   const Joint = Pivot.getObjectByName(Segment.Joint);
   const Child = Pivot.getObjectByName(Segment.Child);
   if (!Joint?.isBone || !Child?.isBone) return false;
 
   SaveBone(Joint);
+
   Joint.getWorldPosition(Scratch.Start);
   Child.getWorldPosition(Scratch.End);
   Scratch.ExtendedEnd.copy(Scratch.End);
+
   if (Segment.EndExtension > 0) {
     Scratch.CurrentDirection.copy(Scratch.End).sub(Scratch.Start);
     if (Scratch.CurrentDirection.lengthSq() > 0.000001) {
       Scratch.ExtendedEnd.addScaledVector(Scratch.CurrentDirection.normalize(), Segment.EndExtension);
     }
   }
-  const State = StateFor(Segment);
 
+  const State = StateFor(Segment);
   const Result = SurfaceContact.ResolveSurfaceCapsule(
     Scratch.Start,
     Scratch.ExtendedEnd,
@@ -248,13 +279,13 @@ function ConstrainSegment(Pivot, Segment, Entries) {
     Entries,
     Scratch.SafeEnd,
     {
-      Skin: 0.004,
+      Skin: 0.006,
       Filter: BodyCollision,
       PreviousDirection: State.HasPrevious ? State.PreviousDirection : null,
       BinarySteps: 18,
-      InitialNormalPush: 0.018,
+      InitialNormalPush: 0.020,
       MaxNormalPush: 48,
-      ContactBias: 0.0025
+      ContactBias: 0.0035
     }
   );
 
@@ -262,6 +293,7 @@ function ConstrainSegment(Pivot, Segment, Entries) {
     RememberDirection(State, Scratch.Start, Scratch.End);
     return false;
   }
+
   if (!Result.Solved) return false;
 
   const Changed = RotateJointToTarget(Pivot, Joint, Child, Scratch.SafeEnd);
@@ -272,18 +304,29 @@ function ConstrainSegment(Pivot, Segment, Entries) {
   return Changed;
 }
 
-function ApplyMeshSafeNerves(Pivot) {
+function ResolveAllVisibleContacts(Pivot) {
   Pivot.getWorldPosition(Scratch.PivotCenter);
-  const Entries = Physics?.GetBodyContactEntries?.(Game.CollisionBoxes, Scratch.PivotCenter, 3.2) || Game.CollisionBoxes;
-  SeparateBodyShell(Pivot, Entries);
+  const Entries = Physics?.GetBodyContactEntries?.(Game.CollisionBoxes, Scratch.PivotCenter, 3.4) || Game.CollisionBoxes;
 
-  for (let Pass = 0; Pass < 7; Pass += 1) {
+  for (let Pass = 0; Pass < 4; Pass += 1) {
     let Changed = false;
-    for (const Segment of Segments) {
-      if (ConstrainSegment(Pivot, Segment, Entries)) Changed = true;
+    for (const Segment of PoseSegments) {
+      if (ConstrainPoseSegment(Pivot, Segment, Entries)) Changed = true;
     }
     if (!Changed) break;
   }
+
+  ForceWholeRigOut(Pivot, Entries);
+
+  for (let Pass = 0; Pass < 3; Pass += 1) {
+    let Changed = false;
+    for (const Segment of PoseSegments) {
+      if (ConstrainPoseSegment(Pivot, Segment, Entries)) Changed = true;
+    }
+    if (!Changed) break;
+  }
+
+  ForceWholeRigOut(Pivot, Entries);
 }
 
 function HideFirstPersonHead(Pivot) {
@@ -301,6 +344,7 @@ function HideFirstPersonHead(Pivot) {
     Scratch.SavedVisibility.set(Object, Object.visible);
     Object.visible = false;
   });
+
   Pivot.updateMatrixWorld(true);
 }
 
@@ -323,17 +367,18 @@ function RestoreFinalPass(Pivot) {
 const PreviousRender = Player.Render;
 if (typeof PreviousRender !== "function") throw new Error("Player render function is unavailable for final contact pass.");
 
-Player.Render = function RenderWithFinalContact(Renderer, Scene, Camera) {
+Player.Render = function RenderWithForcedFullBodyContact(Renderer, Scene, Camera) {
   const ProxyRenderer = {
     render(RenderScene, RenderCamera) {
       const Pivot = RenderScene.getObjectByName("PlayerCharacterPivot");
+
       if (!Pivot) {
         Renderer.render(RenderScene, RenderCamera);
         return;
       }
 
       try {
-        ApplyMeshSafeNerves(Pivot);
+        ResolveAllVisibleContacts(Pivot);
         HideFirstPersonHead(Pivot);
         Renderer.render(RenderScene, RenderCamera);
       } finally {
@@ -346,8 +391,10 @@ Player.Render = function RenderWithFinalContact(Renderer, Scene, Camera) {
 };
 
 window.__STORE_FINAL_CONTACT__ = {
-  Segments,
+  ForceCapsules,
+  PoseSegments,
   State: SegmentState,
-  Apply: ApplyMeshSafeNerves
+  Apply: ResolveAllVisibleContacts
 };
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.7-PHYSICS";
+
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.8-PHYSICS";
