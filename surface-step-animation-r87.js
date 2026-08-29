@@ -7,6 +7,10 @@ if (!Game?.Scene || !Game?.Camera) throw new Error("Game must load before carpet
 const Rugs = new Map();
 const LastPosition = new THREE.Vector3();
 const TempVelocity = new THREE.Vector3();
+const GroundRaycaster = new THREE.Raycaster();
+const GroundRayOrigin = new THREE.Vector3();
+const GroundRayDirection = new THREE.Vector3(0, -1, 0);
+const GroundHits = [];
 
 let HasLastPosition = false;
 let CurrentRugId = "";
@@ -23,6 +27,13 @@ const STEP_DURATION = 430;
 const STEP_COOLDOWN = 120;
 const MIN_TRIGGER_SPEED = 0.08;
 const EDGE_PADDING = 0.22;
+
+function FiniteBounds(Bounds) {
+  return Boolean(
+    Bounds?.min && Bounds?.max &&
+    [Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite)
+  );
+}
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -89,6 +100,38 @@ function RugAt(Position) {
     return Record.Id;
   }
   return "";
+}
+
+function RaycastGroundHeight(Position, StartY = null) {
+  if (!Position?.isVector3) return 0;
+
+  const OriginY = Number.isFinite(StartY)
+    ? Number(StartY)
+    : Math.max(Game.Camera?.position?.y || 1.68, Position.y + 0.55, 1.0);
+
+  GroundRayOrigin.set(Position.x, OriginY, Position.z);
+  GroundRaycaster.set(GroundRayOrigin, GroundRayDirection);
+  GroundRaycaster.near = 0;
+  GroundRaycaster.far = Math.max(1.2, OriginY + 0.35);
+
+  let Height = 0;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+    if (Position.x < Bounds.min.x - 0.025 || Position.x > Bounds.max.x + 0.025) continue;
+    if (Position.z < Bounds.min.z - 0.025 || Position.z > Bounds.max.z + 0.025) continue;
+
+    GroundHits.length = 0;
+    GroundRaycaster.intersectObject(Record.Object, true, GroundHits);
+    for (const Hit of GroundHits) {
+      if (!Hit?.point || Hit.point.y > OriginY + 0.001) continue;
+      Height = Math.max(Height, Hit.point.y);
+      break;
+    }
+  }
+
+  return Height;
 }
 
 function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0, Direction = null) {
@@ -168,7 +211,8 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   TriggerStep,
   UpdateCrossingState,
   GetStepState,
+  RaycastGroundHeight,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8-PHYSICS";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.9-PHYSICS";
