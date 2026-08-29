@@ -85,30 +85,30 @@ function HashText(Text) {
 function ResolveWorldSeed() {
   const Parameters = new URLSearchParams(location.search);
   const RequestedSeed = Parameters.get("seed");
+
   if (RequestedSeed !== null && RequestedSeed.trim() !== "") {
     const Trimmed = RequestedSeed.trim();
     const Numeric = Number(Trimmed);
     const Seed = Number.isSafeInteger(Numeric) ? Mix32(Numeric) : HashText(Trimmed);
-    try { sessionStorage.setItem("FurnitureStoreWorldSeed", String(Seed)); } catch {}
-    return { Seed, Source: "URL" };
+    return { Seed: Seed || 1, Source: "URL" };
   }
 
-  try {
-    const Stored = Number(sessionStorage.getItem("FurnitureStoreWorldSeed"));
-    if (Number.isSafeInteger(Stored) && Stored >= 0) return { Seed: Stored >>> 0, Source: "SESSION" };
-  } catch {}
+  const Preset = Number(window.__STORE_WORLD_SEED__);
+  if (Number.isSafeInteger(Preset) && Preset > 0) {
+    return {
+      Seed: Preset >>> 0,
+      Source: String(window.__STORE_WORLD_SEED_SOURCE__ || "PRESET")
+    };
+  }
 
   const Values = new Uint32Array(1);
   crypto.getRandomValues(Values);
-  const Seed = Values[0] >>> 0;
-  try { sessionStorage.setItem("FurnitureStoreWorldSeed", String(Seed)); } catch {}
-  return { Seed, Source: "RANDOM" };
+  return { Seed: (Values[0] >>> 0) || 1, Source: "SOLO_RANDOM" };
 }
-
 const World = ResolveWorldSeed();
 window.__STORE_WORLD_SEED__ = World.Seed;
 window.__STORE_WORLD_SEED_SOURCE__ = World.Source;
-window.__STORE_WORLD_SEED_BUILD__ = "V0.11-R38";
+window.__STORE_WORLD_SEED_BUILD__ = "V0.28.0-SEED";
 
 function CreateLoaderUi() {
   if (!BootCard) return { SkipButton: null, Warning: null, Progress: null, SeedLabel: null };
@@ -258,4 +258,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.27.7-R89";
+window.__STORE_PRELOAD_BUILD__ = "V0.28.0-R90";
