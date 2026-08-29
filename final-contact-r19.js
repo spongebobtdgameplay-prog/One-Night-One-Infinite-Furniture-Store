@@ -10,8 +10,8 @@ if (!Game?.Scene || !Player || !Collision || !SurfaceContact) {
   throw new Error("Game, player, and contact utilities must load before final contact pass.");
 }
 
-const FINAL_CONTACT_SKIN = 0.014;
-const FINAL_POSE_SKIN = 0.010;
+const FINAL_CONTACT_SKIN = 0.024;
+const FINAL_POSE_SKIN = 0.017;
 
 const ForceCapsules = [
   { A: "Neck", B: "Head", Radius: 0.155, EndExtension: 0.09 },
@@ -32,11 +32,11 @@ const ForceCapsules = [
 
   { A: "Hips", B: "UpperLeg.L", Radius: 0.190 },
   { A: "UpperLeg.L", B: "LowerLeg.L", Radius: 0.158 },
-  { A: "LowerLeg.L", B: "Foot.L", Radius: 0.140, EndExtension: 0.21 },
+  { A: "LowerLeg.L", B: "Foot.L", Radius: 0.150, EndExtension: 0.26 },
 
   { A: "Hips", B: "UpperLeg.R", Radius: 0.190 },
   { A: "UpperLeg.R", B: "LowerLeg.R", Radius: 0.158 },
-  { A: "LowerLeg.R", B: "Foot.R", Radius: 0.140, EndExtension: 0.21 }
+  { A: "LowerLeg.R", B: "Foot.R", Radius: 0.150, EndExtension: 0.26 }
 ];
 
 const PoseSegments = [
@@ -47,9 +47,9 @@ const PoseSegments = [
   { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.138 },
   { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.130, EndExtension: 0.18 },
   { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.156 },
-  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.140, EndExtension: 0.21 },
+  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.150, EndExtension: 0.26 },
   { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.156 },
-  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.140, EndExtension: 0.21 }
+  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.150, EndExtension: 0.26 }
 ];
 
 const Scratch = {
@@ -112,11 +112,11 @@ function PointSeparation(Point, Radius, Bounds, Target) {
   const Right = MaxX - Point.x;
   const Back = Point.z - MinZ;
   const Front = MaxZ - Point.z;
-  const Minimum = Math.min(Left, Right, Back, Front) + 0.008;
+  const Minimum = Math.min(Left, Right, Back, Front) + 0.012;
 
-  if (Minimum === Left + 0.008) Target.set(-Minimum, 0, 0);
-  else if (Minimum === Right + 0.008) Target.set(Minimum, 0, 0);
-  else if (Minimum === Back + 0.008) Target.set(0, 0, -Minimum);
+  if (Minimum === Left + 0.012) Target.set(-Minimum, 0, 0);
+  else if (Minimum === Right + 0.012) Target.set(Minimum, 0, 0);
+  else if (Minimum === Back + 0.012) Target.set(0, 0, -Minimum);
   else Target.set(0, 0, Minimum);
 
   return Minimum;
@@ -128,7 +128,7 @@ function CapsuleSampleSeparation(Start, End, Radius, Entries, Target) {
 
   const EffectiveRadius = Radius + FINAL_CONTACT_SKIN;
   const Length = Start.distanceTo(End);
-  const Samples = THREE.MathUtils.clamp(Math.ceil(Length / Math.max(0.065, EffectiveRadius * 0.64)), 4, 10);
+  const Samples = THREE.MathUtils.clamp(Math.ceil(Length / Math.max(0.052, EffectiveRadius * 0.56)), 5, 12);
 
   for (let Index = 0; Index <= Samples; Index += 1) {
     const T = Index / Samples;
@@ -156,7 +156,7 @@ function ForceWholeRigOut(Pivot, Entries) {
   SavePivotPosition(Pivot);
   let TotalPush = 0;
 
-  for (let Pass = 0; Pass < 5 && TotalPush < 0.22; Pass += 1) {
+  for (let Pass = 0; Pass < 6 && TotalPush < 0.30; Pass += 1) {
     let BestDepth = 0;
     Scratch.BestSeparation.set(0, 0, 0);
     Pivot.updateMatrixWorld(true);
@@ -192,8 +192,8 @@ function ForceWholeRigOut(Pivot, Entries) {
 
     if (BestDepth <= 0.0005 || Scratch.BestSeparation.lengthSq() <= 0.000001) break;
 
-    const Remaining = Math.max(0, 0.22 - TotalPush);
-    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.075, Remaining);
+    const Remaining = Math.max(0, 0.30 - TotalPush);
+    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.085, Remaining);
     if (PushLength <= 0.0005) break;
 
     Scratch.BestSeparation.setLength(PushLength);
@@ -289,7 +289,7 @@ function ConstrainPoseSegment(Pivot, Segment, Entries) {
       BinarySteps: 18,
       InitialNormalPush: 0.020,
       MaxNormalPush: 48,
-      ContactBias: 0.006
+      ContactBias: 0.009
     }
   );
 
@@ -401,4 +401,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.28.0-PHYSICS";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.30.0-PHYSICS";
