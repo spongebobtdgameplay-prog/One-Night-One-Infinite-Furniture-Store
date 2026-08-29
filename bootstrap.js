@@ -1,5 +1,5 @@
-const Cache = "20260829-physics1";
-const Version = "0.27.4";
+const Cache = "20260829-physics2";
+const Version = "0.27.5";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -58,8 +58,8 @@ try {
   await import(`./procedural-physics-utility.js?v=${Cache}`);
   await import(`./surface-contact-utility-r17.js?v=${Cache}`);
 
-  await import("./player-controller.js?v=20260823-33");
-  await import("./player-system-r24.js?v=20260823-33");
+  await import(`./player-controller.js?v=${Cache}`);
+  await import(`./player-system-r24.js?v=${Cache}`);
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await import(`./animation-motion-authority-r18.js?v=${Cache}`);
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
