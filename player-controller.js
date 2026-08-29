@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const PLAYER_MODEL_URL = "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb";
 const PLAYER_HEIGHT = 1.76;
+const PLAYER_EYE_HEIGHT = 1.68;
 const PLAYER_RADIUS = 0.48;
 const WALK_SPEED = 3.45;
 const SPRINT_SPEED = 5.35;
@@ -374,7 +375,7 @@ function UpdateCharacterTransform(Delta) {
   if (!State.CharacterReady || !State.Pivot || !State.Camera) return;
   const CurrentX = State.Camera.position.x;
   const CurrentZ = State.Camera.position.z;
-  State.Pivot.position.set(CurrentX, 0, CurrentZ);
+  State.Pivot.position.set(CurrentX, Math.max(0, State.Camera.position.y - PLAYER_EYE_HEIGHT), CurrentZ);
 
   if (!State.HasPlayerPosition) {
     State.LastPlayerPosition.set(CurrentX, 0, CurrentZ);
