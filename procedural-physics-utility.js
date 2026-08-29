@@ -266,9 +266,14 @@ function MoveToward(Current, Target, MaximumDelta) {
   return Current;
 }
 
+function MovementFilter(Entry) {
+  return Boolean(Entry && !IsExplicitWalkable(Entry));
+}
+
 function StepFilter(FeetY) {
   return Entry => {
-    if (!Entry || IsStructure(Entry)) return true;
+    if (!Entry || IsExplicitWalkable(Entry)) return false;
+    if (IsStructure(Entry)) return true;
     const Bounds = EntryBounds(Entry);
     if (!FiniteBounds(Bounds)) return true;
     if (Bounds.max.y > FeetY + StepClearance) return true;
@@ -326,7 +331,8 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
       MaxIterations: 1,
       MaxSweepSteps,
       BinarySteps,
-      AllowSlide: false
+      AllowSlide: false,
+      Filter: MovementFilter
     }
   );
 
@@ -339,14 +345,22 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
   if (Normal.lengthSq() <= 0.000001) Normal.copy(Desired).normalize().multiplyScalar(-1);
   else Normal.normalize();
 
+  if (!IsStructure(First.Entry)) return First;
+
+  const DesiredLength = Desired.length();
+  Scratch.Candidate.copy(Desired);
+  const DesiredIntoSurface = Scratch.Candidate.dot(Normal);
+  if (DesiredIntoSurface < 0) Scratch.Candidate.addScaledVector(Normal, -DesiredIntoSurface);
+  const IntentTangentRatio = DesiredLength > 0.000001 ? Scratch.Candidate.length() / DesiredLength : 0;
+  if (IntentTangentRatio < 0.28) return First;
+
   Scratch.Remaining.copy(Desired).sub(First.Resolved);
   Scratch.Tangent.copy(Scratch.Remaining);
   const IntoSurface = Scratch.Tangent.dot(Normal);
   if (IntoSurface < 0) Scratch.Tangent.addScaledVector(Normal, -IntoSurface);
 
-  const DesiredLength = Desired.length();
   const TangentRatio = DesiredLength > 0.000001 ? Scratch.Tangent.length() / DesiredLength : 0;
-  if (TangentRatio < 0.08 || Scratch.Tangent.lengthSq() <= 0.000001) return First;
+  if (TangentRatio < 0.12 || Scratch.Tangent.lengthSq() <= 0.000001) return First;
 
   const TangentResult = Collision.ResolveHorizontalMove(
     First.Position,
@@ -358,7 +372,8 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
       MaxIterations: 1,
       MaxSweepSteps,
       BinarySteps,
-      AllowSlide: false
+      AllowSlide: false,
+      Filter: MovementFilter
     }
   );
 
@@ -487,4 +502,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.4-PHYSICS";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.5-PHYSICS";
