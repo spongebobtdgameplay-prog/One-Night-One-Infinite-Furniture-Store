@@ -10,7 +10,6 @@ const Templates = new Map();
 const Processing = new WeakSet();
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
-const PolyHavenCardboardBox = "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/cardboard_box_01/cardboard_box_01_1k.gltf";
 const MicrosoftCardboardBox = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb";
 const MicrosoftCardboardTexture = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.png";
 let CardboardTexturePromise = null;
@@ -21,15 +20,14 @@ const Assets = Object.freeze({
   DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" },
   CardboardBox: {
-    Urls: [PolyHavenCardboardBox, MicrosoftCardboardBox],
+    Urls: [MicrosoftCardboardBox],
     Label: "CARDBOARD BOX",
     Description: "WORN CORRUGATED SHIPPING BOX",
     Price: "$4.99",
     Height: 0.46,
     MaxWidth: 0.70,
     MaxDepth: 0.70,
-    Source: "https://polyhaven.com/a/cardboard_box_01",
-    FallbackSource: "https://github.com/microsoft/experimental-pcf-control-assets",
+    Source: "https://github.com/microsoft/experimental-pcf-control-assets",
     FallbackTexture: MicrosoftCardboardTexture
   }
 });
@@ -96,28 +94,43 @@ async function LoadCardboardFallbackTexture() {
 function ApplyCardboardFallbackTexture(Root, Texture) {
   Root.traverse(Object => {
     if (!Object?.isMesh) return;
+
+    Object.frustumCulled = false;
+    Object.geometry?.computeVertexNormals?.();
+    Object.geometry?.computeBoundingBox?.();
+    Object.geometry?.computeBoundingSphere?.();
+
     const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
     const Copies = Materials.filter(Boolean).map(Material => {
       const Copy = Material.clone();
       Copy.map = Texture;
+      Copy.side = THREE.DoubleSide;
+      Copy.transparent = false;
+      Copy.opacity = 1;
+      Copy.depthWrite = true;
+      Copy.depthTest = true;
       if (Copy.color?.setHex) Copy.color.setHex(0xffffff);
-      if ("roughness" in Copy) Copy.roughness = 0.88;
+      if ("roughness" in Copy) Copy.roughness = 0.91;
       if ("metalness" in Copy) Copy.metalness = 0;
       if ("emissiveIntensity" in Copy) Copy.emissiveIntensity = 0;
       Copy.needsUpdate = true;
       return Copy;
     });
+
     if (!Copies.length) {
       Object.material = new THREE.MeshStandardMaterial({
         map: Texture,
         color: 0xffffff,
-        roughness: 0.88,
-        metalness: 0
+        roughness: 0.91,
+        metalness: 0,
+        side: THREE.DoubleSide
       });
     } else {
       Object.material = Array.isArray(Object.material) ? Copies : Copies[0];
     }
   });
+
+  Root.userData.CardboardGeometryStableR88 = true;
 }
 
 function ApplyCardboardColorFallback(Root) {
@@ -152,23 +165,21 @@ async function LoadTemplate(Key) {
           CloneMaterials(Root);
 
           if (Key === "CardboardBox") {
-            const IsMicrosoftFallback = Urls[Index] === MicrosoftCardboardBox;
-            if (IsMicrosoftFallback) {
-              try {
-                const Texture = await LoadCardboardFallbackTexture();
-                ApplyCardboardFallbackTexture(Root, Texture);
-                Root.userData.CardboardTextureAppliedR86 = true;
-              } catch (TextureError) {
-                ApplyCardboardColorFallback(Root);
-                Root.userData.CardboardTextureFailedR86 = true;
-                console.warn("Cardboard texture failed; using non-white cardboard material.", TextureError);
-              }
-            } else if (!HasLoadedColorTexture(Root)) {
-              throw new Error("Primary cardboard model loaded without its color texture.");
+            try {
+              const Texture = await LoadCardboardFallbackTexture();
+              ApplyCardboardFallbackTexture(Root, Texture);
+              Root.userData.CardboardTextureAppliedR88 = true;
+            } catch (TextureError) {
+              ApplyCardboardColorFallback(Root);
+              Root.userData.CardboardTextureFailedR88 = true;
+              console.warn("Cardboard texture failed; using stable cardboard material.", TextureError);
             }
+
+            const Bounds = BoundsOf(Root);
+            if (Bounds.isEmpty()) throw new Error("Cardboard model loaded without usable geometry.");
           }
 
-          Root.userData.Source = Index === 0 ? Definition.Source : (Definition.FallbackSource || Definition.Source);
+          Root.userData.Source = Definition.Source;
           Root.userData.AssetUrl = Urls[Index];
           return Root;
         } catch (Error) {
@@ -221,6 +232,19 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   if (!Object || !NormalizeAsset(Object, Definition, Number(Entry.Rotation) || 0)) return null;
   Object.position.x += Entry.X;
   Object.position.z += Entry.Z;
+
+  if (Entry.AssetKey === "CardboardBox") {
+    Object.rotation.x = 0;
+    Object.rotation.z = 0;
+    Object.userData.CardboardBoxStableR88 = true;
+    Object.traverse(Item => {
+      if (!Item?.isMesh) return;
+      Item.frustumCulled = false;
+      Item.castShadow = false;
+      Item.receiveShadow = false;
+    });
+  }
+
   Object.name = `${Entry.Name}-${Index}`;
   Object.userData.ChunkId = Chunk.Id;
   Object.userData.LayoutSlot = Entry.Slot;
@@ -294,4 +318,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.3";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.6";
