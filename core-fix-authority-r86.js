@@ -15,7 +15,7 @@ const MIN_HORIZONTAL_NORMAL = 0.08;
 const FurnitureNames = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
   "NightStand_2", "Shelf_Large", "Bookshelf", "Kitchen_Cabinet1", "Kitchen_Fridge",
-  "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1"
+  "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1"
 ]);
 const RetailNames = new Set([
   "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
@@ -72,7 +72,15 @@ function IsManagedRoot(Object) {
   const Name = String(Object.name || "");
   if (FurnitureNames.has(Name) || RetailNames.has(Name)) return true;
   if (Object.userData?.RetailSellableR84) return true;
-  if (Name.startsWith("RetailCoffeeTableR84") || Name.startsWith("RetailSideTableR84") || Name.startsWith("RetailDiningTableR84") || Name.startsWith("RetailBoxShelfR84")) return true;
+  if (Object.userData?.ForceSolidCollisionR30 === true || Object.userData?.CardboardBoxStableR90 === true) return true;
+  if (
+    Name.startsWith("RetailCoffeeTableR84") ||
+    Name.startsWith("RetailSideTableR84") ||
+    Name.startsWith("RetailDiningTableR84") ||
+    Name.startsWith("RetailBoxShelfR84") ||
+    Name.startsWith("RetailCardboardBoxR84") ||
+    /CardboardBox/i.test(Name)
+  ) return true;
   return false;
 }
 
@@ -85,7 +93,7 @@ function IsLegacyManagedEntry(Entry) {
     if (Type === Name || Type.startsWith(`${Name}MeshCollisionR86`) || Type.startsWith(`${Name}Exact`)) return true;
   }
   for (const Name of RetailNames) if (Type === Name || Type.startsWith(`${Name}Solid`)) return true;
-  if (/^Retail(CoffeeTable|SideTable|DiningTable|BoxShelf)R84.*Solid/i.test(Type)) return true;
+  if (/^Retail(CoffeeTable|SideTable|DiningTable|BoxShelf|CardboardBox)R84.*Solid/i.test(Type) || /CardboardBox/i.test(Type)) return true;
   return false;
 }
 
@@ -480,4 +488,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.27.7-R88";
+window.__STORE_CORE_FIX_BUILD__ = "V0.30.0-R92";
