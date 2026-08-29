@@ -282,60 +282,6 @@ function MoveToward(Current, Target, MaximumDelta) {
   return Current;
 }
 
-function MovementFilter(Entry) {
-  return Boolean(Entry && !IsExplicitWalkable(Entry));
-}
-
-function StepFilter(FeetY) {
-  return Entry => {
-    if (!Entry || IsExplicitWalkable(Entry)) return false;
-    if (IsStructure(Entry)) return true;
-    const Bounds = EntryBounds(Entry);
-    if (!FiniteBounds(Bounds)) return true;
-    if (Bounds.max.y > FeetY + StepClearance) return true;
-    const Height = Bounds.max.y - Bounds.min.y;
-    if (Height > MaxStepHeight + 0.16 && !IsExplicitWalkable(Entry)) return true;
-    return false;
-  };
-}
-
-function TryStep(Start, Desired, Radius, Entries, FirstResult) {
-  const Entry = FirstResult?.Entry;
-  const Bounds = EntryBounds(Entry);
-  if (!Entry || IsStructure(Entry) || !FiniteBounds(Bounds)) return null;
-
-  const CurrentFeetY = Start.y - EyeHeight;
-  const StepTop = Bounds.max.y;
-  const Rise = StepTop - CurrentFeetY;
-  if (Rise <= 0.003 || Rise > MaxStepHeight) return null;
-
-  Scratch.RaisedStart.copy(Start);
-  Scratch.RaisedStart.y = EyeHeight + StepTop + StepClearance;
-
-  const Result = Collision.ResolveHorizontalMove(
-    Scratch.RaisedStart,
-    Desired,
-    Radius,
-    Entries,
-    {
-      Skin,
-      MaxIterations: 2,
-      MaxSweepSteps,
-      BinarySteps,
-      AllowSlide: false,
-      Filter: StepFilter(StepTop + StepClearance)
-    }
-  );
-
-  const FirstDistance = FirstResult.Resolved.lengthSq();
-  const StepDistance = Result.Resolved.lengthSq();
-  if (StepDistance <= FirstDistance + 0.000025) return null;
-
-  Result.Stepped = true;
-  Result.StepHeight = StepTop;
-  return Result;
-}
-
 function ResolveWithSlide(Start, Desired, Radius, Entries) {
   void Entries;
   const Scene = window.__STORE_GAME__?.Scene || null;
