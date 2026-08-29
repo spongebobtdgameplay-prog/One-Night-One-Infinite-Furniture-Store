@@ -17,11 +17,12 @@ let StepRugId = "";
 let LastTriggerAt = -Infinity;
 let LastFrameAt = performance.now();
 let StepSpeed = 0;
+const StepDirection = new THREE.Vector3(0, 0, -1);
 
-const STEP_DURATION = 340;
+const STEP_DURATION = 430;
 const STEP_COOLDOWN = 120;
 const MIN_TRIGGER_SPEED = 0.08;
-const EDGE_PADDING = 0.065;
+const EDGE_PADDING = 0.22;
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -90,7 +91,7 @@ function RugAt(Position) {
   return "";
 }
 
-function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0) {
+function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0, Direction = null) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return false;
 
@@ -100,6 +101,13 @@ function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0) {
   StepEntering = Boolean(Entering);
   StepRugId = String(RugId || "");
   StepSpeed = Math.max(0, Number(Speed) || 0);
+
+  if (Direction?.isVector3 && Direction.lengthSq() > 0.000001) {
+    StepDirection.copy(Direction);
+    StepDirection.y = 0;
+    StepDirection.normalize();
+  }
+
   return true;
 }
 
@@ -123,7 +131,7 @@ function UpdateCrossingState() {
 
   if (NextRugId !== CurrentRugId && Speed >= MIN_TRIGGER_SPEED) {
     const Entering = Boolean(NextRugId);
-    TriggerStep(null, Entering, Entering ? NextRugId : CurrentRugId, Speed);
+    TriggerStep(null, Entering, Entering ? NextRugId : CurrentRugId, Speed, TempVelocity);
   }
 
   CurrentRugId = NextRugId;
@@ -143,7 +151,9 @@ function GetStepState() {
     RugId: StepRugId,
     Duration: STEP_DURATION,
     Height,
-    Speed: StepSpeed
+    Speed: StepSpeed,
+    DirectionX: StepDirection.x,
+    DirectionZ: StepDirection.z
   };
 }
 
@@ -161,4 +171,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.7-PHYSICS";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.8-PHYSICS";
