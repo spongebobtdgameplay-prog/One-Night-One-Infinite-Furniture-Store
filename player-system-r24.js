@@ -553,6 +553,12 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     const Pitch = IsLead ? -0.085 * Arc * SpeedFactor : -0.028 * Arc;
     AddBoneRotation(Foot, Pitch, 0, Side * -0.004 * Arc);
   }
+
+  return {
+    GroundHeight,
+    SupportWeight: Arc > 0.001 ? THREE.MathUtils.lerp(1, 0.10, THREE.MathUtils.clamp(Arc, 0, 1)) : 1,
+    Arc
+  };
 }
 
 function ApplyCarpetStepOverlay(Delta) {
@@ -575,8 +581,27 @@ function ApplyCarpetStepOverlay(Delta) {
 
   const LeadSide = Step?.Side === -1 ? -1 : 1;
 
-  GroundAndPlaceFoot(-1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
-  GroundAndPlaceFoot(1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
+  const LeftSupport = GroundAndPlaceFoot(-1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
+  const RightSupport = GroundAndPlaceFoot(1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
+
+  if (LeftSupport && RightSupport) {
+    const LeftWeight = Math.max(0.05, Number(LeftSupport.SupportWeight) || 0);
+    const RightWeight = Math.max(0.05, Number(RightSupport.SupportWeight) || 0);
+    const TotalWeight = LeftWeight + RightWeight;
+    const SupportHeight = TotalWeight > 0.0001
+      ? (LeftSupport.GroundHeight * LeftWeight + RightSupport.GroundHeight * RightWeight) / TotalWeight
+      : 0;
+
+    window.__STORE_FOOT_SUPPORT__ = {
+      Active: Boolean(SurfaceStep.NearRug?.(State.Pivot.position, 0.42)),
+      Height: THREE.MathUtils.clamp(SupportHeight, 0, 0.30),
+      LeftHeight: LeftSupport.GroundHeight,
+      RightHeight: RightSupport.GroundHeight,
+      LeftWeight,
+      RightWeight,
+      UpdatedAt: performance.now()
+    };
+  }
 
   if (!Step?.Active) return;
 
