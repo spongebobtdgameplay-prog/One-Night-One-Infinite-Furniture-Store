@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260829-bathroom1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260829-v030-layout";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -65,7 +65,13 @@ const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
-let WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__) ? (window.__STORE_WORLD_SEED__ >>> 0) : 1000;
+let WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__)
+  ? (window.__STORE_WORLD_SEED__ >>> 0)
+  : (() => {
+      const Values = new Uint32Array(1);
+      crypto.getRandomValues(Values);
+      return (Values[0] >>> 0) || 1;
+    })();
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -289,6 +295,9 @@ const MaterialPalettes = {
   Window_Large1: [Pbr(DarkSteelTexture, 0x7f898c, 0.46, 0.65)]
 };
 
+const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
+const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
+
 const ModelDefinitions = {
   Couch_Large1: { Url: "Models/LivingRoom/GLB/Couch_Large1.glb", Axis: "x", Target: 2.45 },
   Couch_L: { Url: "Models/LivingRoom/GLB/Couch_L.glb", Axis: "x", Target: 2.80 },
@@ -297,13 +306,19 @@ const ModelDefinitions = {
   Bed_King: { Url: "Models/Bedroom/GLB/Bed_King.glb", Axis: "z", Target: 2.08 },
   Bed_Single: { Url: "Models/Bedroom/GLB/Bed_Single.glb", Axis: "z", Target: 2.02 },
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
-  Shelf_Large: { Url: "Models/Storage/GLB/Shelf_Large.glb", Axis: "y", Target: 2.12 },
-  Bookshelf: { Url: "Models/Storage/GLB/Bookshelf.glb", Axis: "y", Target: 2.08 },
-  Kitchen_Cabinet1: { Url: "Models/Kitchen/GLB/Kitchen_Cabinet1.glb", Axis: "y", Target: 0.91 },
+  Shelf_Large: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.08, PreserveMaterials: true },
+  Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
+  Kitchen_Cabinet1: { Url: ReplicaCabinetUrl, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: "Models/Kitchen/GLB/Kitchen_Oven.glb", Axis: "y", Target: 0.91 },
   Kitchen_Sink: { Url: "Models/Kitchen/GLB/Kitchen_Sink.glb", Axis: "y", Target: 0.95 },
-  Bathroom_Sink: { Url: "Models/Kitchen/GLB/Kitchen_Sink.glb", Axis: "y", Target: 0.95 },
+  Bathroom_Sink: {
+    Url: "Models/Kitchen/GLB/Kitchen_Sink.glb",
+    Axis: "y",
+    Target: 0.32,
+    RemoveNodes: ["Kitchen"],
+    FloorOffset: 0.72
+  },
   Bathroom_Bathtub: { Url: "Models/Bathroom/GLB/Bathroom_Bathtub.glb", Axis: "z", Target: 1.82 },
   Bathroom_Toilet: { Url: "Models/Bathroom/GLB/Bathroom_Toilet.glb", Axis: "y", Target: 0.82 },
   Light_Floor1: { Url: "Models/Lighting/GLB/Light_Floor1.glb", Axis: "y", Target: 1.58 },
@@ -502,13 +517,24 @@ function ApplyModelMaterials(Name, Model) {
 
 function PrepareModel(Name, Model) {
   const Definition = ModelDefinitions[Name];
+
+  if (Array.isArray(Definition.RemoveNodes) && Definition.RemoveNodes.length) {
+    const Removed = [];
+    Model.traverse(Object => {
+      if (Definition.RemoveNodes.includes(String(Object?.name || ""))) Removed.push(Object);
+    });
+    for (const Object of Removed) Object.parent?.remove(Object);
+  }
+
   Model.updateMatrixWorld(true);
   const RawBounds = new THREE.Box3().setFromObject(Model);
   const RawSize = RawBounds.getSize(new THREE.Vector3());
   const AxisSize = Math.max(RawSize[Definition.Axis], 0.0001);
   const Scale = Definition.Target / AxisSize;
   Model.scale.setScalar(Scale);
-  ApplyModelMaterials(Name, Model);
+
+  if (!Definition.PreserveMaterials) ApplyModelMaterials(Name, Model);
+
   Model.updateMatrixWorld(true);
   const Bounds = new THREE.Box3().setFromObject(Model);
   const Center = Bounds.getCenter(new THREE.Vector3());
@@ -517,6 +543,8 @@ function PrepareModel(Name, Model) {
   Model.updateMatrixWorld(true);
   const Grounded = new THREE.Box3().setFromObject(Model);
   Model.position.y -= Grounded.min.y;
+  Model.position.y += Number(Definition.FloorOffset) || 0;
+  Model.updateMatrixWorld(true);
 }
 
 async function GetModelTemplate(Name) {
@@ -1208,8 +1236,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.28.1";
-window.__STORE_VERSION__ = "0.28.1";
+window.__STORE_GAME_BUILD__ = "V0.30.0";
+window.__STORE_VERSION__ = "0.30.0";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1229,6 +1257,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.28.1"
+  Version: "0.30.0"
 };
 Animate();
