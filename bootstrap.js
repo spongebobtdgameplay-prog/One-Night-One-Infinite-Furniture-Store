@@ -1,5 +1,5 @@
-const Cache = "20260826-152";
-const Version = "0.27.3";
+const Cache = "20260829-physics1";
+const Version = "0.27.4";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -55,6 +55,7 @@ try {
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
   await import(`./collision-utility.js?v=${Cache}`);
+  await import(`./procedural-physics-utility.js?v=${Cache}`);
   await import(`./surface-contact-utility-r17.js?v=${Cache}`);
 
   await import("./player-controller.js?v=20260823-33");
@@ -95,8 +96,6 @@ try {
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
 
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
-  await import(`./movement-authority-r30.js?v=${Cache}`);
-  await import(`./forward-wall-invariant-r31.js?v=${Cache}`);
   await OptionalImport("./final-contact-r19.js", "Final limb contact");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
   CoreReady = true;
