@@ -571,21 +571,101 @@ function SpawnLayoutModel(Chunk, Entry) {
   return Pending;
 }
 
+function CreateRugTexture(Chunk, Entry) {
+  const Palettes = [
+    ["#5b4335", "#d1aa79", "#2e2824"],
+    ["#364b4d", "#9fc0b7", "#243033"],
+    ["#4b3d50", "#bca0c2", "#302733"],
+    ["#4d4938", "#c9b77d", "#302e26"],
+    ["#3d4841", "#9fb8a8", "#28302c"],
+    ["#4a3b34", "#c59670", "#2d2521"]
+  ];
+  const Variant = Math.abs(Math.trunc(Number(Entry.Variant) || 0));
+  const PaletteIndex = Math.floor(SeededRandom(Chunk.Seed + Variant * 17 + 31) * Palettes.length);
+  const [Base, Accent, Dark] = Palettes[PaletteIndex];
+  const RepeatX = Math.max(3, Entry.Width * 1.45);
+  const RepeatY = Math.max(3, Entry.Depth * 1.45);
+
+  return CreateTexture(256, RepeatX, RepeatY, (Context, Size) => {
+    Context.fillStyle = Base;
+    Context.fillRect(0, 0, Size, Size);
+
+    Context.globalAlpha = 0.24;
+    Context.strokeStyle = Accent;
+    Context.lineWidth = 1;
+    for (let Axis = 0; Axis <= Size; Axis += 5) {
+      Context.beginPath();
+      Context.moveTo(Axis, 0);
+      Context.lineTo(Axis, Size);
+      Context.stroke();
+
+      Context.beginPath();
+      Context.moveTo(0, Axis);
+      Context.lineTo(Size, Axis);
+      Context.stroke();
+    }
+
+    Context.globalAlpha = 0.34;
+    Context.strokeStyle = Dark;
+    Context.lineWidth = 5;
+    const StripeOffset = (Variant % 4) * 13;
+    for (let Stripe = -Size; Stripe < Size * 2; Stripe += 54) {
+      Context.beginPath();
+      Context.moveTo(Stripe + StripeOffset, 0);
+      Context.lineTo(Stripe + Size + StripeOffset, Size);
+      Context.stroke();
+    }
+
+    Context.globalAlpha = 0.18;
+    Context.strokeStyle = Accent;
+    Context.lineWidth = 2;
+    for (let Stripe = -Size; Stripe < Size * 2; Stripe += 54) {
+      Context.beginPath();
+      Context.moveTo(Stripe + 18 - StripeOffset, Size);
+      Context.lineTo(Stripe + Size + 18 - StripeOffset, 0);
+      Context.stroke();
+    }
+
+    for (let Dot = 0; Dot < 680; Dot += 1) {
+      const X = SeededRandom(Chunk.Seed + Variant * 101 + Dot * 3 + 1) * Size;
+      const Y = SeededRandom(Chunk.Seed + Variant * 101 + Dot * 3 + 2) * Size;
+      const Alpha = 0.025 + SeededRandom(Chunk.Seed + Variant * 101 + Dot * 3 + 3) * 0.055;
+      Context.fillStyle = `rgba(255,245,225,${Alpha.toFixed(3)})`;
+      Context.fillRect(X, Y, 1, 1);
+    }
+
+    Context.globalAlpha = 1;
+  });
+}
+
+function CreateRugMaterial(Chunk, Entry) {
+  const Texture = CreateRugTexture(Chunk, Entry);
+  return new THREE.MeshStandardMaterial({
+    map: Texture,
+    color: 0xffffff,
+    roughness: 0.97,
+    metalness: 0,
+    side: THREE.FrontSide
+  });
+}
+
 function AddPlannedRug(Chunk, Entry) {
-  const Colors = [0x574236, 0x37494b, 0x4a3d50, 0x4c493a, 0x3e4740, 0x493d35];
-  const ColorIndex = Math.floor(SeededRandom(Chunk.Seed + Entry.Variant * 17 + 31) * Colors.length);
-  const Material = new THREE.MeshStandardMaterial({ color: Colors[ColorIndex], roughness: 1 });
+  const Thickness = 0.078;
+  const Material = CreateRugMaterial(Chunk, Entry);
   const Rug = Box(
     `ShowroomRug-${Entry.Slot}`,
-    new THREE.Vector3(Entry.Width, 0.018, Entry.Depth),
-    new THREE.Vector3(Entry.X, 0.012, Entry.Z),
+    new THREE.Vector3(Entry.Width, Thickness, Entry.Depth),
+    new THREE.Vector3(Entry.X, Thickness * 0.5 + 0.003, Entry.Z),
     Material,
     Chunk
   );
+
   Rug.userData.LayoutSlot = Entry.Slot;
   Rug.userData.LayoutAuthority = Chunk.Layout.Authority;
   Rug.userData.DecorationKind = "Rug";
   Rug.userData.DecorationNoCollision = true;
+  Rug.userData.WalkableCarpetR87 = true;
+  Rug.userData.RugThickness = Thickness;
   return Rug;
 }
 
@@ -1118,7 +1198,7 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.27.4";
+window.__STORE_GAME_BUILD__ = "V0.27.6";
 window.__STORE_VERSION__ = "0.27.4";
 window.__STORE_GAME__ = {
   Scene,
