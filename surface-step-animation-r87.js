@@ -102,6 +102,21 @@ function RugAt(Position) {
   return "";
 }
 
+function NearRug(Position, Padding = 0.35) {
+  if (!Position?.isVector3) return false;
+  const SafePadding = Math.max(0, Number(Padding) || 0);
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+    if (Position.x < Bounds.min.x - SafePadding || Position.x > Bounds.max.x + SafePadding) continue;
+    if (Position.z < Bounds.min.z - SafePadding || Position.z > Bounds.max.z + SafePadding) continue;
+    return true;
+  }
+
+  return false;
+}
+
 function RaycastGroundHeight(Position, StartY = null) {
   if (!Position?.isVector3) return 0;
 
@@ -211,6 +226,7 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   TriggerStep,
   UpdateCrossingState,
   GetStepState,
+  NearRug,
   RaycastGroundHeight,
   GetRegisteredCount: () => Rugs.size
 };
