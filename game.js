@@ -1160,7 +1160,7 @@ function UpdateMovement(Delta) {
     Right,
     Moving ? Speed * Delta : 0,
     Delta,
-    CollisionBoxes,
+    null,
     PlayerApi?.GetPlayerRadius?.() || 0.255
   );
 }
@@ -1236,8 +1236,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.30.0";
-window.__STORE_VERSION__ = "0.30.0";
+window.__STORE_GAME_BUILD__ = "V0.35.0";
+window.__STORE_VERSION__ = "0.35.0";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1257,6 +1257,7 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.30.0"
+  RayCollisionMode: true,
+  Version: "0.35.0"
 };
 Animate();
