@@ -423,9 +423,14 @@ function UpdateStamina(Delta) {
   }
 }
 
-function StepCurve(Start, End, T) {
+function SmoothStep01(Value) {
+  const T = THREE.MathUtils.clamp(Value, 0, 1);
+  return T * T * (3 - 2 * T);
+}
+
+function StepPulse(Start, End, T) {
   if (T <= Start || T >= End) return 0;
-  const Local = (T - Start) / (End - Start);
+  const Local = SmoothStep01((T - Start) / (End - Start));
   return Math.sin(Local * Math.PI);
 }
 
@@ -440,10 +445,15 @@ function ApplyCarpetStepOverlay() {
   const T = THREE.MathUtils.clamp(Number(Step.Progress) || 0, 0, 1);
   const Side = Step.Side === -1 ? -1 : 1;
   const Entering = Step.Entering !== false;
-  const Lead = StepCurve(0.00, 0.68, T);
-  const Trail = StepCurve(0.28, 1.00, T);
-  const Body = Math.sin(T * Math.PI);
-  const LiftScale = Entering ? 1 : 0.82;
+  const Height = THREE.MathUtils.clamp(Number(Step.Height) || 0.065, 0.025, 0.12);
+  const Speed = THREE.MathUtils.clamp(Number(Step.Speed) || 1.8, 0.4, 5.5);
+
+  const Lead = StepPulse(0.00, 0.74, T);
+  const Trail = StepPulse(0.38, 1.00, T);
+  const Body = Math.sin(SmoothStep01(T) * Math.PI);
+  const HeightScale = THREE.MathUtils.clamp(0.72 + Height * 4.2, 0.80, 1.18);
+  const SpeedScale = THREE.MathUtils.lerp(0.86, 1.08, (Speed - 0.4) / 5.1);
+  const LiftScale = HeightScale * SpeedScale * (Entering ? 1 : 0.72);
 
   const LeadUpper = Side < 0 ? "UpperLegL" : "UpperLegR";
   const LeadLower = Side < 0 ? "LowerLegL" : "LowerLegR";
@@ -452,20 +462,20 @@ function ApplyCarpetStepOverlay() {
   const TrailLower = Side < 0 ? "LowerLegR" : "LowerLegL";
   const TrailFoot = Side < 0 ? "FootR" : "FootL";
 
-  AddBoneRotation(LeadUpper, -0.56 * Lead * LiftScale, 0, Side * -0.024 * Lead);
-  AddBoneRotation(LeadLower, 0.74 * Lead * LiftScale, 0, 0);
-  AddBoneRotation(LeadFoot, -0.34 * Lead * LiftScale, 0, 0);
+  AddBoneRotation(LeadUpper, -0.34 * Lead * LiftScale, 0, Side * -0.012 * Lead);
+  AddBoneRotation(LeadLower, 0.48 * Lead * LiftScale, 0, 0);
+  AddBoneRotation(LeadFoot, -0.21 * Lead * LiftScale, 0, 0);
 
-  AddBoneRotation(TrailUpper, -0.26 * Trail * LiftScale, 0, Side * 0.016 * Trail);
-  AddBoneRotation(TrailLower, 0.36 * Trail * LiftScale, 0, 0);
-  AddBoneRotation(TrailFoot, -0.18 * Trail * LiftScale, 0, 0);
+  AddBoneRotation(TrailUpper, -0.10 * Trail * LiftScale, 0, Side * 0.008 * Trail);
+  AddBoneRotation(TrailLower, 0.16 * Trail * LiftScale, 0, 0);
+  AddBoneRotation(TrailFoot, -0.075 * Trail * LiftScale, 0, 0);
 
-  AddBoneRotation("Hips", 0.070 * Body * LiftScale, 0, Side * 0.042 * Body);
-  AddBoneRotation("Abdomen", -0.045 * Body * LiftScale, Side * -0.020 * Body, 0);
-  AddBoneRotation("Torso", -0.030 * Body * LiftScale, Side * 0.018 * Body, 0);
-  AddBoneRotation("Chest", 0.018 * Body * LiftScale, Side * -0.012 * Body, 0);
-  AddBoneRotation("UpperArmL", Side < 0 ? 0.085 * Trail : -0.060 * Lead, 0, 0);
-  AddBoneRotation("UpperArmR", Side < 0 ? -0.060 * Lead : 0.085 * Trail, 0, 0);
+  AddBoneRotation("Hips", 0.022 * Body * LiftScale, 0, Side * 0.018 * Body);
+  AddBoneRotation("Abdomen", -0.014 * Body * LiftScale, Side * -0.009 * Body, 0);
+  AddBoneRotation("Torso", -0.010 * Body * LiftScale, Side * 0.007 * Body, 0);
+  AddBoneRotation("Chest", 0.006 * Body * LiftScale, 0, 0);
+  AddBoneRotation("UpperArmL", Side < 0 ? 0.028 * Trail : -0.022 * Lead, 0, 0);
+  AddBoneRotation("UpperArmR", Side < 0 ? -0.022 * Lead : 0.028 * Trail, 0, 0);
 }
 
 function ApplyProceduralOverlay() {
@@ -509,10 +519,10 @@ function ApplyProceduralOverlay() {
     const SideContact = THREE.MathUtils.clamp(Contact.Normal.x * RightX + Contact.Normal.z * RightZ, -1, 1);
     const Compression = Push * (0.35 + FrontContact * 0.65);
 
-    AddBoneRotation("Hips", 0.035 * Compression, 0, SideContact * 0.030 * Push);
-    AddBoneRotation("Abdomen", 0.055 * Compression, SideContact * -0.018 * Push, SideContact * -0.026 * Push);
-    AddBoneRotation("Torso", 0.080 * Compression, SideContact * -0.026 * Push, SideContact * -0.038 * Push);
-    AddBoneRotation("Chest", -0.035 * Compression, SideContact * 0.022 * Push, SideContact * 0.030 * Push);
+    AddBoneRotation("Hips", -0.018 * Compression, 0, SideContact * 0.022 * Push);
+    AddBoneRotation("Abdomen", -0.032 * Compression, SideContact * -0.014 * Push, SideContact * -0.020 * Push);
+    AddBoneRotation("Torso", -0.052 * Compression, SideContact * -0.020 * Push, SideContact * -0.028 * Push);
+    AddBoneRotation("Chest", 0.026 * Compression, SideContact * 0.016 * Push, SideContact * 0.022 * Push);
     AddBoneRotation("UpperLegL", 0.055 * Compression, 0, 0);
     AddBoneRotation("UpperLegR", 0.055 * Compression, 0, 0);
     AddBoneRotation("LowerLegL", -0.045 * Compression, 0, 0);
@@ -873,4 +883,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.6-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.7-PHYSICS";
