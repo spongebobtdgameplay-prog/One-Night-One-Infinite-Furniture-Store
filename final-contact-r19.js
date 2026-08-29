@@ -10,6 +10,9 @@ if (!Game?.Scene || !Player || !Collision || !SurfaceContact) {
   throw new Error("Game, player, and contact utilities must load before final contact pass.");
 }
 
+const FINAL_CONTACT_SKIN = 0.014;
+const FINAL_POSE_SKIN = 0.010;
+
 const ForceCapsules = [
   { A: "Neck", B: "Head", Radius: 0.155, EndExtension: 0.09 },
   { A: "Chest", B: "Neck", Radius: 0.190 },
@@ -123,8 +126,9 @@ function CapsuleSampleSeparation(Start, End, Radius, Entries, Target) {
   let BestDepth = 0;
   Target.set(0, 0, 0);
 
+  const EffectiveRadius = Radius + FINAL_CONTACT_SKIN;
   const Length = Start.distanceTo(End);
-  const Samples = THREE.MathUtils.clamp(Math.ceil(Length / Math.max(0.075, Radius * 0.72)), 3, 8);
+  const Samples = THREE.MathUtils.clamp(Math.ceil(Length / Math.max(0.065, EffectiveRadius * 0.64)), 4, 10);
 
   for (let Index = 0; Index <= Samples; Index += 1) {
     const T = Index / Samples;
@@ -132,7 +136,7 @@ function CapsuleSampleSeparation(Start, End, Radius, Entries, Target) {
 
     for (const Entry of Entries) {
       if (!BodyCollision(Entry)) continue;
-      const Depth = PointSeparation(Scratch.Sample, Radius, EntryBounds(Entry), Scratch.Separation);
+      const Depth = PointSeparation(Scratch.Sample, EffectiveRadius, EntryBounds(Entry), Scratch.Separation);
       if (Depth <= BestDepth) continue;
       BestDepth = Depth;
       Target.copy(Scratch.Separation);
@@ -279,13 +283,13 @@ function ConstrainPoseSegment(Pivot, Segment, Entries) {
     Entries,
     Scratch.SafeEnd,
     {
-      Skin: 0.006,
+      Skin: FINAL_POSE_SKIN,
       Filter: BodyCollision,
       PreviousDirection: State.HasPrevious ? State.PreviousDirection : null,
       BinarySteps: 18,
       InitialNormalPush: 0.020,
       MaxNormalPush: 48,
-      ContactBias: 0.0035
+      ContactBias: 0.006
     }
   );
 
@@ -397,4 +401,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.8-PHYSICS";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.28.0-PHYSICS";
