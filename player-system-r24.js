@@ -423,6 +423,51 @@ function UpdateStamina(Delta) {
   }
 }
 
+function StepCurve(Start, End, T) {
+  if (T <= Start || T >= End) return 0;
+  const Local = (T - Start) / (End - Start);
+  return Math.sin(Local * Math.PI);
+}
+
+function ApplyCarpetStepOverlay() {
+  const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
+  if (!SurfaceStep) return;
+
+  SurfaceStep.UpdateCrossingState?.();
+  const Step = SurfaceStep.GetStepState?.();
+  if (!Step?.Active) return;
+
+  const T = THREE.MathUtils.clamp(Number(Step.Progress) || 0, 0, 1);
+  const Side = Step.Side === -1 ? -1 : 1;
+  const Entering = Step.Entering !== false;
+  const Lead = StepCurve(0.00, 0.68, T);
+  const Trail = StepCurve(0.28, 1.00, T);
+  const Body = Math.sin(T * Math.PI);
+  const LiftScale = Entering ? 1 : 0.82;
+
+  const LeadUpper = Side < 0 ? "UpperLegL" : "UpperLegR";
+  const LeadLower = Side < 0 ? "LowerLegL" : "LowerLegR";
+  const LeadFoot = Side < 0 ? "FootL" : "FootR";
+  const TrailUpper = Side < 0 ? "UpperLegR" : "UpperLegL";
+  const TrailLower = Side < 0 ? "LowerLegR" : "LowerLegL";
+  const TrailFoot = Side < 0 ? "FootR" : "FootL";
+
+  AddBoneRotation(LeadUpper, -0.56 * Lead * LiftScale, 0, Side * -0.024 * Lead);
+  AddBoneRotation(LeadLower, 0.74 * Lead * LiftScale, 0, 0);
+  AddBoneRotation(LeadFoot, -0.34 * Lead * LiftScale, 0, 0);
+
+  AddBoneRotation(TrailUpper, -0.26 * Trail * LiftScale, 0, Side * 0.016 * Trail);
+  AddBoneRotation(TrailLower, 0.36 * Trail * LiftScale, 0, 0);
+  AddBoneRotation(TrailFoot, -0.18 * Trail * LiftScale, 0, 0);
+
+  AddBoneRotation("Hips", 0.070 * Body * LiftScale, 0, Side * 0.042 * Body);
+  AddBoneRotation("Abdomen", -0.045 * Body * LiftScale, Side * -0.020 * Body, 0);
+  AddBoneRotation("Torso", -0.030 * Body * LiftScale, Side * 0.018 * Body, 0);
+  AddBoneRotation("Chest", 0.018 * Body * LiftScale, Side * -0.012 * Body, 0);
+  AddBoneRotation("UpperArmL", Side < 0 ? 0.085 * Trail : -0.060 * Lead, 0, 0);
+  AddBoneRotation("UpperArmR", Side < 0 ? -0.060 * Lead : 0.085 * Trail, 0, 0);
+}
+
 function ApplyProceduralOverlay() {
   if (!State.Pivot) return;
 
@@ -476,6 +521,7 @@ function ApplyProceduralOverlay() {
     AddBoneRotation("ShoulderR", -0.030 * Compression, 0, SideContact * 0.018 * Push);
   }
 
+  ApplyCarpetStepOverlay();
   State.Pivot.updateMatrixWorld(true);
 }
 
@@ -827,4 +873,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.5-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.6-PHYSICS";
