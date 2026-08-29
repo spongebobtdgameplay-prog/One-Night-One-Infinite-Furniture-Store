@@ -176,6 +176,7 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
     Object.rotation.x = 0;
     Object.rotation.z = 0;
     Object.userData.CardboardBoxStableR90 = true;
+    Object.userData.ForceSolidCollisionR30 = true;
     Object.traverse(Item => {
       if (!Item?.isMesh) return;
       Item.frustumCulled = false;
@@ -197,6 +198,12 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   Object.userData.DecorationNoCollision = false;
   Chunk.Group.add(Object);
   Object.updateWorldMatrix(true, true);
+
+  if (Entry.AssetKey === "CardboardBox") {
+    window.__STORE_PROCEDURAL_PHYSICS__?.RegisterSolidContactObject?.(Object, Chunk.Id);
+    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk, true);
+  }
+
   return Object;
 }
 
@@ -257,4 +264,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.28.0";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.30.0";
