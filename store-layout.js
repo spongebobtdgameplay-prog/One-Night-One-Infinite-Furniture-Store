@@ -19,6 +19,7 @@ const Footprints = Object.freeze({
   Kitchen_Fridge: [0.84, 0.78],
   Kitchen_Oven: [0.82, 0.70],
   Kitchen_Sink: [1.10, 0.66],
+  Bathroom_Sink: [1.10, 0.66],
   Bathroom_Bathtub: [0.80, 1.72],
   Bathroom_Toilet: [0.62, 0.78],
   Light_Floor1: [0.48, 0.48],
@@ -231,15 +232,15 @@ function BathroomTemplateA() {
       Slot("Bathroom.Left.Tub", "Bathroom_Bathtub", -11.80, 5.50, Math.PI / 2),
       Slot("Bathroom.Left.ToiletA", "Bathroom_Toilet", -8.55, 5.50, 0),
       Slot("Bathroom.Left.ToiletB", "Bathroom_Toilet", -11.30, -4.65, 0),
+      Slot("Bathroom.Left.Sink", "Bathroom_Sink", -14.05, 0.20, Math.PI / 2),
       Slot("Bathroom.Right.Tub", "Bathroom_Bathtub", 11.80, -5.50, -Math.PI / 2),
       Slot("Bathroom.Right.ToiletA", "Bathroom_Toilet", 8.55, -5.50, Math.PI),
-      Slot("Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.30, 4.65, Math.PI)
+      Slot("Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.30, 4.65, Math.PI),
+      Slot("Bathroom.Right.Sink", "Bathroom_Sink", 14.05, -0.20, -Math.PI / 2)
     ],
     Rugs: [],
     Sale: [],
-    Retail: [
-      Slot("Bathroom.Left.DisplayCabinet", "RetailDisplayCabinetR79", -14.05, 0.20, Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
-    ],
+    Retail: [],
     Partitions: [
       Partition("Bathroom.Left.Backdrop", -14.85, 4.15, 3.8),
       Partition("Bathroom.Right.Backdrop", 14.85, -4.15, 3.8)
@@ -741,4 +742,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.27.2";
+window.__STORE_LAYOUT_BUILD__ = "V0.28.1";
