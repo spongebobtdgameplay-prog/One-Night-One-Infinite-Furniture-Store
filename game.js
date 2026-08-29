@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260826-151";
+import { CreateChunkLayout } from "./store-layout.js?v=20260829-bathroom1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -1208,8 +1208,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.28.0";
-window.__STORE_VERSION__ = "0.28.0";
+window.__STORE_GAME_BUILD__ = "V0.28.1";
+window.__STORE_VERSION__ = "0.28.1";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1229,6 +1229,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.28.0"
+  Version: "0.28.1"
 };
 Animate();
