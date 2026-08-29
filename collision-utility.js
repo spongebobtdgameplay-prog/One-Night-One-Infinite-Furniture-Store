@@ -592,7 +592,7 @@ function RaycastCandidateRoots(Scene, Center, Range = 4) {
   const ActiveKey = Game?.ActiveChunks
     ? [...Game.ActiveChunks.keys()].filter(Index => Math.abs(Index - ChunkIndex) <= 1).sort((A, B) => A - B).join(",")
     : "scene";
-  const Key = \`\${ChunkIndex}:\${Bucket}:\${ActiveKey}\`;
+  const Key = `${ChunkIndex}:${Bucket}:${ActiveKey}`;
   const Now = performance.now();
   const Cached = RayWorld.RootCaches.get(Key);
 
@@ -782,7 +782,7 @@ function SweepVisibleCapsuleHorizontal(Start, Delta, Radius, Options = {}) {
 
   const Normal = HorizontalRayHitNormal(BestHit, RayWorld.Direction, new THREE.Vector3());
   const Entry = {
-    Type: \`RayMesh:\${String(BestHit.Object?.name || "VisibleGeometry")}\`,
+    Type: `RayMesh:${String(BestHit.Object?.name || "VisibleGeometry")}`,
     CollisionObject: BestHit.Object,
     RaycastGeometryR35: true
   };
