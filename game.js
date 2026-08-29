@@ -75,6 +75,8 @@ let CurrentTask = null;
 let LastChunkIndex = 0;
 let LastObjectiveText = "";
 let SeedResetFlight = null;
+let LastChunkMaintenanceAt = -Infinity;
+let LastMaintainedChunkIndex = Number.NaN;
 
 function MixSeed32(Value) {
   let Mixed = Value >>> 0;
@@ -344,11 +346,13 @@ function PumpGenerationQueue() {
       Entry.Reject(Error);
     } finally {
       GenerationRunning = false;
-      PumpGenerationQueue();
+      const Continue = () => PumpGenerationQueue();
+      if (document.visibilityState === "visible") requestAnimationFrame(Continue);
+      else setTimeout(Continue, 24);
     }
   };
-  if ("requestIdleCallback" in window) requestIdleCallback(() => Run(), { timeout: 55 });
-  else setTimeout(Run, 0);
+  if ("requestIdleCallback" in window) requestIdleCallback(() => Run(), { timeout: 300 });
+  else setTimeout(Run, 8);
 }
 
 function OverlapsXZ(A, B, Padding = 0) {
@@ -854,6 +858,10 @@ function TryActivateIndex(Index) {
 
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
+  const Now = performance.now();
+  if (CurrentIndex === LastMaintainedChunkIndex && Now - LastChunkMaintenanceAt < 120) return;
+  LastMaintainedChunkIndex = CurrentIndex;
+  LastChunkMaintenanceAt = Now;
   LastChunkIndex = CurrentIndex;
   const MinIndex = CurrentIndex - CHUNKS_BEHIND;
   const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
@@ -1198,8 +1206,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.27.6";
-window.__STORE_VERSION__ = "0.27.4";
+window.__STORE_GAME_BUILD__ = "V0.27.7";
+window.__STORE_VERSION__ = "0.27.7";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1219,6 +1227,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.27.4"
+  Version: "0.27.7"
 };
 Animate();
