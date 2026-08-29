@@ -73,6 +73,8 @@ const State = {
   Moving: false,
   Exhausted: false,
   LastSprintAt: -Infinity,
+  FootGroundLeft: 0,
+  FootGroundRight: 0,
   TempForward: new THREE.Vector3(),
   TempRight: new THREE.Vector3(),
   TempUp: new THREE.Vector3(),
@@ -491,73 +493,106 @@ function SolveTwoBoneLeg(UpperName, LowerName, FootName, Target, PoleSide = 1) {
   return true;
 }
 
-function ApplyCarpetStepOverlay() {
+function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
+  const IsLeft = Side < 0;
+  const Upper = IsLeft ? "UpperLegL" : "UpperLegR";
+  const Lower = IsLeft ? "LowerLegL" : "LowerLegR";
+  const Foot = IsLeft ? "FootL" : "FootR";
+  const FootBone = State.Bones.get(Foot);
+  if (!FootBone || !State.Pivot) return;
+
+  const Active = Boolean(Step?.Active);
+  const T = Active ? THREE.MathUtils.clamp(Number(Step.Progress) || 0, 0, 1) : 0;
+  const IsLead = Active && Side === LeadSide;
+  const IsTrail = Active && Side === -LeadSide;
+
+  const Height = THREE.MathUtils.clamp(Number(Step?.Height) || 0.065, 0.02, 0.14);
+  const Speed = THREE.MathUtils.clamp(Number(Step?.Speed) || 1.8, 0.35, 5.5);
+  const SpeedFactor = THREE.MathUtils.lerp(0.90, 1.08, (Speed - 0.35) / 5.15);
+
+  const LeadArc = IsLead ? StepPulse(0.00, 0.84, T) : 0;
+  const TrailArc = IsTrail ? StepPulse(0.44, 1.00, T) : 0;
+  const Arc = Math.max(LeadArc, TrailArc);
+
+  State.Pivot.updateMatrixWorld(true);
+  FootBone.getWorldPosition(State.TempLegTarget);
+
+  let Reach = 0;
+  let Lift = 0;
+
+  if (IsLead) {
+    Reach = (0.055 + Height * 0.62) * LeadArc * SpeedFactor;
+    Lift = (0.035 + Height * 0.88) * LeadArc * SpeedFactor * (Step.Entering !== false ? 1 : 0.82);
+  } else if (IsTrail) {
+    Reach = (0.018 + Height * 0.18) * TrailArc;
+    Lift = (0.010 + Height * 0.26) * TrailArc * (Step.Entering !== false ? 1 : 0.72);
+  }
+
+  State.TempLegTarget.addScaledVector(Travel, Reach);
+
+  const RootFloor = Math.max(0, State.Pivot.position.y);
+  const GroundHeight = SurfaceStep.RaycastGroundHeight?.(
+    State.TempLegTarget,
+    Math.max(State.TempLegTarget.y + 0.55, (State.Camera?.position?.y || 1.68) + 0.18)
+  ) ?? 0;
+
+  const DesiredGroundOffset = THREE.MathUtils.clamp(GroundHeight - RootFloor, -0.18, 0.18);
+  const GroundAlpha = ExpAlpha(Delta, Active ? 25 : 18);
+
+  if (IsLeft) {
+    State.FootGroundLeft = THREE.MathUtils.lerp(State.FootGroundLeft, DesiredGroundOffset, GroundAlpha);
+    State.TempLegTarget.y += State.FootGroundLeft + Lift;
+  } else {
+    State.FootGroundRight = THREE.MathUtils.lerp(State.FootGroundRight, DesiredGroundOffset, GroundAlpha);
+    State.TempLegTarget.y += State.FootGroundRight + Lift;
+  }
+
+  SolveTwoBoneLeg(Upper, Lower, Foot, State.TempLegTarget, Side);
+
+  if (Arc > 0.001) {
+    const Pitch = IsLead ? -0.085 * Arc * SpeedFactor : -0.028 * Arc;
+    AddBoneRotation(Foot, Pitch, 0, Side * -0.004 * Arc);
+  }
+}
+
+function ApplyCarpetStepOverlay(Delta) {
   const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
   if (!SurfaceStep || !State.Pivot) return;
 
   SurfaceStep.UpdateCrossingState?.();
-  const Step = SurfaceStep.GetStepState?.();
-  if (!Step?.Active) return;
+  const Step = SurfaceStep.GetStepState?.() || null;
 
-  const T = THREE.MathUtils.clamp(Number(Step.Progress) || 0, 0, 1);
-  const Side = Step.Side === -1 ? -1 : 1;
-  const Entering = Step.Entering !== false;
-  const Height = THREE.MathUtils.clamp(Number(Step.Height) || 0.065, 0.02, 0.14);
-  const Speed = THREE.MathUtils.clamp(Number(Step.Speed) || 1.8, 0.35, 5.5);
-
-  const LeadArc = StepPulse(0.00, 0.84, T);
-  const TrailArc = StepPulse(0.42, 1.00, T);
-  const BodyArc = Math.sin(SmoothStep01(T) * Math.PI);
-  const SpeedFactor = THREE.MathUtils.lerp(0.90, 1.08, (Speed - 0.35) / 5.15);
-  const DirectionX = Number(Step.DirectionX) || 0;
-  const DirectionZ = Number(Step.DirectionZ) || 0;
-
+  const DirectionX = Number(Step?.DirectionX) || 0;
+  const DirectionZ = Number(Step?.DirectionZ) || 0;
   State.TempTravel.set(DirectionX, 0, DirectionZ);
+
   if (State.TempTravel.lengthSq() <= 0.000001) {
-    State.TempTravel.set(Math.sin(State.Pivot.rotation.y), 0, Math.cos(State.Pivot.rotation.y));
+    if (State.SmoothedVelocity.lengthSq() > 0.001) State.TempTravel.copy(State.SmoothedVelocity).setY(0).normalize();
+    else State.TempTravel.set(Math.sin(State.Pivot.rotation.y), 0, Math.cos(State.Pivot.rotation.y));
   } else {
     State.TempTravel.normalize();
   }
 
-  const LeadUpper = Side < 0 ? "UpperLegL" : "UpperLegR";
-  const LeadLower = Side < 0 ? "LowerLegL" : "LowerLegR";
-  const LeadFoot = Side < 0 ? "FootL" : "FootR";
-  const TrailUpper = Side < 0 ? "UpperLegR" : "UpperLegL";
-  const TrailLower = Side < 0 ? "LowerLegR" : "LowerLegL";
-  const TrailFoot = Side < 0 ? "FootR" : "FootL";
+  const LeadSide = Step?.Side === -1 ? -1 : 1;
 
-  State.Pivot.updateMatrixWorld(true);
-  const LeadFootBone = State.Bones.get(LeadFoot);
-  if (LeadFootBone) {
-    LeadFootBone.getWorldPosition(State.TempLegTarget);
-    const Lift = (0.040 + Height * 0.92) * LeadArc * SpeedFactor * (Entering ? 1 : 0.78);
-    const Reach = (0.055 + Height * 0.62) * LeadArc * SpeedFactor;
-    State.TempLegTarget.y += Lift;
-    State.TempLegTarget.addScaledVector(State.TempTravel, Reach);
-    SolveTwoBoneLeg(LeadUpper, LeadLower, LeadFoot, State.TempLegTarget, Side);
-    AddBoneRotation(LeadFoot, -0.10 * LeadArc * SpeedFactor, 0, Side * -0.006 * LeadArc);
-  }
+  GroundAndPlaceFoot(-1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
+  GroundAndPlaceFoot(1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
 
-  State.Pivot.updateMatrixWorld(true);
-  const TrailFootBone = State.Bones.get(TrailFoot);
-  if (TrailFootBone) {
-    TrailFootBone.getWorldPosition(State.TempLegTarget);
-    const TrailLift = (0.014 + Height * 0.30) * TrailArc * (Entering ? 1 : 0.70);
-    const TrailReach = (0.020 + Height * 0.20) * TrailArc;
-    State.TempLegTarget.y += TrailLift;
-    State.TempLegTarget.addScaledVector(State.TempTravel, TrailReach);
-    SolveTwoBoneLeg(TrailUpper, TrailLower, TrailFoot, State.TempLegTarget, -Side);
-    AddBoneRotation(TrailFoot, -0.035 * TrailArc, 0, 0);
-  }
+  if (!Step?.Active) return;
 
-  const BodyLean = BodyArc * THREE.MathUtils.clamp(Height * 4.0, 0.12, 0.42);
-  AddBoneRotation("Hips", -0.018 * BodyLean, 0, Side * 0.018 * BodyArc);
-  AddBoneRotation("Abdomen", 0.012 * BodyLean, Side * -0.008 * BodyArc, 0);
-  AddBoneRotation("Torso", 0.010 * BodyLean, Side * 0.006 * BodyArc, 0);
-  AddBoneRotation("Chest", -0.006 * BodyLean, 0, 0);
+  const T = THREE.MathUtils.clamp(Number(Step.Progress) || 0, 0, 1);
+  const Side = LeadSide;
+  const Height = THREE.MathUtils.clamp(Number(Step.Height) || 0.065, 0.02, 0.14);
+  const BodyArc = Math.sin(SmoothStep01(T) * Math.PI);
+  const BodyLean = BodyArc * THREE.MathUtils.clamp(Height * 4.0, 0.10, 0.36);
+
+  AddBoneRotation("Hips", -0.014 * BodyLean, 0, Side * 0.014 * BodyArc);
+  AddBoneRotation("Abdomen", 0.009 * BodyLean, Side * -0.006 * BodyArc, 0);
+  AddBoneRotation("Torso", 0.007 * BodyLean, Side * 0.005 * BodyArc, 0);
+  AddBoneRotation("Chest", -0.004 * BodyLean, 0, 0);
 }
 
-function ApplyProceduralOverlay() {
+function ApplyProceduralOverlay(Delta) {
   if (!State.Pivot) return;
 
   const Move = State.MoveAmount;
@@ -610,7 +645,7 @@ function ApplyProceduralOverlay() {
     AddBoneRotation("ShoulderR", -0.030 * Compression, 0, SideContact * 0.018 * Push);
   }
 
-  ApplyCarpetStepOverlay();
+  ApplyCarpetStepOverlay(Delta);
   State.Pivot.updateMatrixWorld(true);
 }
 
@@ -852,7 +887,7 @@ function Render(Renderer, Scene, Camera) {
 
   SaveAnimatedPose();
   try {
-    ApplyProceduralOverlay();
+    ApplyProceduralOverlay(Delta);
     if (State.ThirdPerson) RenderThirdPerson(Renderer, Scene, Camera);
     else RenderFirstPerson(Renderer, Scene, Camera);
   } finally {
@@ -962,4 +997,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.8-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.9-PHYSICS";
