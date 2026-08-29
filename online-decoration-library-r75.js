@@ -193,4 +193,4 @@ export const OnlineDecorationKeys = Object.freeze({
   PillowB: "PillowB"
 });
 
-window.__STORE_ONLINE_DECORATION_BUILD__ = "V0.17.1-R76";
+window.__STORE_ONLINE_DECORATION_BUILD__ = "V0.27.6-RUGS";
