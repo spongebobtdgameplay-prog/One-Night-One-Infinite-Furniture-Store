@@ -6,6 +6,7 @@ if (!Game?.Scene || !Game?.Camera || !Game?.CollisionBoxes || !Game?.ActiveChunk
 }
 
 const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
+const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
 const PlayerEyeHeight = 1.68;
 const CELL_SIZE = 0.58;
 const MIN_TRIANGLE_AREA = 0.0007;
@@ -300,6 +301,7 @@ function RemoveExistingCoreEntry(Chunk, Model) {
 
 function InstallExactCollision(Chunk, Model) {
   const Signature = TargetSignature(Model);
+  Physics?.RegisterSolidContactObject?.(Model, Chunk.Id);
   if (ProcessedCollision.get(Model) === Signature) return;
   RemoveExistingCoreEntry(Chunk, Model);
 
