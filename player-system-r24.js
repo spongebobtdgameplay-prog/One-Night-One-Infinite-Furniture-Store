@@ -3,6 +3,7 @@ import { PointerLockControls } from "three/addons/controls/PointerLockControls.j
 
 const BasePlayer = window.__STORE_PLAYER__;
 const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
+const Collision = window.__STORE_COLLISION_UTILITY__ || null;
 const Canvas = document.getElementById("GameCanvas");
 const Crosshair = document.querySelector(".Crosshair");
 const CameraMode = document.getElementById("CameraModeValue");
@@ -273,6 +274,7 @@ function RefreshRig() {
   if (Pivot === State.Pivot && State.RigStamp === Stamp) return true;
 
   State.Pivot = Pivot;
+  State.Pivot.userData.IgnoreRayCollisionR35 = true;
   State.RigStamp = Stamp;
   State.Head = null;
   State.Bones.clear();
@@ -770,25 +772,21 @@ function SegmentAabbDistance(Start, End, Bounds, Padding = CAMERA_PADDING) {
 }
 
 function ClampFirstPersonTargetToContacts(Target, Start) {
-  if (!State.Camera || !Start?.isVector3) return Target;
-  const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
-  const Entries = Physics?.GetBodyContactEntries?.(Collisions, Start, 1.65) || Collisions;
-  const Length = Start.distanceTo(Target);
-  if (Length <= 0.0001) return Target;
-  let Allowed = Length;
+  if (!State.Scene || !Start?.isVector3 || !Target?.isVector3) return Target;
+  if (typeof Collision?.ResolveRaycastCapsuleSegment !== "function") return Target;
 
-  for (const Entry of Entries) {
-    const Bounds = Entry?.OriginalStructureBox || Entry?.OriginalBox || Entry?.Box || Entry;
-    if (!Bounds?.min || !Bounds?.max) continue;
-    if (![Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite)) continue;
-    const Hit = SegmentAabbDistance(Start, Target, Bounds, ARM_WALL_PADDING);
-    if (Hit === null) continue;
-    Allowed = Math.min(Allowed, Math.max(0.035, Hit * Length - ARM_WALL_GAP));
-  }
+  const Result = Collision.ResolveRaycastCapsuleSegment(
+    Start,
+    Target,
+    0.075,
+    State.TempEnd,
+    {
+      Scene: State.Scene,
+      Skin: ARM_WALL_GAP
+    }
+  );
 
-  if (Allowed < Length) {
-    Target.sub(Start).normalize().multiplyScalar(Allowed).add(Start);
-  }
+  if (Result?.Hit && Result?.Solved) Target.copy(Result.Point);
   return Target;
 }
 
@@ -850,21 +848,18 @@ function ApplyFirstPersonArms() {
 }
 
 function CameraDistance(Target, Desired) {
-  const Collisions = State.CollisionBoxes || window.__STORE_COLLISION_BOXES__ || [];
   const SegmentLength = Math.max(Target.distanceTo(Desired), 0.001);
-  let Allowed = SegmentLength;
+  if (!State.Scene || typeof Collision?.RaycastVisibleSegment !== "function") return SegmentLength;
 
-  for (const Entry of Collisions) {
-    if (!Entry?.Type || !/Wall|Partition/i.test(Entry.Type)) continue;
-    const Bounds = Entry.OriginalStructureBox || Entry.OriginalBox || Entry.Box || Entry;
-    if (!Bounds?.min || !Bounds?.max) continue;
-    if (![Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite)) continue;
-    const Hit = SegmentAabbDistance(Target, Desired, Bounds);
-    if (Hit === null) continue;
-    Allowed = Math.min(Allowed, Math.max(0.36, Hit * SegmentLength - 0.08));
-  }
+  const Hit = Collision.RaycastVisibleSegment(Target, Desired, {
+    Scene: State.Scene,
+    Center: Target,
+    Range: SegmentLength + 1.2,
+    Mode: "camera"
+  });
+  if (!Hit) return SegmentLength;
 
-  return Allowed;
+  return Math.max(0.36, Hit.Distance - CAMERA_PADDING);
 }
 
 function RenderThirdPerson(Renderer, Scene, Camera) {
@@ -1067,4 +1062,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.30.0-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.0-RAY";
