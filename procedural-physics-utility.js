@@ -5,12 +5,12 @@ if (!Collision) throw new Error("Collision utility must load before procedural p
 
 const EyeHeight = 1.68;
 const DefaultRadius = 0.255;
-const Skin = 0.0025;
+const Skin = 0.006;
 const MaxStepHeight = 0.30;
 const StepClearance = 0.018;
-const StepProbeInset = 0.055;
-const StepUpSpeed = 4.6;
-const StepDownSpeed = 5.4;
+const SurfaceEdgeProbe = 0.065;
+const StepUpSpeed = 2.55;
+const StepDownSpeed = 3.35;
 const MaxSweepSteps = 56;
 const BinarySteps = 18;
 
@@ -210,8 +210,8 @@ function WalkableSurfaceHeight(Position, CurrentFeetY = 0) {
     if (!FiniteBounds(Bounds)) continue;
     const Width = Bounds.max.x - Bounds.min.x;
     const Depth = Bounds.max.z - Bounds.min.z;
-    const Inset = Math.min(StepProbeInset, Math.max(0, Math.min(Width, Depth) * 0.18));
-    if (!PointOverBounds(Position, Bounds, Inset)) continue;
+    const EdgeProbe = Math.min(SurfaceEdgeProbe, Math.max(0.018, Math.min(Width, Depth) * 0.08));
+    if (!PointOverBounds(Position, Bounds, -EdgeProbe)) continue;
     const Rise = Bounds.max.y - CurrentFeetY;
     if (Rise > MaxStepHeight + StepClearance) continue;
     Height = Math.max(Height, Bounds.max.y);
@@ -352,7 +352,7 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
   const DesiredIntoSurface = Scratch.Candidate.dot(Normal);
   if (DesiredIntoSurface < 0) Scratch.Candidate.addScaledVector(Normal, -DesiredIntoSurface);
   const IntentTangentRatio = DesiredLength > 0.000001 ? Scratch.Candidate.length() / DesiredLength : 0;
-  if (IntentTangentRatio < 0.28) return First;
+  if (IntentTangentRatio < 0.14) return First;
 
   Scratch.Remaining.copy(Desired).sub(First.Resolved);
   Scratch.Tangent.copy(Scratch.Remaining);
@@ -360,7 +360,10 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
   if (IntoSurface < 0) Scratch.Tangent.addScaledVector(Normal, -IntoSurface);
 
   const TangentRatio = DesiredLength > 0.000001 ? Scratch.Tangent.length() / DesiredLength : 0;
-  if (TangentRatio < 0.12 || Scratch.Tangent.lengthSq() <= 0.000001) return First;
+  if (TangentRatio < 0.10 || Scratch.Tangent.lengthSq() <= 0.000001) return First;
+
+  const WallFriction = THREE.MathUtils.lerp(0.72, 0.94, THREE.MathUtils.clamp(IntentTangentRatio, 0, 1));
+  Scratch.Tangent.multiplyScalar(WallFriction);
 
   const TangentResult = Collision.ResolveHorizontalMove(
     First.Position,
@@ -502,4 +505,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.5-PHYSICS";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.7-PHYSICS";
