@@ -110,27 +110,12 @@ function CanPlace(Chunk, Bounds, Extra = []) {
 }
 
 function AddCollision(Chunk, Object, Type, Reserve = false) {
+  void Type;
   const Bounds = BoundsOf(Object);
   if (Bounds.isEmpty()) return null;
-  const Size = Bounds.getSize(new THREE.Vector3());
-  const Center = Bounds.getCenter(new THREE.Vector3());
-  const Box = new THREE.Box3(
-    new THREE.Vector3(Center.x - Math.max(0.10, Size.x * 0.47), Math.max(0, Bounds.min.y), Center.z - Math.max(0.10, Size.z * 0.47)),
-    new THREE.Vector3(Center.x + Math.max(0.10, Size.x * 0.47), Bounds.max.y, Center.z + Math.max(0.10, Size.z * 0.47))
-  );
-  const Entry = {
-    Box,
-    OriginalBox: Box.clone(),
-    OriginalLegacyBox: Box.clone(),
-    ChunkId: Chunk.Id,
-    Type,
-    Active: Boolean(Chunk.Active),
-    RetailZoneR82: true,
-    PreciseGeometry: false,
-    LegacyCollisionDisabled: false
-  };
-  Chunk.CollisionEntries.push(Entry);
-  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
+
+  Object.userData.RayCollisionSolidR35 = true;
+  const Box = Bounds.clone();
   if (Reserve) Chunk.ReservedBounds.push(Box.clone());
   return Box;
 }
