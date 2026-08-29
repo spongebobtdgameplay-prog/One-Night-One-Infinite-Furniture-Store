@@ -8,7 +8,7 @@ const DefaultRadius = 0.255;
 const Skin = 0.006;
 const MaxStepHeight = 0.30;
 const StepClearance = 0.018;
-const SurfaceEdgeProbe = 0.065;
+const SurfaceBlendWidth = 0.115;
 const StepUpSpeed = 2.55;
 const StepDownSpeed = 3.35;
 const MaxSweepSteps = 56;
@@ -202,19 +202,35 @@ function PointOverBounds(Position, Bounds, Inset = 0) {
     Position.z <= Bounds.max.z - Inset;
 }
 
+function SmoothStep01(Value) {
+  const T = THREE.MathUtils.clamp(Value, 0, 1);
+  return T * T * (3 - 2 * T);
+}
+
+function WalkableSupport(Position, Bounds) {
+  const Margin = Math.min(
+    Position.x - Bounds.min.x,
+    Bounds.max.x - Position.x,
+    Position.z - Bounds.min.z,
+    Bounds.max.z - Position.z
+  );
+  const Width = Bounds.max.x - Bounds.min.x;
+  const Depth = Bounds.max.z - Bounds.min.z;
+  const Blend = Math.min(SurfaceBlendWidth, Math.max(0.045, Math.min(Width, Depth) * 0.20));
+  return SmoothStep01((Margin + Blend) / (Blend * 2));
+}
+
 function WalkableSurfaceHeight(Position, CurrentFeetY = 0) {
   let Height = 0;
 
   for (const Record of WalkableSurfaces.values()) {
     const Bounds = Record.Bounds;
     if (!FiniteBounds(Bounds)) continue;
-    const Width = Bounds.max.x - Bounds.min.x;
-    const Depth = Bounds.max.z - Bounds.min.z;
-    const EdgeProbe = Math.min(SurfaceEdgeProbe, Math.max(0.018, Math.min(Width, Depth) * 0.08));
-    if (!PointOverBounds(Position, Bounds, -EdgeProbe)) continue;
+    const Support = WalkableSupport(Position, Bounds);
+    if (Support <= 0.001) continue;
     const Rise = Bounds.max.y - CurrentFeetY;
     if (Rise > MaxStepHeight + StepClearance) continue;
-    Height = Math.max(Height, Bounds.max.y);
+    Height = Math.max(Height, Bounds.max.y * Support);
   }
 
   return Height;
@@ -227,12 +243,15 @@ function WalkableEntryHeight(Position, Entries, CurrentFeetY = 0) {
     if (!Entry || IsStructure(Entry)) continue;
     const Bounds = EntryBounds(Entry);
     if (!FiniteBounds(Bounds)) continue;
-    if (!PointOverBounds(Position, Bounds, 0)) continue;
+    const ExplicitWalkable = IsExplicitWalkable(Entry);
+    if (!ExplicitWalkable && !PointOverBounds(Position, Bounds, 0)) continue;
+    const Support = ExplicitWalkable ? WalkableSupport(Position, Bounds) : 1;
+    if (Support <= 0.001) continue;
     const Rise = Bounds.max.y - CurrentFeetY;
     const HeightSize = Bounds.max.y - Bounds.min.y;
     if (Rise < -0.035 || Rise > MaxStepHeight + StepClearance) continue;
-    if (!IsExplicitWalkable(Entry) && HeightSize > MaxStepHeight + 0.16) continue;
-    Height = Math.max(Height, Bounds.max.y);
+    if (!ExplicitWalkable && HeightSize > MaxStepHeight + 0.16) continue;
+    Height = Math.max(Height, Bounds.max.y * Support);
   }
 
   return Height;
@@ -505,4 +524,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.8-PHYSICS";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.9-PHYSICS";
