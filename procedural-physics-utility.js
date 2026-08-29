@@ -447,7 +447,19 @@ function RecordContact(Result, Desired) {
 
 function SettleHeight(Camera, Delta, Entries) {
   const CurrentFeetY = Camera.position.y - EyeHeight;
-  const TargetFloor = SurfaceHeight(Camera.position, Entries, CurrentFeetY);
+  let TargetFloor = SurfaceHeight(Camera.position, Entries, CurrentFeetY);
+
+  const FootSupport = window.__STORE_FOOT_SUPPORT__ || null;
+  const SupportAge = performance.now() - Number(FootSupport?.UpdatedAt ?? -Infinity);
+  if (
+    FootSupport?.Active === true &&
+    SupportAge >= 0 &&
+    SupportAge < 140 &&
+    Number.isFinite(FootSupport.Height)
+  ) {
+    TargetFloor = THREE.MathUtils.clamp(Number(FootSupport.Height), 0, MaxStepHeight);
+  }
+
   const TargetEyeY = EyeHeight + TargetFloor;
   const Speed = TargetEyeY > Camera.position.y ? StepUpSpeed : StepDownSpeed;
   const MaxDelta = Math.max(0.0001, Math.min(Number(Delta) || 0.016, 0.05) * Speed);
