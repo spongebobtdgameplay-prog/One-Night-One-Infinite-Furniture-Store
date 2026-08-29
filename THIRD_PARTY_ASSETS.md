@@ -22,3 +22,21 @@ The player is an imported rigged mesh. The game does not construct the humanoid 
 - Usage here: striped and oval rugs, standing lamps, table lamps, books, pillows, tabletop picture frames, and wall picture frames
 
 The original in-game plant/cactus assets remain unchanged. KayKit decorations are added around the authored furniture instead of replacing the original plants. Imported decorations are visual-only and do not create gameplay collision boxes.
+
+
+## Industrial steel shelving
+
+- Asset: SB1 boltless shelving bay
+- Creator: Daniel Rosehill
+- Source: https://github.com/danielrosehill/storage-box-3d-models
+- License: CC BY 4.0
+- Usage here: store shelving and book-stock display surfaces, replacing the previous stylized shelf substitutions
+
+## ReplicaCAD kitchen cabinet
+
+- Dataset: ReplicaCAD Interactive
+- Creator/source: AI Habitat
+- Source: https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset
+- Asset: `objects/frl_apartment_cabinet.glb`
+- License: CC BY 4.0
+- Usage here: detailed kitchen cabinet merchandise in place of the older low-detail cabinet model
