@@ -10,6 +10,8 @@ const StartedAt = performance.now();
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
+const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
+const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
 
 const AssetUrls = [
   "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb",
@@ -20,9 +22,6 @@ const AssetUrls = [
   "Models/Bedroom/GLB/Bed_King.glb",
   "Models/Bedroom/GLB/Bed_Single.glb",
   "Models/Bedroom/GLB/NightStand_2.glb",
-  "Models/Storage/GLB/Shelf_Large.glb",
-  "Models/Storage/GLB/Bookshelf.glb",
-  "Models/Kitchen/GLB/Kitchen_Cabinet1.glb",
   "Models/Kitchen/GLB/Kitchen_Fridge.glb",
   "Models/Kitchen/GLB/Kitchen_Oven.glb",
   "Models/Kitchen/GLB/Kitchen_Sink.glb",
@@ -31,12 +30,9 @@ const AssetUrls = [
   "Models/Lighting/GLB/Light_Floor1.glb",
   "Models/Architecture/GLB/Door_3.glb",
   "Models/Architecture/GLB/Window_Large1.glb",
-
-  `${KayKitBase}shelf_B_large_decorated.gltf`,
-  `${KayKitBase}shelf_A_big.gltf`,
-  `${KayKitBase}shelf_B_small_decorated.gltf`,
+  IndustrialShelfUrl,
+  ReplicaCabinetUrl,
   `${KayKitBase}cabinet_medium.gltf`,
-  `${KayKitBase}cabinet_small_decorated.gltf`,
   `${KayKitBase}armchair_pillows.gltf`,
   `${KayKitBase}table_low.gltf`,
   `${KayKitBase}table_small.gltf`,
@@ -108,7 +104,7 @@ function ResolveWorldSeed() {
 const World = ResolveWorldSeed();
 window.__STORE_WORLD_SEED__ = World.Seed;
 window.__STORE_WORLD_SEED_SOURCE__ = World.Source;
-window.__STORE_WORLD_SEED_BUILD__ = "V0.28.0-SEED";
+window.__STORE_WORLD_SEED_BUILD__ = "V0.30.0-SEED";
 
 function CreateLoaderUi() {
   if (!BootCard) return { SkipButton: null, Warning: null, Progress: null, SeedLabel: null };
@@ -258,4 +254,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.28.0-R90";
+window.__STORE_PRELOAD_BUILD__ = "V0.30.0-R93";
