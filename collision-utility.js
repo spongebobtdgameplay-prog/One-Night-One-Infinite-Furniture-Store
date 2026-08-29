@@ -508,6 +508,464 @@ function ResolveObjectMove(Object, Delta, Radius, Entries, Options = {}) {
   return Result;
 }
 
+
+const RayWorld = {
+  Raycaster: new THREE.Raycaster(),
+  Bounds: new THREE.Box3(),
+  Direction: new THREE.Vector3(),
+  Side: new THREE.Vector3(),
+  Origin: new THREE.Vector3(),
+  Normal: new THREE.Vector3(),
+  BasisA: new THREE.Vector3(),
+  BasisB: new THREE.Vector3(),
+  CandidateDirection: new THREE.Vector3(),
+  RootCaches: new Map()
+};
+
+function HasRayIgnoreAncestor(Object, Mode = "movement") {
+  let Current = Object;
+  while (Current) {
+    const Data = Current.userData || {};
+    const Name = String(Current.name || "");
+
+    if (
+      Data.IgnoreRayCollisionR35 === true ||
+      Data.RemotePlayer === true ||
+      Name === "PlayerCharacterPivot" ||
+      Name.startsWith("RemotePlayer-") ||
+      /FirstPersonViewModel|FirstPersonArms|CameraArms/i.test(Name)
+    ) return true;
+
+    if (
+      Mode !== "support" &&
+      (
+        Data.WalkableCarpetR87 === true ||
+        Data.DecorationKind === "Rug" ||
+        Data.DecorationKind === "LargeShowroomRug" ||
+        Data.DecorationNoCollision === true ||
+        /Rug|Carpet/i.test(Name)
+      )
+    ) return true;
+
+    Current = Current.parent;
+  }
+  return false;
+}
+
+function MeshHasVisibleMaterial(Object) {
+  if (!Object?.material) return true;
+  const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
+  return Materials.some(Material => {
+    if (!Material || Material.visible === false) return false;
+    if (Material.transparent && Number(Material.opacity) <= 0.08) return false;
+    return true;
+  });
+}
+
+function IsVisibleRayCollisionMesh(Object, Mode = "movement") {
+  if (!Object?.isMesh || !Object.visible || !Object.geometry || HasRayIgnoreAncestor(Object, Mode)) return false;
+  if (!MeshHasVisibleMaterial(Object)) return false;
+
+  const Name = String(Object.name || "");
+  if (/Text|Label|Glow|Highlight|Selection|Outline/i.test(Name)) return false;
+  if (Mode !== "support" && /^(Floor|Ceiling)$/i.test(Name)) return false;
+
+  return true;
+}
+
+function DistanceSquaredToBoundsXZ(Bounds, Center) {
+  const X = THREE.MathUtils.clamp(Center.x, Bounds.min.x, Bounds.max.x);
+  const Z = THREE.MathUtils.clamp(Center.z, Bounds.min.z, Bounds.max.z);
+  const DX = Center.x - X;
+  const DZ = Center.z - Z;
+  return DX * DX + DZ * DZ;
+}
+
+function RaycastCandidateRoots(Scene, Center, Range = 4) {
+  if (!Scene?.isScene || !Center?.isVector3) return [];
+  const Game = window.__STORE_GAME__ || null;
+  const SafeRange = Math.max(1.2, Number(Range) || 4);
+  const Bucket = Math.ceil(SafeRange);
+  const ChunkIndex = typeof Game?.ChunkIndexForZ === "function"
+    ? Game.ChunkIndexForZ(Center.z)
+    : 0;
+  const ActiveKey = Game?.ActiveChunks
+    ? [...Game.ActiveChunks.keys()].filter(Index => Math.abs(Index - ChunkIndex) <= 1).sort((A, B) => A - B).join(",")
+    : "scene";
+  const Key = \`\${ChunkIndex}:\${Bucket}:\${ActiveKey}\`;
+  const Now = performance.now();
+  const Cached = RayWorld.RootCaches.get(Key);
+
+  if (
+    Cached &&
+    Now - Cached.At < 120 &&
+    Cached.Center.distanceToSquared(Center) < 0.30
+  ) return Cached.Roots;
+
+  const Roots = [];
+  const RangeSquared = (SafeRange + 1.15) ** 2;
+
+  const ConsiderRoot = Object => {
+    if (!Object?.isObject3D || !Object.visible) return;
+    if (HasRayIgnoreAncestor(Object, "movement")) return;
+
+    RayWorld.Bounds.setFromObject(Object);
+    if (RayWorld.Bounds.isEmpty()) return;
+    if (DistanceSquaredToBoundsXZ(RayWorld.Bounds, Center) > RangeSquared) return;
+    Roots.push(Object);
+  };
+
+  if (Game?.ActiveChunks && typeof Game.ChunkIndexForZ === "function") {
+    for (let Index = ChunkIndex - 1; Index <= ChunkIndex + 1; Index += 1) {
+      const Chunk = Game.ActiveChunks.get(Index);
+      if (!Chunk?.Group?.parent) continue;
+      for (const Child of Chunk.Group.children || []) ConsiderRoot(Child);
+      for (const Object of Chunk.ExternalObjects || []) ConsiderRoot(Object);
+    }
+  } else {
+    for (const Child of Scene.children || []) ConsiderRoot(Child);
+  }
+
+  RayWorld.RootCaches.set(Key, {
+    At: Now,
+    Center: Center.clone(),
+    Roots
+  });
+
+  if (RayWorld.RootCaches.size > 16) {
+    const Oldest = [...RayWorld.RootCaches.entries()]
+      .sort((A, B) => A[1].At - B[1].At)
+      .slice(0, RayWorld.RootCaches.size - 12);
+    for (const [OldKey] of Oldest) RayWorld.RootCaches.delete(OldKey);
+  }
+
+  return Roots;
+}
+
+function HitWorldNormal(Hit, Target = new THREE.Vector3()) {
+  if (!Hit?.face?.normal || !Hit?.object?.matrixWorld) return Target.set(0, 0, 0);
+  Target.copy(Hit.face.normal).transformDirection(Hit.object.matrixWorld);
+  if (Target.lengthSq() > 0.000001) Target.normalize();
+  return Target;
+}
+
+function RaycastVisibleGeometry(Start, Direction, Distance, Options = {}) {
+  const Scene = Options.Scene || window.__STORE_GAME__?.Scene || null;
+  if (!Scene?.isScene || !Start?.isVector3 || !Direction?.isVector3) return null;
+
+  const SafeDistance = Math.max(0, Number(Distance) || 0);
+  if (SafeDistance <= 0.00001 || Direction.lengthSq() <= 0.000001) return null;
+
+  RayWorld.Direction.copy(Direction).normalize();
+  const Roots = Options.Roots || RaycastCandidateRoots(
+    Scene,
+    Options.Center?.isVector3 ? Options.Center : Start,
+    Number(Options.Range) || SafeDistance + 1.4
+  );
+  if (!Roots.length) return null;
+
+  RayWorld.Raycaster.near = Math.max(0, Number(Options.Near) || 0.0005);
+  RayWorld.Raycaster.far = SafeDistance;
+  RayWorld.Raycaster.set(Start, RayWorld.Direction);
+
+  const Mode = String(Options.Mode || "movement");
+  const Hits = RayWorld.Raycaster.intersectObjects(Roots, true);
+  for (const Hit of Hits) {
+    if (!IsVisibleRayCollisionMesh(Hit.object, Mode)) continue;
+    const Normal = HitWorldNormal(Hit, new THREE.Vector3());
+    return {
+      Hit: true,
+      Distance: Hit.distance,
+      Point: Hit.point.clone(),
+      Normal,
+      Object: Hit.object
+    };
+  }
+
+  return null;
+}
+
+function RaycastVisibleSegment(Start, End, Options = {}) {
+  if (!Start?.isVector3 || !End?.isVector3) return null;
+  RayWorld.Direction.copy(End).sub(Start);
+  const Length = RayWorld.Direction.length();
+  if (Length <= 0.00001) return null;
+  RayWorld.Direction.divideScalar(Length);
+  return RaycastVisibleGeometry(Start, RayWorld.Direction, Length, {
+    ...Options,
+    Center: Options.Center?.isVector3 ? Options.Center : Start,
+    Range: Number(Options.Range) || Length + 1.4
+  });
+}
+
+function HorizontalRayHitNormal(Hit, Motion, Target = new THREE.Vector3()) {
+  Target.copy(Hit?.Normal || RayWorld.Normal.set(0, 0, 0));
+  Target.y = 0;
+  if (Target.lengthSq() <= 0.000001) Target.copy(Motion).multiplyScalar(-1);
+  else Target.normalize();
+  if (Target.dot(Motion) > 0) Target.negate();
+  return Target;
+}
+
+function SweepVisibleCapsuleHorizontal(Start, Delta, Radius, Options = {}) {
+  const Scene = Options.Scene || window.__STORE_GAME__?.Scene || null;
+  const ResultPosition = Start.clone();
+  const Resolved = new THREE.Vector3();
+  if (!Scene?.isScene || !Start?.isVector3 || !Delta?.isVector3) {
+    return { Position: ResultPosition, Resolved, Hit: false, Normal: new THREE.Vector3(), Entry: null };
+  }
+
+  RayWorld.Direction.copy(Delta);
+  RayWorld.Direction.y = 0;
+  const Distance = RayWorld.Direction.length();
+  if (Distance <= 0.000001) {
+    return { Position: ResultPosition, Resolved, Hit: false, Normal: new THREE.Vector3(), Entry: null };
+  }
+  RayWorld.Direction.divideScalar(Distance);
+  RayWorld.Side.set(RayWorld.Direction.z, 0, -RayWorld.Direction.x).normalize();
+
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.255, 0.16, 0.38);
+  const Skin = Math.max(0.002, Number(Options.Skin) || 0.008);
+  const EyeHeight = Math.max(1.2, Number(Options.EyeHeight) || 1.68);
+  const FeetY = Start.y - EyeHeight;
+  const HeightFractions = Options.HeightFractions || [0.09, 0.27, 0.53, 0.84];
+  const LateralRatios = Options.LateralRatios || [-0.92, -0.46, 0, 0.46, 0.92];
+  const Roots = RaycastCandidateRoots(
+    Scene,
+    Start,
+    Distance + SafeRadius + (Number(Options.RangePadding) || 1.7)
+  );
+
+  let Allowed = Distance;
+  let BestHit = null;
+
+  for (const HeightFraction of HeightFractions) {
+    const Y = FeetY + THREE.MathUtils.clamp(HeightFraction, 0.04, 0.96) * EyeHeight;
+
+    for (const Ratio of LateralRatios) {
+      const Lateral = THREE.MathUtils.clamp(Ratio, -0.98, 0.98) * SafeRadius;
+      const Forward = Math.sqrt(Math.max(0, SafeRadius * SafeRadius - Lateral * Lateral));
+
+      RayWorld.Origin.copy(Start)
+        .addScaledVector(RayWorld.Side, Lateral)
+        .addScaledVector(RayWorld.Direction, Forward);
+      RayWorld.Origin.y = Y;
+
+      const Hit = RaycastVisibleGeometry(
+        RayWorld.Origin,
+        RayWorld.Direction,
+        Distance + Skin,
+        {
+          Scene,
+          Roots,
+          Center: Start,
+          Range: Distance + SafeRadius + 1.7,
+          Mode: "movement"
+        }
+      );
+      if (!Hit) continue;
+
+      const Candidate = THREE.MathUtils.clamp(Hit.Distance - Skin, 0, Distance);
+      if (Candidate >= Allowed) continue;
+      Allowed = Candidate;
+      BestHit = Hit;
+    }
+  }
+
+  ResultPosition.copy(Start).addScaledVector(RayWorld.Direction, Allowed);
+  Resolved.copy(ResultPosition).sub(Start);
+  Resolved.y = 0;
+
+  if (!BestHit) {
+    return { Position: ResultPosition, Resolved, Hit: false, Normal: new THREE.Vector3(), Entry: null };
+  }
+
+  const Normal = HorizontalRayHitNormal(BestHit, RayWorld.Direction, new THREE.Vector3());
+  const Entry = {
+    Type: \`RayMesh:\${String(BestHit.Object?.name || "VisibleGeometry")}\`,
+    CollisionObject: BestHit.Object,
+    RaycastGeometryR35: true
+  };
+
+  return {
+    Position: ResultPosition,
+    Resolved,
+    Hit: true,
+    Normal,
+    Entry,
+    Object: BestHit.Object,
+    HitPoint: BestHit.Point,
+    AllowedDistance: Allowed,
+    DesiredDistance: Distance
+  };
+}
+
+function ResolveRaycastHorizontalMove(Start, Delta, Radius, Options = {}) {
+  const First = SweepVisibleCapsuleHorizontal(Start, Delta, Radius, Options);
+  if (!First.Hit || Options.AllowSlide === false) return First;
+
+  const Desired = RayWorld.CandidateDirection.copy(Delta);
+  Desired.y = 0;
+  const Remaining = Desired.clone().sub(First.Resolved);
+  const IntoSurface = Remaining.dot(First.Normal);
+  if (IntoSurface < 0) Remaining.addScaledVector(First.Normal, -IntoSurface);
+
+  const DesiredLength = Desired.length();
+  const TangentRatio = DesiredLength > 0.000001 ? Remaining.length() / DesiredLength : 0;
+  if (TangentRatio < 0.08 || Remaining.lengthSq() <= 0.000001) return First;
+
+  const Friction = THREE.MathUtils.lerp(0.76, 0.94, THREE.MathUtils.clamp(TangentRatio, 0, 1));
+  Remaining.multiplyScalar(Friction);
+
+  const Slide = SweepVisibleCapsuleHorizontal(First.Position, Remaining, Radius, Options);
+  const Position = Slide.Position.clone();
+  const Resolved = Position.clone().sub(Start);
+  Resolved.y = 0;
+
+  return {
+    Position,
+    Resolved,
+    Hit: true,
+    Normal: First.Normal.clone(),
+    Entry: Slide.Entry || First.Entry,
+    Object: Slide.Object || First.Object,
+    HitPoint: First.HitPoint,
+    Sliding: Slide.Resolved.lengthSq() > 0.000001,
+    SlideVector: Slide.Resolved.clone()
+  };
+}
+
+function ResolveRaycastCapsuleSegment(Start, End, Radius, Result = new THREE.Vector3(), Options = {}) {
+  if (!Start?.isVector3 || !End?.isVector3) {
+    Result.copy(End || Start || new THREE.Vector3());
+    return { Hit: false, Solved: false, Point: Result, Normal: new THREE.Vector3() };
+  }
+
+  const Scene = Options.Scene || window.__STORE_GAME__?.Scene || null;
+  const Length = Start.distanceTo(End);
+  if (!Scene?.isScene || Length <= 0.00001) {
+    Result.copy(End);
+    return { Hit: false, Solved: true, Point: Result, Normal: new THREE.Vector3() };
+  }
+
+  const SafeRadius = Math.max(0, Number(Radius) || 0);
+  const Skin = Math.max(0.001, Number(Options.Skin) || 0.008);
+  const Roots = RaycastCandidateRoots(Scene, Start, Length + SafeRadius + 1.2);
+
+  RayWorld.CandidateDirection.copy(End).sub(Start).normalize();
+  let EverHit = false;
+  let LastNormal = new THREE.Vector3();
+
+  for (let Pass = 0; Pass < 4; Pass += 1) {
+    RayWorld.Direction.copy(RayWorld.CandidateDirection);
+    RayWorld.BasisA.crossVectors(RayWorld.Direction, Scratch.Up);
+    if (RayWorld.BasisA.lengthSq() <= 0.000001) RayWorld.BasisA.crossVectors(RayWorld.Direction, Scratch.Right);
+    RayWorld.BasisA.normalize();
+    RayWorld.BasisB.crossVectors(RayWorld.Direction, RayWorld.BasisA).normalize();
+
+    const Offsets = [
+      [0, 0],
+      [SafeRadius * 0.92, 0],
+      [-SafeRadius * 0.92, 0],
+      [0, SafeRadius * 0.92],
+      [0, -SafeRadius * 0.92]
+    ];
+
+    let BestHit = null;
+    for (const [A, B] of Offsets) {
+      RayWorld.Origin.copy(Start)
+        .addScaledVector(RayWorld.BasisA, A)
+        .addScaledVector(RayWorld.BasisB, B);
+
+      const Hit = RaycastVisibleGeometry(
+        RayWorld.Origin,
+        RayWorld.Direction,
+        Length + Skin,
+        {
+          Scene,
+          Roots,
+          Center: Start,
+          Range: Length + SafeRadius + 1.2,
+          Mode: "body"
+        }
+      );
+      if (!Hit) continue;
+      if (!BestHit || Hit.Distance < BestHit.Distance) BestHit = Hit;
+    }
+
+    if (!BestHit || BestHit.Distance >= Length + Skin) {
+      Result.copy(Start).addScaledVector(RayWorld.CandidateDirection, Length);
+      return {
+        Hit: EverHit,
+        Solved: true,
+        Point: Result,
+        Normal: LastNormal,
+        Object: BestHit?.Object || null
+      };
+    }
+
+    EverHit = true;
+    LastNormal = HorizontalRayHitNormal(BestHit, RayWorld.CandidateDirection, new THREE.Vector3());
+    if (LastNormal.lengthSq() <= 0.000001) break;
+
+    const Into = RayWorld.CandidateDirection.dot(LastNormal);
+    if (Into < 0) RayWorld.CandidateDirection.addScaledVector(LastNormal, -Into);
+    RayWorld.CandidateDirection.addScaledVector(LastNormal, Math.min(0.18, (Skin + 0.010) / Length));
+    if (RayWorld.CandidateDirection.lengthSq() <= 0.000001) break;
+    RayWorld.CandidateDirection.normalize();
+  }
+
+  Result.copy(Start).addScaledVector(RayWorld.CandidateDirection, Length);
+  return { Hit: EverHit, Solved: EverHit, Point: Result, Normal: LastNormal };
+}
+
+function ProbeVisibleGeometrySeparation(Point, Radius, Target = new THREE.Vector3(), Options = {}) {
+  Target.set(0, 0, 0);
+  const Scene = Options.Scene || window.__STORE_GAME__?.Scene || null;
+  if (!Scene?.isScene || !Point?.isVector3) return { Hit: false, Separation: Target };
+
+  const SafeRadius = Math.max(0.02, Number(Radius) || 0.20);
+  const Skin = Math.max(0.002, Number(Options.Skin) || 0.012);
+  const ProbeDistance = SafeRadius + Skin;
+  const Roots = RaycastCandidateRoots(Scene, Point, ProbeDistance + 1.2);
+  const Directions = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [0.70710678, 0.70710678], [-0.70710678, 0.70710678],
+    [0.70710678, -0.70710678], [-0.70710678, -0.70710678]
+  ];
+
+  let BestDepth = 0;
+  let BestHit = null;
+
+  for (const [X, Z] of Directions) {
+    RayWorld.Direction.set(X, 0, Z);
+    const Hit = RaycastVisibleGeometry(Point, RayWorld.Direction, ProbeDistance, {
+      Scene,
+      Roots,
+      Center: Point,
+      Range: ProbeDistance + 1.2,
+      Mode: "body"
+    });
+    if (!Hit) continue;
+
+    const Depth = ProbeDistance - Hit.Distance;
+    if (Depth <= BestDepth) continue;
+    const Normal = HorizontalRayHitNormal(Hit, RayWorld.Direction, RayWorld.Normal);
+    if (Normal.lengthSq() <= 0.000001) continue;
+
+    BestDepth = Depth;
+    Target.copy(Normal).multiplyScalar(Depth);
+    BestHit = Hit;
+  }
+
+  return {
+    Hit: BestDepth > 0.0005,
+    Separation: Target,
+    Depth: BestDepth,
+    Object: BestHit?.Object || null
+  };
+}
+
 const CollisionUtility = {
   FiniteBounds,
   EntryBounds,
@@ -526,11 +984,19 @@ const CollisionUtility = {
   ResolveFixedLengthCapsule,
   ClampSegmentToWorld,
   PushPointOutOfWorld,
-  ResolveObjectMove
+  ResolveObjectMove,
+  IsVisibleRayCollisionMesh,
+  RaycastCandidateRoots,
+  RaycastVisibleGeometry,
+  RaycastVisibleSegment,
+  SweepVisibleCapsuleHorizontal,
+  ResolveRaycastHorizontalMove,
+  ResolveRaycastCapsuleSegment,
+  ProbeVisibleGeometrySeparation
 };
 
 window.__STORE_COLLISION_UTILITY__ = CollisionUtility;
-window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.12.13";
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.0-RAY";
 
 export default CollisionUtility;
 export {
@@ -551,5 +1017,13 @@ export {
   ResolveFixedLengthCapsule,
   ClampSegmentToWorld,
   PushPointOutOfWorld,
-  ResolveObjectMove
+  ResolveObjectMove,
+  IsVisibleRayCollisionMesh,
+  RaycastCandidateRoots,
+  RaycastVisibleGeometry,
+  RaycastVisibleSegment,
+  SweepVisibleCapsuleHorizontal,
+  ResolveRaycastHorizontalMove,
+  ResolveRaycastCapsuleSegment,
+  ProbeVisibleGeometrySeparation
 };
