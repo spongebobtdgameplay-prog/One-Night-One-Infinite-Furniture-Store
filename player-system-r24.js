@@ -36,7 +36,10 @@ const ARM_WALL_GAP = 0.035;
 const PLAYER_RADIUS = 0.255;
 const PLAYER_EYE_HEIGHT = 1.68;
 const TURN_RESPONSIVENESS = 13;
-const FOOT_SOLE_SKIN = 0.016;
+const FOOT_SOLE_SKIN = 0.024;
+const FOOT_PROBE_TOE = 0.115;
+const FOOT_PROBE_HEEL = 0.075;
+const FOOT_PROBE_SIDE = 0.058;
 
 const State = {
   Scene: null,
@@ -99,6 +102,8 @@ const State = {
   TempLegAxis: new THREE.Vector3(),
   TempPole: new THREE.Vector3(),
   TempTravel: new THREE.Vector3(),
+  TempFootProbe: new THREE.Vector3(),
+  TempFootSide: new THREE.Vector3(),
   TempEuler: new THREE.Euler(),
   TempQuaternion: new THREE.Quaternion(),
   TempQuaternionB: new THREE.Quaternion(),
@@ -494,6 +499,34 @@ function SolveTwoBoneLeg(UpperName, LowerName, FootName, Target, PoleSide = 1) {
   return true;
 }
 
+function FootprintGroundHeight(SurfaceStep, Position, Travel, StartY) {
+  const Raycast = SurfaceStep?.RaycastGroundHeight;
+  if (typeof Raycast !== "function") return 0;
+
+  State.TempFootSide.set(Travel.z, 0, -Travel.x);
+  if (State.TempFootSide.lengthSq() <= 0.000001) State.TempFootSide.set(1, 0, 0);
+  else State.TempFootSide.normalize();
+
+  let Height = Raycast(Position, StartY) ?? 0;
+  const Samples = [
+    [FOOT_PROBE_TOE, 0],
+    [-FOOT_PROBE_HEEL, 0],
+    [0, FOOT_PROBE_SIDE],
+    [0, -FOOT_PROBE_SIDE],
+    [FOOT_PROBE_TOE * 0.82, FOOT_PROBE_SIDE * 0.82],
+    [FOOT_PROBE_TOE * 0.82, -FOOT_PROBE_SIDE * 0.82]
+  ];
+
+  for (const [Forward, Side] of Samples) {
+    State.TempFootProbe.copy(Position)
+      .addScaledVector(Travel, Forward)
+      .addScaledVector(State.TempFootSide, Side);
+    Height = Math.max(Height, Raycast(State.TempFootProbe, StartY) ?? 0);
+  }
+
+  return Height;
+}
+
 function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
   const IsLeft = Side < 0;
   const Upper = IsLeft ? "UpperLegL" : "UpperLegR";
@@ -532,10 +565,16 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
   State.TempLegTarget.addScaledVector(Travel, Reach);
 
   const RootFloor = Math.max(0, State.Pivot.position.y);
-  const GroundHeight = SurfaceStep.RaycastGroundHeight?.(
+  const GroundRayStartY = Math.max(
+    State.TempLegTarget.y + 0.55,
+    (State.Camera?.position?.y || 1.68) + 0.18
+  );
+  const GroundHeight = FootprintGroundHeight(
+    SurfaceStep,
     State.TempLegTarget,
-    Math.max(State.TempLegTarget.y + 0.55, (State.Camera?.position?.y || 1.68) + 0.18)
-  ) ?? 0;
+    Travel,
+    GroundRayStartY
+  );
 
   const RaisedSurfaceSkin = GroundHeight > RootFloor + 0.008 ? FOOT_SOLE_SKIN : 0;
   const DesiredGroundOffset = THREE.MathUtils.clamp(
@@ -1028,4 +1067,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.28.0-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.30.0-PHYSICS";
