@@ -32,7 +32,8 @@ const CAMERA_PADDING = 0.10;
 const FIRST_PERSON_NEAR = 0.012;
 const ARM_WALL_PADDING = 0.015;
 const ARM_WALL_GAP = 0.035;
-const PLAYER_RADIUS = 0.34;
+const PLAYER_RADIUS = 0.255;
+const PLAYER_EYE_HEIGHT = 1.68;
 const TURN_RESPONSIVENESS = 13;
 
 const State = {
@@ -358,7 +359,7 @@ function UpdateMotion(Delta) {
 
 function UpdateCharacterFacing(Delta) {
   if (!State.Pivot || !State.Camera) return;
-  State.Pivot.position.set(State.Camera.position.x, 0, State.Camera.position.z);
+  State.Pivot.position.set(State.Camera.position.x, Math.max(0, State.Camera.position.y - PLAYER_EYE_HEIGHT), State.Camera.position.z);
 
   let TargetYaw = State.Pivot.rotation.y;
   if (!State.ThirdPerson) {
@@ -448,6 +449,31 @@ function ApplyProceduralOverlay() {
   AddBoneRotation("UpperLegR", 0, State.LocalStrafe * 0.020 * Move, -State.LocalStrafe * 0.030 * Move);
   AddBoneRotation("FootL", 0, 0, State.LocalStrafe * 0.014 * Move);
   AddBoneRotation("FootR", 0, 0, State.LocalStrafe * 0.014 * Move);
+
+  const Contact = window.__STORE_MOVEMENT_CONTACT__;
+  const ContactAge = performance.now() - Number(Contact?.LastHit ?? -Infinity);
+  if (Contact?.Normal?.isVector3 && ContactAge >= 0 && ContactAge < 150 && !Contact.Stepped) {
+    const Fade = 1 - THREE.MathUtils.clamp(ContactAge / 150, 0, 1);
+    const Push = THREE.MathUtils.clamp(Number(Contact.Strength) || 0, 0, 1) * Fade;
+    const FacingX = Math.sin(State.Pivot.rotation.y);
+    const FacingZ = Math.cos(State.Pivot.rotation.y);
+    const RightX = Math.cos(State.Pivot.rotation.y);
+    const RightZ = -Math.sin(State.Pivot.rotation.y);
+    const FrontContact = THREE.MathUtils.clamp(-(Contact.Normal.x * FacingX + Contact.Normal.z * FacingZ), 0, 1);
+    const SideContact = THREE.MathUtils.clamp(Contact.Normal.x * RightX + Contact.Normal.z * RightZ, -1, 1);
+    const Compression = Push * (0.35 + FrontContact * 0.65);
+
+    AddBoneRotation("Hips", 0.035 * Compression, 0, SideContact * 0.030 * Push);
+    AddBoneRotation("Abdomen", 0.055 * Compression, SideContact * -0.018 * Push, SideContact * -0.026 * Push);
+    AddBoneRotation("Torso", 0.080 * Compression, SideContact * -0.026 * Push, SideContact * -0.038 * Push);
+    AddBoneRotation("Chest", -0.035 * Compression, SideContact * 0.022 * Push, SideContact * 0.030 * Push);
+    AddBoneRotation("UpperLegL", 0.055 * Compression, 0, 0);
+    AddBoneRotation("UpperLegR", 0.055 * Compression, 0, 0);
+    AddBoneRotation("LowerLegL", -0.045 * Compression, 0, 0);
+    AddBoneRotation("LowerLegR", -0.045 * Compression, 0, 0);
+    AddBoneRotation("ShoulderL", -0.030 * Compression, 0, SideContact * 0.018 * Push);
+    AddBoneRotation("ShoulderR", -0.030 * Compression, 0, SideContact * 0.018 * Push);
+  }
 
   State.Pivot.updateMatrixWorld(true);
 }
@@ -790,4 +816,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.11-R29";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.4-PHYSICS";
