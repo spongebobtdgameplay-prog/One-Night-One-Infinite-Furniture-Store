@@ -5,14 +5,11 @@ const Game = window.__STORE_GAME__;
 if (!Game?.ActiveChunks || !Game?.PreparedChunks) throw new Error("Game must load before retail sale displays.");
 
 const Loader = new GLTFLoader();
-const TextureLoader = new THREE.TextureLoader();
 const Templates = new Map();
 const Processing = new WeakSet();
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
 const MicrosoftCardboardBox = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb";
-const MicrosoftCardboardTexture = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.png";
-let CardboardTexturePromise = null;
 
 const Assets = Object.freeze({
   CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
@@ -28,7 +25,6 @@ const Assets = Object.freeze({
     MaxWidth: 0.70,
     MaxDepth: 0.70,
     Source: "https://github.com/microsoft/experimental-pcf-control-assets",
-    FallbackTexture: MicrosoftCardboardTexture
   }
 });
 
@@ -71,68 +67,6 @@ function HasLoadedColorTexture(Root) {
   return Found;
 }
 
-async function LoadCardboardFallbackTexture() {
-  if (!CardboardTexturePromise) {
-    CardboardTexturePromise = TextureLoader.loadAsync(MicrosoftCardboardTexture)
-      .then(Texture => {
-        Texture.colorSpace = THREE.SRGBColorSpace;
-        Texture.flipY = false;
-        Texture.wrapS = THREE.ClampToEdgeWrapping;
-        Texture.wrapT = THREE.ClampToEdgeWrapping;
-        Texture.anisotropy = Math.min(8, Game.Renderer?.capabilities?.getMaxAnisotropy?.() || 4);
-        Texture.needsUpdate = true;
-        return Texture;
-      })
-      .catch(Error => {
-        CardboardTexturePromise = null;
-        throw Error;
-      });
-  }
-  return CardboardTexturePromise;
-}
-
-function ApplyCardboardFallbackTexture(Root, Texture) {
-  Root.traverse(Object => {
-    if (!Object?.isMesh) return;
-
-    Object.frustumCulled = false;
-    Object.geometry?.computeVertexNormals?.();
-    Object.geometry?.computeBoundingBox?.();
-    Object.geometry?.computeBoundingSphere?.();
-
-    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
-    const Copies = Materials.filter(Boolean).map(Material => {
-      const Copy = Material.clone();
-      Copy.map = Texture;
-      Copy.side = THREE.DoubleSide;
-      Copy.transparent = false;
-      Copy.opacity = 1;
-      Copy.depthWrite = true;
-      Copy.depthTest = true;
-      if (Copy.color?.setHex) Copy.color.setHex(0xffffff);
-      if ("roughness" in Copy) Copy.roughness = 0.91;
-      if ("metalness" in Copy) Copy.metalness = 0;
-      if ("emissiveIntensity" in Copy) Copy.emissiveIntensity = 0;
-      Copy.needsUpdate = true;
-      return Copy;
-    });
-
-    if (!Copies.length) {
-      Object.material = new THREE.MeshStandardMaterial({
-        map: Texture,
-        color: 0xffffff,
-        roughness: 0.91,
-        metalness: 0,
-        side: THREE.DoubleSide
-      });
-    } else {
-      Object.material = Array.isArray(Object.material) ? Copies : Copies[0];
-    }
-  });
-
-  Root.userData.CardboardGeometryStableR88 = true;
-}
-
 function ApplyCardboardColorFallback(Root) {
   Root.traverse(Object => {
     if (!Object?.isMesh || !Object.material) return;
@@ -165,15 +99,20 @@ async function LoadTemplate(Key) {
           CloneMaterials(Root);
 
           if (Key === "CardboardBox") {
-            try {
-              const Texture = await LoadCardboardFallbackTexture();
-              ApplyCardboardFallbackTexture(Root, Texture);
-              Root.userData.CardboardTextureAppliedR88 = true;
-            } catch (TextureError) {
+            if (HasLoadedColorTexture(Root)) {
+              Root.userData.CardboardEmbeddedMaterialR90 = true;
+            } else {
               ApplyCardboardColorFallback(Root);
-              Root.userData.CardboardTextureFailedR88 = true;
-              console.warn("Cardboard texture failed; using stable cardboard material.", TextureError);
+              Root.userData.CardboardMaterialFallbackR90 = true;
             }
+
+            Root.traverse(Item => {
+              if (!Item?.isMesh) return;
+              Item.frustumCulled = false;
+              Item.geometry?.computeVertexNormals?.();
+              Item.geometry?.computeBoundingBox?.();
+              Item.geometry?.computeBoundingSphere?.();
+            });
 
             const Bounds = BoundsOf(Root);
             if (Bounds.isEmpty()) throw new Error("Cardboard model loaded without usable geometry.");
@@ -236,7 +175,7 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   if (Entry.AssetKey === "CardboardBox") {
     Object.rotation.x = 0;
     Object.rotation.z = 0;
-    Object.userData.CardboardBoxStableR88 = true;
+    Object.userData.CardboardBoxStableR90 = true;
     Object.traverse(Item => {
       if (!Item?.isMesh) return;
       Item.frustumCulled = false;
@@ -318,4 +257,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.27.6";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.28.0";
