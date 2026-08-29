@@ -403,4 +403,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.27.0";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.30.0";
