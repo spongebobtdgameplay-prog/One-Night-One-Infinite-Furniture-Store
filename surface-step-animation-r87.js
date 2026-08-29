@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 const Game = window.__STORE_GAME__;
 const Player = window.__STORE_PLAYER__;
+const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
 if (!Game?.Scene || !Game?.Camera || !Player?.Render) throw new Error("Game and player must load before carpet step animation.");
 
 const Rugs = new Map();
@@ -36,16 +37,20 @@ function RegisterRug(Object, ChunkId = "") {
   const Id = `${ChunkId || Object.userData?.ChunkId || "world"}:${Object.uuid}`;
   Rugs.set(Id, { Id, Object, ChunkId: ChunkId || Object.userData?.ChunkId || "", Bounds });
   Object.userData.WalkableCarpetR87 = true;
+  Object.userData.DecorationNoCollision = true;
+  Physics?.RegisterWalkableSurface?.(Object, ChunkId);
   return Id;
 }
 
 function UnregisterObject(Object) {
   if (!Object) return;
   for (const [Id, Record] of Rugs) if (Record.Object === Object) Rugs.delete(Id);
+  Physics?.UnregisterWalkableSurface?.(Object);
 }
 
 function UnregisterChunk(ChunkId) {
   for (const [Id, Record] of Rugs) if (Record.ChunkId === ChunkId) Rugs.delete(Id);
+  Physics?.UnregisterChunk?.(ChunkId);
 }
 
 function RefreshRegisteredRugs() {
@@ -56,7 +61,10 @@ function RefreshRegisteredRugs() {
     }
     const Bounds = BoundsOf(Record.Object);
     if (Bounds.isEmpty()) Rugs.delete(Id);
-    else Record.Bounds.copy(Bounds);
+    else {
+      Record.Bounds.copy(Bounds);
+      Physics?.RefreshWalkableSurface?.(Record.Object);
+    }
   }
 }
 
@@ -178,4 +186,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   TriggerStep,
   GetRegisteredCount: () => Rugs.size
 };
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.24.1-R87";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.4-PHYSICS";
