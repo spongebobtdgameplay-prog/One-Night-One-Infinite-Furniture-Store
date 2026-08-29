@@ -23,6 +23,7 @@ const RetailNames = new Set([
 ]);
 const RemovedGeometryNames = new Set(["Window_Large1"]);
 const ProcessedCollision = new WeakMap();
+const ProcessedChunks = new WeakMap();
 const TempA = new THREE.Vector3();
 const TempB = new THREE.Vector3();
 const TempC = new THREE.Vector3();
@@ -425,8 +426,23 @@ function FixRetailZoneColors(Chunk) {
   }
 }
 
-export function ProcessChunk(Chunk) {
+function ChunkSignature(Chunk) {
+  return [
+    Chunk.Group?.children?.length || 0,
+    Chunk.Models?.length || 0,
+    Chunk.CollisionEntries?.length || 0,
+    Chunk.Group?.userData?.RetailSaleDisplaysR84 ? 1 : 0,
+    Chunk.Group?.userData?.RetailZonesR82 ? 1 : 0,
+    Chunk.Group?.userData?.ShelfStockR83 ? 1 : 0
+  ].join(":");
+}
+
+export function ProcessChunk(Chunk, Force = false) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return;
+
+  const BeforeSignature = ChunkSignature(Chunk);
+  if (!Force && ProcessedChunks.get(Chunk) === BeforeSignature && Chunk.Group.userData?.CoreFixR88) return;
+
   RemoveDecorativeWindows(Chunk);
   PurgeGhostAndLegacyEntries(Chunk);
   RegisterWalkableRugs(Chunk);
@@ -438,8 +454,10 @@ export function ProcessChunk(Chunk) {
   }
   FixRetailZoneColors(Chunk);
 
+  Chunk.Group.userData.CoreFixR88 = true;
   Chunk.Group.userData.CoreFixR87 = true;
   Chunk.Group.userData.CoreFixR86 = true;
+  ProcessedChunks.set(Chunk, ChunkSignature(Chunk));
 }
 
 export function ProcessAll() {
@@ -457,9 +475,9 @@ export function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 480);
+const Interval = setInterval(ProcessAll, 950);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.24.1-R87";
+window.__STORE_CORE_FIX_BUILD__ = "V0.27.7-R88";
