@@ -9,17 +9,29 @@ if (!Game?.Scene || !Player || !Collision || !SurfaceContact) {
   throw new Error("Game, player, and contact utilities must load before final contact pass.");
 }
 
+const BodyPoints = [
+  { Bone: "Hips", Radius: 0.205 },
+  { Bone: "Abdomen", Radius: 0.215 },
+  { Bone: "Torso", Radius: 0.225 },
+  { Bone: "Chest", Radius: 0.235 },
+  { Bone: "Neck", Radius: 0.155 },
+  { Bone: "Shoulder.L", Radius: 0.165 },
+  { Bone: "Shoulder.R", Radius: 0.165 },
+  { Bone: "UpperLeg.L", Radius: 0.175 },
+  { Bone: "UpperLeg.R", Radius: 0.175 }
+];
+
 const Segments = [
-  { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.118 },
-  { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.125 },
-  { Joint: "LowerArm.L", Child: "Wrist.L", Radius: 0.118, EndExtension: 0.13 },
-  { Joint: "Shoulder.R", Child: "UpperArm.R", Radius: 0.118 },
-  { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.125 },
-  { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.118, EndExtension: 0.13 },
-  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.142 },
-  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.128, EndExtension: 0.16 },
-  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.142 },
-  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.128, EndExtension: 0.16 }
+  { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.126 },
+  { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.134 },
+  { Joint: "LowerArm.L", Child: "Wrist.L", Radius: 0.126, EndExtension: 0.16 },
+  { Joint: "Shoulder.R", Child: "UpperArm.R", Radius: 0.126 },
+  { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.134 },
+  { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.126, EndExtension: 0.16 },
+  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.150 },
+  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.136, EndExtension: 0.19 },
+  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.150 },
+  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.136, EndExtension: 0.19 }
 ];
 
 const Scratch = {
@@ -37,13 +49,101 @@ const Scratch = {
   SavedScales: new Map(),
   SavedVisibility: new Map(),
   PivotCenter: new THREE.Vector3(),
-  ExtendedEnd: new THREE.Vector3()
+  ExtendedEnd: new THREE.Vector3(),
+  BodyPoint: new THREE.Vector3(),
+  Separation: new THREE.Vector3(),
+  BestSeparation: new THREE.Vector3(),
+  SavedPivotPosition: new THREE.Vector3(),
+  PivotPositionSaved: false
 };
 
 const SegmentState = new Map();
 
 function BodyCollision(Entry) {
   return Boolean(Entry?.ProceduralBodyContact || Collision.IsStructure(Entry));
+}
+
+function EntryBounds(Entry) {
+  return Entry?.OriginalStructureBox || Entry?.OriginalBox || Entry?.Box || Entry || null;
+}
+
+function FiniteBounds(Bounds) {
+  return Boolean(
+    Bounds?.min && Bounds?.max &&
+    [Bounds.min.x, Bounds.min.y, Bounds.min.z, Bounds.max.x, Bounds.max.y, Bounds.max.z].every(Number.isFinite)
+  );
+}
+
+function PointSeparation(Point, Radius, Bounds, Target) {
+  if (!FiniteBounds(Bounds)) return 0;
+
+  const MinX = Bounds.min.x - Radius;
+  const MaxX = Bounds.max.x + Radius;
+  const MinY = Bounds.min.y - Radius;
+  const MaxY = Bounds.max.y + Radius;
+  const MinZ = Bounds.min.z - Radius;
+  const MaxZ = Bounds.max.z + Radius;
+
+  if (
+    Point.x <= MinX || Point.x >= MaxX ||
+    Point.y <= MinY || Point.y >= MaxY ||
+    Point.z <= MinZ || Point.z >= MaxZ
+  ) return 0;
+
+  const Distances = [
+    [Point.x - MinX, -1, 0, 0],
+    [MaxX - Point.x, 1, 0, 0],
+    [Point.y - MinY, 0, -1, 0],
+    [MaxY - Point.y, 0, 1, 0],
+    [Point.z - MinZ, 0, 0, -1],
+    [MaxZ - Point.z, 0, 0, 1]
+  ];
+  Distances.sort((Left, Right) => Left[0] - Right[0]);
+  const Depth = Distances[0][0] + 0.006;
+  Target.set(Distances[0][1] * Depth, Distances[0][2] * Depth, Distances[0][3] * Depth);
+  return Depth;
+}
+
+function SavePivotPosition(Pivot) {
+  if (Scratch.PivotPositionSaved) return;
+  Scratch.SavedPivotPosition.copy(Pivot.position);
+  Scratch.PivotPositionSaved = true;
+}
+
+function SeparateBodyShell(Pivot, Entries) {
+  SavePivotPosition(Pivot);
+  let TotalPush = 0;
+
+  for (let Pass = 0; Pass < 4 && TotalPush < 0.18; Pass += 1) {
+    let BestDepth = 0;
+    Scratch.BestSeparation.set(0, 0, 0);
+    Pivot.updateMatrixWorld(true);
+
+    for (const Sample of BodyPoints) {
+      const Bone = Pivot.getObjectByName(Sample.Bone);
+      if (!Bone?.isBone) continue;
+      Bone.getWorldPosition(Scratch.BodyPoint);
+
+      for (const Entry of Entries) {
+        if (!BodyCollision(Entry)) continue;
+        const Depth = PointSeparation(Scratch.BodyPoint, Sample.Radius, EntryBounds(Entry), Scratch.Separation);
+        if (Depth <= BestDepth) continue;
+        BestDepth = Depth;
+        Scratch.BestSeparation.copy(Scratch.Separation);
+      }
+    }
+
+    if (BestDepth <= 0.0005) break;
+    const Remaining = Math.max(0, 0.18 - TotalPush);
+    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.075, Remaining);
+    if (PushLength <= 0.0005) break;
+
+    Scratch.BestSeparation.setLength(PushLength);
+    Pivot.position.add(Scratch.BestSeparation);
+    TotalPush += PushLength;
+  }
+
+  Pivot.updateMatrixWorld(true);
 }
 
 function StateFor(Segment) {
@@ -144,7 +244,9 @@ function ConstrainSegment(Pivot, Segment, Entries) {
 function ApplyMeshSafeNerves(Pivot) {
   Pivot.getWorldPosition(Scratch.PivotCenter);
   const Entries = Physics?.GetBodyContactEntries?.(Game.CollisionBoxes, Scratch.PivotCenter, 3.2) || Game.CollisionBoxes;
-  for (let Pass = 0; Pass < 6; Pass += 1) {
+  SeparateBodyShell(Pivot, Entries);
+
+  for (let Pass = 0; Pass < 7; Pass += 1) {
     let Changed = false;
     for (const Segment of Segments) {
       if (ConstrainSegment(Pivot, Segment, Entries)) Changed = true;
@@ -175,6 +277,12 @@ function RestoreFinalPass(Pivot) {
   for (const [Bone, Quaternion] of Scratch.SavedQuaternions) Bone.quaternion.copy(Quaternion);
   for (const [Bone, Scale] of Scratch.SavedScales) Bone.scale.copy(Scale);
   for (const [Object, Visible] of Scratch.SavedVisibility) Object.visible = Visible;
+
+  if (Scratch.PivotPositionSaved) {
+    Pivot.position.copy(Scratch.SavedPivotPosition);
+    Scratch.PivotPositionSaved = false;
+  }
+
   Scratch.SavedQuaternions.clear();
   Scratch.SavedScales.clear();
   Scratch.SavedVisibility.clear();
@@ -211,4 +319,4 @@ window.__STORE_FINAL_CONTACT__ = {
   State: SegmentState,
   Apply: ApplyMeshSafeNerves
 };
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.5-PHYSICS";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.6-PHYSICS";
