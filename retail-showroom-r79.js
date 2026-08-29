@@ -146,25 +146,11 @@ function NearestCollisionEntry(Chunk, Type, Center) {
 }
 
 function ApplySolidBounds(Chunk, Entry, Bounds, Type = null) {
-  if (!Entry) {
-    Entry = { ChunkId: Chunk.Id, Type: Type || "RetailObjectR79" };
-    Chunk.CollisionEntries.push(Entry);
-  }
-  const Box = Bounds.clone();
-  Entry.Box = Box;
-  Entry.OriginalBox = Box.clone();
-  Entry.OriginalLegacyBox = Box.clone();
-  Entry.PreciseGeometry = false;
-  Entry.PreciseTriangles = null;
-  Entry.GeometryBounds = null;
-  Entry.LegacyCollisionDisabled = false;
-  Entry.RedundantPreciseSibling = false;
-  Entry.TestPlayerCollision = null;
-  Entry.TestCollision = null;
-  Entry.Active = Boolean(Chunk.Active);
-  Entry.RetailModelR79 = true;
-  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
-  return Entry;
+  void Chunk;
+  void Entry;
+  void Bounds;
+  void Type;
+  return null;
 }
 
 function TightenExistingCollision(Chunk, Model) {
@@ -359,7 +345,6 @@ async function PlacePlannedRetailAsset(Chunk, Entry) {
   Object.userData.RetailImportedR79 = true;
   Chunk.Group.add(Object);
   Object.updateWorldMatrix(true, true);
-  AddExactCollision(Chunk, Object, `${Entry.Name}SolidR79`);
   return true;
 }
 
@@ -403,4 +388,4 @@ const Interval = setInterval(Discover, 850);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.30.0";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.0-RAY";
