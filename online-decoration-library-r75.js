@@ -114,10 +114,14 @@ export async function CreateOnlineRug(Model, Variant = 0) {
   const TargetDepth = THREE.MathUtils.clamp(ModelSize.z + 0.72, 1.35, 4.8);
   const ScaleX = TargetWidth / Math.max(SourceSize.x, 0.001);
   const ScaleZ = TargetDepth / Math.max(SourceSize.z, 0.001);
-  const ScaleY = Math.min(ScaleX, ScaleZ);
+  const TargetThickness = 0.065;
+  const ScaleY = TargetThickness / Math.max(SourceSize.y, 0.001);
   Rug.scale.set(ScaleX, ScaleY, ScaleZ);
   Rug.userData.DecorationKind = "Rug";
-  return PlaceBottomCenter(Rug, ModelCenter.x, ModelCenter.z, 0.008);
+  Rug.userData.WalkableCarpetR87 = true;
+  Rug.userData.DecorationNoCollision = true;
+  Rug.userData.RugThickness = TargetThickness;
+  return PlaceBottomCenter(Rug, ModelCenter.x, ModelCenter.z, 0.003);
 }
 
 export async function CreateOnlineFloorDecoration(Key, X, Z, TargetHeight = 1, RotationY = 0) {
