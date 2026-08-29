@@ -561,21 +561,9 @@ async function GetModelTemplate(Name) {
 }
 
 function AddModelCollision(Chunk, Entry) {
-  const Profile = CollisionProfiles[Entry.Model];
-  if (!Profile) return;
-  const [Width, Depth] = Profile;
-  const Rotation = Number(Entry.Rotation) || 0;
-  const C = Math.abs(Math.cos(Rotation));
-  const S = Math.abs(Math.sin(Rotation));
-  const RotatedWidth = Width * C + Depth * S;
-  const RotatedDepth = Width * S + Depth * C;
-  const HalfX = Math.max(0.16, RotatedWidth * 0.5 - 0.055);
-  const HalfZ = Math.max(0.16, RotatedDepth * 0.5 - 0.055);
-  const Collision = AddChunkCollision(Chunk, new THREE.Box3(
-    new THREE.Vector3(Entry.X - HalfX, 0, Entry.Z - HalfZ),
-    new THREE.Vector3(Entry.X + HalfX, 2.5, Entry.Z + HalfZ)
-  ), Entry.Model);
-  Collision.LayoutSlot = Entry.Slot;
+  void Chunk;
+  void Entry;
+  return null;
 }
 
 function SpawnLayoutModel(Chunk, Entry) {
