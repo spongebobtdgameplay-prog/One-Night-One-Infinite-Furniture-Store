@@ -3,11 +3,9 @@ import * as THREE from "three";
 const Game = window.__STORE_GAME__;
 const Player = window.__STORE_PLAYER__;
 const Collision = window.__STORE_COLLISION_UTILITY__;
-const SurfaceContact = window.__STORE_SURFACE_CONTACT_UTILITY__;
-const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
 
-if (!Game?.Scene || !Player || !Collision || !SurfaceContact) {
-  throw new Error("Game, player, and contact utilities must load before final contact pass.");
+if (!Game?.Scene || !Player || !Collision) {
+  throw new Error("Game, player, and ray collision utility must load before final contact pass.");
 }
 
 const FINAL_CONTACT_SKIN = 0.024;
@@ -152,48 +150,42 @@ function SavePivotPosition(Pivot) {
   Scratch.PivotPositionSaved = true;
 }
 
-function ForceWholeRigOut(Pivot, Entries) {
+function ForceWholeRigOut(Pivot) {
+  if (typeof Collision.ProbeVisibleGeometrySeparation !== "function") return;
   SavePivotPosition(Pivot);
   let TotalPush = 0;
 
-  for (let Pass = 0; Pass < 6 && TotalPush < 0.30; Pass += 1) {
+  for (let Pass = 0; Pass < 5 && TotalPush < 0.24; Pass += 1) {
     let BestDepth = 0;
     Scratch.BestSeparation.set(0, 0, 0);
     Pivot.updateMatrixWorld(true);
 
     for (const Capsule of ForceCapsules) {
-      const BoneA = Pivot.getObjectByName(Capsule.A);
-      const BoneB = Pivot.getObjectByName(Capsule.B);
-      if (!BoneA?.isBone || !BoneB?.isBone) continue;
+      for (const Name of [Capsule.A, Capsule.B]) {
+        const Bone = Pivot.getObjectByName(Name);
+        if (!Bone?.isBone) continue;
 
-      BoneA.getWorldPosition(Scratch.Start);
-      BoneB.getWorldPosition(Scratch.End);
-      Scratch.ExtendedEnd.copy(Scratch.End);
+        Bone.getWorldPosition(Scratch.Sample);
+        const Probe = Collision.ProbeVisibleGeometrySeparation(
+          Scratch.Sample,
+          Capsule.Radius,
+          Scratch.Separation,
+          {
+            Scene: Game.Scene,
+            Skin: FINAL_CONTACT_SKIN
+          }
+        );
 
-      if (Capsule.EndExtension > 0) {
-        Scratch.CurrentDirection.copy(Scratch.End).sub(Scratch.Start);
-        if (Scratch.CurrentDirection.lengthSq() > 0.000001) {
-          Scratch.ExtendedEnd.addScaledVector(Scratch.CurrentDirection.normalize(), Capsule.EndExtension);
-        }
+        if (!Probe?.Hit || Number(Probe.Depth) <= BestDepth) continue;
+        BestDepth = Number(Probe.Depth) || 0;
+        Scratch.BestSeparation.copy(Probe.Separation);
       }
-
-      const Depth = CapsuleSampleSeparation(
-        Scratch.Start,
-        Scratch.ExtendedEnd,
-        Capsule.Radius,
-        Entries,
-        Scratch.Separation
-      );
-
-      if (Depth <= BestDepth) continue;
-      BestDepth = Depth;
-      Scratch.BestSeparation.copy(Scratch.Separation);
     }
 
     if (BestDepth <= 0.0005 || Scratch.BestSeparation.lengthSq() <= 0.000001) break;
 
-    const Remaining = Math.max(0, 0.30 - TotalPush);
-    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.085, Remaining);
+    const Remaining = Math.max(0, 0.24 - TotalPush);
+    const PushLength = Math.min(Scratch.BestSeparation.length(), 0.075, Remaining);
     if (PushLength <= 0.0005) break;
 
     Scratch.BestSeparation.setLength(PushLength);
@@ -257,10 +249,11 @@ function RememberDirection(State, Start, End) {
   State.HasPrevious = true;
 }
 
-function ConstrainPoseSegment(Pivot, Segment, Entries) {
+function ConstrainPoseSegment(Pivot, Segment) {
   const Joint = Pivot.getObjectByName(Segment.Joint);
   const Child = Pivot.getObjectByName(Segment.Child);
   if (!Joint?.isBone || !Child?.isBone) return false;
+  if (typeof Collision.ResolveRaycastCapsuleSegment !== "function") return false;
 
   SaveBone(Joint);
 
@@ -276,24 +269,18 @@ function ConstrainPoseSegment(Pivot, Segment, Entries) {
   }
 
   const State = StateFor(Segment);
-  const Result = SurfaceContact.ResolveSurfaceCapsule(
+  const Result = Collision.ResolveRaycastCapsuleSegment(
     Scratch.Start,
     Scratch.ExtendedEnd,
     Segment.Radius,
-    Entries,
     Scratch.SafeEnd,
     {
-      Skin: FINAL_POSE_SKIN,
-      Filter: BodyCollision,
-      PreviousDirection: State.HasPrevious ? State.PreviousDirection : null,
-      BinarySteps: 18,
-      InitialNormalPush: 0.020,
-      MaxNormalPush: 48,
-      ContactBias: 0.009
+      Scene: Game.Scene,
+      Skin: FINAL_POSE_SKIN
     }
   );
 
-  if (!Result.Hit) {
+  if (!Result?.Hit) {
     RememberDirection(State, Scratch.Start, Scratch.End);
     return false;
   }
@@ -309,28 +296,25 @@ function ConstrainPoseSegment(Pivot, Segment, Entries) {
 }
 
 function ResolveAllVisibleContacts(Pivot) {
-  Pivot.getWorldPosition(Scratch.PivotCenter);
-  const Entries = Physics?.GetBodyContactEntries?.(Game.CollisionBoxes, Scratch.PivotCenter, 3.4) || Game.CollisionBoxes;
-
   for (let Pass = 0; Pass < 4; Pass += 1) {
     let Changed = false;
     for (const Segment of PoseSegments) {
-      if (ConstrainPoseSegment(Pivot, Segment, Entries)) Changed = true;
+      if (ConstrainPoseSegment(Pivot, Segment)) Changed = true;
     }
     if (!Changed) break;
   }
 
-  ForceWholeRigOut(Pivot, Entries);
+  ForceWholeRigOut(Pivot);
 
   for (let Pass = 0; Pass < 3; Pass += 1) {
     let Changed = false;
     for (const Segment of PoseSegments) {
-      if (ConstrainPoseSegment(Pivot, Segment, Entries)) Changed = true;
+      if (ConstrainPoseSegment(Pivot, Segment)) Changed = true;
     }
     if (!Changed) break;
   }
 
-  ForceWholeRigOut(Pivot, Entries);
+  ForceWholeRigOut(Pivot);
 }
 
 function HideFirstPersonHead(Pivot) {
@@ -401,4 +385,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.30.0-PHYSICS";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.0-RAY";
