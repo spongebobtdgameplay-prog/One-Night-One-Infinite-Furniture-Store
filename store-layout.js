@@ -206,9 +206,7 @@ function KitchenTemplateA() {
       Slot("Kitchen.Left.Dining", "RetailDiningTableR84", -10.20, -1.65, 0, { Kind: "Sale", AssetKey: "DiningTable", Name: "RetailDiningTableR84" }),
       Slot("Kitchen.Right.SideTable", "RetailSideTableR84", 9.20, 1.70, 0, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" })
     ],
-    Retail: [
-      Slot("Kitchen.Right.DisplayCabinet", "RetailDisplayCabinetR79", 14.10, 1.90, -Math.PI / 2, { Kind: "Retail", AssetKey: "CabinetSmallDecorated", Name: "RetailDisplayCabinetR79", TargetHeight: 1.22, MaximumWidth: 1.25, MaximumDepth: 0.78, StockStyle: "Books" })
-    ],
+    Retail: [],
     Partitions: []
   };
 }
@@ -742,4 +740,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.28.1";
+window.__STORE_LAYOUT_BUILD__ = "V0.30.0";
