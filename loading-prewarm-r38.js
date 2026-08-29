@@ -8,6 +8,9 @@ const OriginalLoadAsync = GLTFLoader.prototype.loadAsync;
 const LoadWindowMs = 120000;
 const StartedAt = performance.now();
 
+const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
+const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
+
 const AssetUrls = [
   "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb",
   "Models/LivingRoom/GLB/Couch_Large1.glb",
@@ -27,7 +30,28 @@ const AssetUrls = [
   "Models/Bathroom/GLB/Bathroom_Toilet.glb",
   "Models/Lighting/GLB/Light_Floor1.glb",
   "Models/Architecture/GLB/Door_3.glb",
-  "Models/Architecture/GLB/Window_Large1.glb"
+  "Models/Architecture/GLB/Window_Large1.glb",
+
+  `${KayKitBase}shelf_B_large_decorated.gltf`,
+  `${KayKitBase}shelf_A_big.gltf`,
+  `${KayKitBase}shelf_B_small_decorated.gltf`,
+  `${KayKitBase}cabinet_medium.gltf`,
+  `${KayKitBase}cabinet_small_decorated.gltf`,
+  `${KayKitBase}armchair_pillows.gltf`,
+  `${KayKitBase}table_low.gltf`,
+  `${KayKitBase}table_small.gltf`,
+  `${KayKitBase}table_medium_long.gltf`,
+  `${KayKitBase}rug_rectangle_stripes_A.gltf`,
+  `${KayKitBase}rug_oval_A.gltf`,
+  `${KayKitBase}book_set.gltf`,
+  `${KayKitBase}book_single.gltf`,
+  `${KayKitBase}pillow_A.gltf`,
+  `${KayKitBase}pillow_B.gltf`,
+  `${KenneyBase}shopping-cart.glb`,
+  `${KenneyBase}shopping-basket.glb`,
+  `${KenneyBase}shelf-bags.glb`,
+  `${KenneyBase}shelf-boxes.glb`,
+  "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb"
 ];
 
 const TrackedAssets = new Set(AssetUrls);
@@ -37,6 +61,7 @@ let FailedAssets = 0;
 let NextAssetIndex = 0;
 let SkipResolver = null;
 let Finished = false;
+let StopPreload = false;
 
 function Mix32(Value) {
   let NumberValue = Value >>> 0;
@@ -189,7 +214,7 @@ GLTFLoader.prototype.loadAsync = function(Url, ...Args) {
 
 async function Worker() {
   const Loader = new GLTFLoader();
-  while (NextAssetIndex < AssetUrls.length) {
+  while (!StopPreload && NextAssetIndex < AssetUrls.length) {
     const AssetIndex = NextAssetIndex;
     NextAssetIndex += 1;
     try {
@@ -205,6 +230,7 @@ const TimeoutPromise = new Promise(Resolve => setTimeout(() => Resolve("timeout"
 LoaderUi.SkipButton?.addEventListener("click", () => {
   LoaderUi.SkipButton.disabled = true;
   LoaderUi.SkipButton.textContent = "SKIPPING...";
+  StopPreload = true;
   SkipResolver?.("skip");
 }, { once: true });
 
@@ -218,11 +244,12 @@ const Result = await Promise.race([
 ]);
 
 Finished = true;
+if (Result !== "ready") StopPreload = true;
 clearInterval(Timer);
 
 if (BootStatus) {
   if (Result === "ready") BootStatus.textContent = `Assets warmed • world seed ${World.Seed} • building store...`;
-  else if (Result === "skip") BootStatus.textContent = `Preload skipped • world seed ${World.Seed} • loading remaining assets in background...`;
+  else if (Result === "skip") BootStatus.textContent = `Preload skipped • world seed ${World.Seed} • gameplay loading will continue only as needed...`;
   else BootStatus.textContent = `2 minute preload limit reached • world seed ${World.Seed} • continuing...`;
 }
 
@@ -231,4 +258,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.11-R38";
+window.__STORE_PRELOAD_BUILD__ = "V0.27.7-R89";
