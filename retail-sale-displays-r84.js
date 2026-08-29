@@ -200,7 +200,7 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   Object.updateWorldMatrix(true, true);
 
   if (Entry.AssetKey === "CardboardBox") {
-    window.__STORE_PROCEDURAL_PHYSICS__?.RegisterSolidContactObject?.(Object, Chunk.Id);
+    Object.userData.RayCollisionSolidR35 = true;
     window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk, true);
   }
 
@@ -264,4 +264,4 @@ const Interval = setInterval(Discover, 900);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.30.0";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.0-RAY";
