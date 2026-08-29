@@ -1,5 +1,5 @@
-const Cache = "20260829-v030-fix1";
-const Version = "0.30.0";
+const Cache = "20260829-v035-ray1";
+const Version = "0.35.0";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -71,13 +71,9 @@ try {
 
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
-  await OptionalImport("./runtime-fixes.js", "Runtime collision and camera fixes");
-  await OptionalImport("./precision-collision-v2.js", "Precise collision");
-  await import(`./precise-collision-authority-r27.js?v=${Cache}`);
   await import(`./world-polish-r72.js?v=${Cache}`);
   await OptionalImport("./generator-integrity-r77.js", "Exact generated-object placement");
   await OptionalImport("./store-visual-stable-r83.js", "Stable 3D showroom dressing");
-  await OptionalImport("./collision-ghost-cleanup-r75.js", "Obsolete collision cleanup");
   await OptionalImport("./visible-materials-r77.js", "Targeted near-black material correction");
   await OptionalImport("./render-distance-lighting-r74.js", "Stable long-distance store lighting");
   await OptionalImport("./retail-showroom-r79.js", "Imported retail showroom models and light variation");
@@ -87,8 +83,6 @@ try {
   await OptionalImport("./retail-organization-r83.js", "Organized cart and bag bays");
   await OptionalImport("./shelf-stock-r83.js", "Stocked showroom shelves");
   await OptionalImport("./price-tag-authority-r83.js", "Single-version compact item prices");
-  await OptionalImport("./retail-zone-collision-r82.js", "Height-aware retail-zone collision");
-  await OptionalImport("./solid-object-collision-r83.js", "Finalized static object collision");
   await OptionalImport("./surface-step-animation-r87.js", "Dedicated carpet step animation utility");
   await OptionalImport("./core-fix-authority-r86.js", "Exact furniture collision, ghost cleanup and walkable carpets");
   await OptionalImport("./distance-haze-r82.js", "Stable distance haze");
