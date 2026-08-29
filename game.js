@@ -1206,8 +1206,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.27.9";
-window.__STORE_VERSION__ = "0.27.9";
+window.__STORE_GAME_BUILD__ = "V0.28.0";
+window.__STORE_VERSION__ = "0.28.0";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1227,6 +1227,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.27.9"
+  Version: "0.28.0"
 };
 Animate();
