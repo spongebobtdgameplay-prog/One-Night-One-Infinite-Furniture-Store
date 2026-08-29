@@ -4,6 +4,7 @@ const Game = window.__STORE_GAME__;
 const Player = window.__STORE_PLAYER__;
 const Collision = window.__STORE_COLLISION_UTILITY__;
 const SurfaceContact = window.__STORE_SURFACE_CONTACT_UTILITY__;
+const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
 if (!Game?.Scene || !Player || !Collision || !SurfaceContact) {
   throw new Error("Game, player, and contact utilities must load before final contact pass.");
 }
@@ -39,8 +40,8 @@ const Scratch = {
 
 const SegmentState = new Map();
 
-function StructuralCollision(Entry) {
-  return Collision.IsStructure(Entry);
+function BodyCollision(Entry) {
+  return Boolean(Entry?.ProceduralBodyContact || Collision.IsStructure(Entry));
 }
 
 function StateFor(Segment) {
@@ -90,7 +91,7 @@ function RememberDirection(State, Start, End) {
   State.HasPrevious = true;
 }
 
-function ConstrainSegment(Pivot, Segment) {
+function ConstrainSegment(Pivot, Segment, Entries) {
   const Joint = Pivot.getObjectByName(Segment.Joint);
   const Child = Pivot.getObjectByName(Segment.Child);
   if (!Joint?.isBone || !Child?.isBone) return false;
@@ -104,11 +105,11 @@ function ConstrainSegment(Pivot, Segment) {
     Scratch.Start,
     Scratch.End,
     Segment.Radius,
-    Game.CollisionBoxes,
+    Entries,
     Scratch.SafeEnd,
     {
-      Skin: 0.006,
-      Filter: StructuralCollision,
+      Skin: 0.004,
+      Filter: BodyCollision,
       PreviousDirection: State.HasPrevious ? State.PreviousDirection : null,
       BinarySteps: 18,
       InitialNormalPush: 0.018,
@@ -132,10 +133,11 @@ function ConstrainSegment(Pivot, Segment) {
 }
 
 function ApplyMeshSafeNerves(Pivot) {
+  const Entries = Physics?.GetBodyContactEntries?.(Game.CollisionBoxes, Game.Camera?.position, 2.7) || Game.CollisionBoxes;
   for (let Pass = 0; Pass < 5; Pass += 1) {
     let Changed = false;
     for (const Segment of Segments) {
-      if (ConstrainSegment(Pivot, Segment)) Changed = true;
+      if (ConstrainSegment(Pivot, Segment, Entries)) Changed = true;
     }
     if (!Changed) break;
   }
@@ -199,4 +201,4 @@ window.__STORE_FINAL_CONTACT__ = {
   State: SegmentState,
   Apply: ApplyMeshSafeNerves
 };
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.12.18";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.27.4-PHYSICS";
