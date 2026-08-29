@@ -60,12 +60,8 @@ Game.PreparedChunks.get = function(Index) {
   return NativePreparedGet(Index);
 };
 
-for (const Index of [4, 5, 6]) {
-  Game.PrepareChunk?.(Index).catch?.(() => {});
-}
-
 window.__STORE_FORWARD_GENERATION_R78__ = {
   MinimumChunkIndex,
   RemoveChunk
 };
-window.__STORE_FORWARD_GENERATION_BUILD__ = "V0.20.1-R80";
+window.__STORE_FORWARD_GENERATION_BUILD__ = "V0.27.7-R88";
