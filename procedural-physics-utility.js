@@ -136,7 +136,7 @@ function RegisterSolidContactObject(Object, ChunkId = "") {
 
   const Entries = [];
   Object.traverse(Item => {
-    if (Entries.length >= 30 || !Item?.isMesh || !Item.visible || !Item.geometry) return;
+    if (Entries.length >= 72 || !Item?.isMesh || !Item.visible || !Item.geometry) return;
     if (/Text|Label|Glow|Rug|Carpet/i.test(String(Item.name || ""))) return;
     const Box = new THREE.Box3().setFromObject(Item);
     if (Box.isEmpty()) return;
@@ -505,4 +505,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.7-PHYSICS";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.8-PHYSICS";
