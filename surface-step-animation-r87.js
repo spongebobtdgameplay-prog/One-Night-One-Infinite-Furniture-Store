@@ -16,11 +16,12 @@ let StepEntering = true;
 let StepRugId = "";
 let LastTriggerAt = -Infinity;
 let LastFrameAt = performance.now();
+let StepSpeed = 0;
 
-const STEP_DURATION = 430;
-const STEP_COOLDOWN = 145;
+const STEP_DURATION = 340;
+const STEP_COOLDOWN = 120;
 const MIN_TRIGGER_SPEED = 0.08;
-const EDGE_PADDING = 0.085;
+const EDGE_PADDING = 0.065;
 
 function BoundsOf(Object) {
   Object.updateWorldMatrix(true, true);
@@ -89,7 +90,7 @@ function RugAt(Position) {
   return "";
 }
 
-function TriggerStep(Side = null, Entering = true, RugId = "") {
+function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return false;
 
@@ -98,6 +99,7 @@ function TriggerStep(Side = null, Entering = true, RugId = "") {
   StepSide = Side === -1 || Side === 1 ? Side : -StepSide;
   StepEntering = Boolean(Entering);
   StepRugId = String(RugId || "");
+  StepSpeed = Math.max(0, Number(Speed) || 0);
   return true;
 }
 
@@ -121,7 +123,7 @@ function UpdateCrossingState() {
 
   if (NextRugId !== CurrentRugId && Speed >= MIN_TRIGGER_SPEED) {
     const Entering = Boolean(NextRugId);
-    TriggerStep(null, Entering, Entering ? NextRugId : CurrentRugId);
+    TriggerStep(null, Entering, Entering ? NextRugId : CurrentRugId, Speed);
   }
 
   CurrentRugId = NextRugId;
@@ -131,17 +133,21 @@ function UpdateCrossingState() {
 function GetStepState() {
   const Elapsed = performance.now() - StepStartedAt;
   const Progress = THREE.MathUtils.clamp(Elapsed / STEP_DURATION, 0, 1);
+  const Record = Rugs.get(StepRugId) || null;
+  const Height = Record?.Bounds?.max?.y ?? 0;
   return {
     Active: Elapsed >= 0 && Elapsed < STEP_DURATION,
     Progress,
     Side: StepSide,
     Entering: StepEntering,
     RugId: StepRugId,
-    Duration: STEP_DURATION
+    Duration: STEP_DURATION,
+    Height,
+    Speed: StepSpeed
   };
 }
 
-const RefreshInterval = setInterval(RefreshRegisteredRugs, 520);
+const RefreshInterval = setInterval(RefreshRegisteredRugs, 900);
 addEventListener("pagehide", () => clearInterval(RefreshInterval), { once: true });
 
 window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
@@ -155,4 +161,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.6-PHYSICS";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.7-PHYSICS";
