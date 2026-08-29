@@ -281,6 +281,7 @@ const MaterialPalettes = {
   Kitchen_Fridge: [Pbr(SteelTexture, 0xe7e6dd, 0.45, 0.45)],
   Kitchen_Oven: [Pbr(DarkSteelTexture, 0x9da4a6, 0.48, 0.62)],
   Kitchen_Sink: [Pbr(SteelTexture, 0xd7dcda, 0.38, 0.72)],
+  Bathroom_Sink: [Pbr(CeramicTexture, 0xf2eee5, 0.32), Pbr(SteelTexture, 0xcfd5d2, 0.34, 0.58)],
   Bathroom_Bathtub: [Pbr(CeramicTexture, 0xf1ede3, 0.34)],
   Bathroom_Toilet: [Pbr(CeramicTexture, 0xf2eee5, 0.30)],
   Light_Floor1: [Pbr(DarkSteelTexture, 0x777f82, 0.48, 0.64), Pbr(FabricGoldTexture, 0xf2d49c, 0.88)],
@@ -302,6 +303,7 @@ const ModelDefinitions = {
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: "Models/Kitchen/GLB/Kitchen_Oven.glb", Axis: "y", Target: 0.91 },
   Kitchen_Sink: { Url: "Models/Kitchen/GLB/Kitchen_Sink.glb", Axis: "y", Target: 0.95 },
+  Bathroom_Sink: { Url: "Models/Kitchen/GLB/Kitchen_Sink.glb", Axis: "y", Target: 0.95 },
   Bathroom_Bathtub: { Url: "Models/Bathroom/GLB/Bathroom_Bathtub.glb", Axis: "z", Target: 1.82 },
   Bathroom_Toilet: { Url: "Models/Bathroom/GLB/Bathroom_Toilet.glb", Axis: "y", Target: 0.82 },
   Light_Floor1: { Url: "Models/Lighting/GLB/Light_Floor1.glb", Axis: "y", Target: 1.58 },
@@ -313,7 +315,7 @@ const CollisionProfiles = {
   Couch_Large1: [2.25, 0.90], Couch_L: [2.45, 1.65], Chair_2: [0.78, 0.76], Table_RoundLarge: [1.38, 1.38],
   Bed_King: [1.90, 2.02], Bed_Single: [1.02, 1.96], NightStand_2: [0.52, 0.48], Shelf_Large: [1.75, 0.50],
   Bookshelf: [1.45, 0.42], Kitchen_Cabinet1: [1.05, 0.58], Kitchen_Fridge: [0.84, 0.78], Kitchen_Oven: [0.82, 0.70],
-  Kitchen_Sink: [1.10, 0.66], Bathroom_Bathtub: [0.80, 1.72], Bathroom_Toilet: [0.62, 0.78]
+  Kitchen_Sink: [1.10, 0.66], Bathroom_Sink: [1.10, 0.66], Bathroom_Bathtub: [0.80, 1.72], Bathroom_Toilet: [0.62, 0.78]
 };
 
 const PlacementProfiles = {
