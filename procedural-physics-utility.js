@@ -258,11 +258,8 @@ function WalkableEntryHeight(Position, Entries, CurrentFeetY = 0) {
 }
 
 function SurfaceHeight(Position, Entries, CurrentFeetY = 0) {
-  return Math.max(
-    0,
-    WalkableSurfaceHeight(Position, CurrentFeetY),
-    WalkableEntryHeight(Position, Entries, CurrentFeetY)
-  );
+  void Entries;
+  return Math.max(0, WalkableSurfaceHeight(Position, CurrentFeetY));
 }
 
 function CameraBasis(Camera) {
@@ -340,78 +337,30 @@ function TryStep(Start, Desired, Radius, Entries, FirstResult) {
 }
 
 function ResolveWithSlide(Start, Desired, Radius, Entries) {
-  const First = Collision.ResolveHorizontalMove(
+  void Entries;
+  const Scene = window.__STORE_GAME__?.Scene || null;
+  if (!Scene?.isScene || typeof Collision.ResolveRaycastHorizontalMove !== "function") {
+    return {
+      Position: Start.clone().add(Desired),
+      Resolved: Desired.clone(),
+      Hit: false,
+      Normal: new THREE.Vector3(),
+      Entry: null
+    };
+  }
+
+  return Collision.ResolveRaycastHorizontalMove(
     Start,
     Desired,
     Radius,
-    Entries,
     {
-      Skin,
-      MaxIterations: 1,
-      MaxSweepSteps,
-      BinarySteps,
-      AllowSlide: false,
-      Filter: MovementFilter
+      Scene,
+      Skin: 0.010,
+      EyeHeight,
+      AllowSlide: true,
+      RangePadding: 1.8
     }
   );
-
-  if (!First.Hit) return First;
-
-  const StepResult = TryStep(Start, Desired, Radius, Entries, First);
-  if (StepResult) return StepResult;
-
-  const Normal = First.Normal?.clone?.() || new THREE.Vector3();
-  if (Normal.lengthSq() <= 0.000001) Normal.copy(Desired).normalize().multiplyScalar(-1);
-  else Normal.normalize();
-
-  if (!IsStructure(First.Entry)) return First;
-
-  const DesiredLength = Desired.length();
-  Scratch.Candidate.copy(Desired);
-  const DesiredIntoSurface = Scratch.Candidate.dot(Normal);
-  if (DesiredIntoSurface < 0) Scratch.Candidate.addScaledVector(Normal, -DesiredIntoSurface);
-  const IntentTangentRatio = DesiredLength > 0.000001 ? Scratch.Candidate.length() / DesiredLength : 0;
-  if (IntentTangentRatio < 0.14) return First;
-
-  Scratch.Remaining.copy(Desired).sub(First.Resolved);
-  Scratch.Tangent.copy(Scratch.Remaining);
-  const IntoSurface = Scratch.Tangent.dot(Normal);
-  if (IntoSurface < 0) Scratch.Tangent.addScaledVector(Normal, -IntoSurface);
-
-  const TangentRatio = DesiredLength > 0.000001 ? Scratch.Tangent.length() / DesiredLength : 0;
-  if (TangentRatio < 0.10 || Scratch.Tangent.lengthSq() <= 0.000001) return First;
-
-  const WallFriction = THREE.MathUtils.lerp(0.72, 0.94, THREE.MathUtils.clamp(IntentTangentRatio, 0, 1));
-  Scratch.Tangent.multiplyScalar(WallFriction);
-
-  const TangentResult = Collision.ResolveHorizontalMove(
-    First.Position,
-    Scratch.Tangent,
-    Radius,
-    Entries,
-    {
-      Skin,
-      MaxIterations: 1,
-      MaxSweepSteps,
-      BinarySteps,
-      AllowSlide: false,
-      Filter: MovementFilter
-    }
-  );
-
-  const FinalPosition = TangentResult.Position.clone();
-  const Resolved = FinalPosition.clone().sub(Start);
-  Resolved.y = 0;
-
-  return {
-    Position: FinalPosition,
-    Resolved,
-    Hit: true,
-    Entry: TangentResult.Entry || First.Entry,
-    Normal,
-    Sliding: TangentResult.Resolved.lengthSq() > 0.000001,
-    SlideVector: TangentResult.Resolved.clone()
-  };
 }
 
 function ContactState() {
@@ -446,8 +395,9 @@ function RecordContact(Result, Desired) {
 }
 
 function SettleHeight(Camera, Delta, Entries) {
+  void Entries;
   const CurrentFeetY = Camera.position.y - EyeHeight;
-  let TargetFloor = SurfaceHeight(Camera.position, Entries, CurrentFeetY);
+  let TargetFloor = SurfaceHeight(Camera.position, null, CurrentFeetY);
 
   const FootSupport = window.__STORE_FOOT_SUPPORT__ || null;
   const SupportAge = performance.now() - Number(FootSupport?.UpdatedAt ?? -Infinity);
@@ -536,4 +486,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.27.9-PHYSICS";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.0-RAY";
