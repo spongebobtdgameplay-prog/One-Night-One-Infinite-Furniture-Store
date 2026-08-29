@@ -9,20 +9,21 @@ if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) {
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitSource = "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0";
+const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
+const IndustrialShelfSource = "https://github.com/danielrosehill/storage-box-3d-models";
 const Loader = new GLTFLoader();
 const Templates = new Map();
 const RunningChunks = new WeakSet();
-const ShelfModels = new WeakSet();
 const BreakerTasks = new WeakSet();
 const LightChunks = new WeakSet();
 const DecoratedChunks = new WeakSet();
 
 const AssetFiles = Object.freeze({
-  ShelfLargeDecorated: "shelf_B_large_decorated.gltf",
-  ShelfLargeOpen: "shelf_A_big.gltf",
-  ShelfSmallDecorated: "shelf_B_small_decorated.gltf",
+  ShelfLargeDecorated: IndustrialShelfUrl,
+  ShelfLargeOpen: IndustrialShelfUrl,
+  ShelfSmallDecorated: IndustrialShelfUrl,
   CabinetMedium: "cabinet_medium.gltf",
-  CabinetSmallDecorated: "cabinet_small_decorated.gltf",
+  CabinetSmallDecorated: IndustrialShelfUrl,
   ArmchairPillows: "armchair_pillows.gltf"
 });
 
@@ -70,12 +71,17 @@ async function LoadTemplate(Key) {
   const File = AssetFiles[Key];
   if (!File) throw new Error(`Unknown retail asset ${Key}`);
   if (!Templates.has(Key)) {
-    Templates.set(Key, Loader.loadAsync(`${KayKitBase}${File}`).then(Gltf => {
+    const External = /^https?:\/\//i.test(File);
+    const Url = External ? File : `${KayKitBase}${File}`;
+    const Source = External ? IndustrialShelfSource : KayKitSource;
+    const License = External ? "CC-BY-4.0" : "CC0-1.0";
+
+    Templates.set(Key, Loader.loadAsync(Url).then(Gltf => {
       const Root = Gltf.scene;
-      Root.name = `KayKitRetailTemplate-${Key}`;
+      Root.name = `RetailTemplate-${Key}`;
       CloneMaterials(Root);
-      Root.userData.Source = KayKitSource;
-      Root.userData.License = "CC0-1.0";
+      Root.userData.Source = Source;
+      Root.userData.License = License;
       return Root;
     }).catch(Error => {
       Templates.delete(Key);
@@ -91,8 +97,8 @@ async function CloneAsset(Key) {
   CloneMaterials(Clone);
   Clone.name = `RetailImported-${Key}`;
   Clone.userData.RetailImportedR79 = true;
-  Clone.userData.Source = KayKitSource;
-  Clone.userData.License = "CC0-1.0";
+  Clone.userData.Source = Template.userData.Source || KayKitSource;
+  Clone.userData.License = Template.userData.License || "CC0-1.0";
   return Clone;
 }
 
@@ -173,41 +179,6 @@ function TightenExistingCollision(Chunk, Model) {
     new THREE.Vector3(Center.x + HalfX, Bounds.max.y, Center.z + HalfZ)
   );
   ApplySolidBounds(Chunk, NearestCollisionEntry(Chunk, Model.name, Center), TightBounds, Model.name);
-}
-
-async function ReplaceShelfModel(Chunk, Model, Key, TargetHeight, MaximumWidth, MaximumDepth) {
-  if (!Model?.parent || ShelfModels.has(Model)) return;
-  ShelfModels.add(Model);
-  try {
-    const OriginalBounds = BoundsOf(Model);
-    if (OriginalBounds.isEmpty()) return;
-    const OriginalCenter = OriginalBounds.getCenter(new THREE.Vector3());
-    const RotationY = Model.rotation.y;
-    const Imported = await CloneAsset(Key);
-    if (!NormalizeLocalAsset(Imported, TargetHeight, MaximumWidth, MaximumDepth)) return;
-
-    while (Model.children.length) Model.remove(Model.children[0]);
-    Model.scale.set(1, 1, 1);
-    Model.position.set(OriginalCenter.x, 0, OriginalCenter.z);
-    Model.rotation.set(0, RotationY, 0);
-    Imported.position.set(0, 0, 0);
-    Model.add(Imported);
-    Model.userData.RetailImportedShelfR79 = true;
-    Model.userData.RetailSource = KayKitSource;
-    Model.updateWorldMatrix(true, true);
-    TightenExistingCollision(Chunk, Model);
-  } catch (Error) {
-    ShelfModels.delete(Model);
-    console.warn("Imported retail shelf unavailable", Error);
-  }
-}
-
-async function ReplaceShelves(Chunk) {
-  for (const Model of Chunk.Models || []) {
-    if (!Model?.parent) continue;
-    if (Model.name === "Shelf_Large") await ReplaceShelfModel(Chunk, Model, "ShelfLargeDecorated", 2.12, 1.82, 0.72);
-    else if (Model.name === "Bookshelf") await ReplaceShelfModel(Chunk, Model, "ShelfLargeOpen", 2.02, 1.58, 0.62);
-  }
 }
 
 function MakeBreakerIndicator() {
@@ -412,7 +383,6 @@ async function ProcessChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || RunningChunks.has(Chunk)) return;
   RunningChunks.add(Chunk);
   try {
-    await ReplaceShelves(Chunk);
     await ReplaceBreakers(Chunk);
     ConfigureLightVariation(Chunk);
     const PlannedRetailReady = await AddRealShowroomPieces(Chunk);
