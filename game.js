@@ -47,6 +47,8 @@ const PreparedChunks = new Map();
 const PreparingChunks = new Map();
 const Tasks = new Map();
 const PlayerApi = window.__STORE_PLAYER__ || null;
+const ProceduralPhysics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
+if (!ProceduralPhysics?.MoveCharacter) throw new Error("Procedural physics utility must load before the store game.");
 
 window.__STORE_COLLISION_BOXES__ = CollisionBoxes;
 
@@ -1018,32 +1020,6 @@ function TryInteract() {
   if (Camera.position.distanceTo(TaskWorldPosition(CurrentTask)) <= TASK_DISTANCE) CompleteTask(CurrentTask);
 }
 
-function IsBlocked(Position) {
-  const Radius = PlayerApi?.GetPlayerRadius?.() || 0.43;
-  for (const Entry of CollisionBoxes) {
-    if (typeof Entry?.TestPlayerCollision === "function") {
-      if (Entry.TestPlayerCollision(Position, Radius)) return true;
-      continue;
-    }
-    const Bounds = Entry.Box || Entry;
-    if (Position.x + Radius > Bounds.min.x && Position.x - Radius < Bounds.max.x && Position.z + Radius > Bounds.min.z && Position.z - Radius < Bounds.max.z) return true;
-  }
-  return false;
-}
-
-function MoveAxis(ForwardDistance, RightDistance) {
-  if (ForwardDistance !== 0) {
-    const Before = Camera.position.clone();
-    Controls.moveForward(ForwardDistance);
-    if (IsBlocked(Camera.position)) Camera.position.copy(Before);
-  }
-  if (RightDistance !== 0) {
-    const Before = Camera.position.clone();
-    Controls.moveRight(RightDistance);
-    if (IsBlocked(Camera.position)) Camera.position.copy(Before);
-  }
-}
-
 function UpdateMovement(Delta) {
   if (!Controls.isLocked) return;
   let Forward = 0;
@@ -1052,18 +1028,23 @@ function UpdateMovement(Delta) {
   if (KeyState.has("KeyS")) Forward -= 1;
   if (KeyState.has("KeyD")) Right += 1;
   if (KeyState.has("KeyA")) Right -= 1;
+
   const Moving = Forward !== 0 || Right !== 0;
   const WantsSprint = KeyState.has("ShiftLeft") || KeyState.has("ShiftRight");
   const Speed = PlayerApi?.GetMovementSpeed?.(WantsSprint, Moving) ?? (WantsSprint && Moving ? 5.6 : 3.55);
   const Length = Math.hypot(Forward, Right) || 1;
   Forward /= Length;
   Right /= Length;
-  const Distance = Speed * Delta;
-  const StepCount = Math.max(1, Math.ceil(Distance / 0.18));
-  const ForwardStep = Forward * Distance / StepCount;
-  const RightStep = Right * Distance / StepCount;
-  for (let Step = 0; Step < StepCount; Step += 1) MoveAxis(ForwardStep, RightStep);
-  Camera.position.y = PlayerEyeHeight;
+
+  ProceduralPhysics.MoveCharacter(
+    Camera,
+    Forward,
+    Right,
+    Moving ? Speed * Delta : 0,
+    Delta,
+    CollisionBoxes,
+    PlayerApi?.GetPlayerRadius?.() || 0.255
+  );
 }
 
 function ShowError(Message) {
@@ -1137,8 +1118,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.13.2";
-window.__STORE_VERSION__ = "0.13.2";
+window.__STORE_GAME_BUILD__ = "V0.27.4";
+window.__STORE_VERSION__ = "0.27.4";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1158,6 +1139,6 @@ window.__STORE_GAME__ = {
   ResetTaskProgress,
   SetWorldSeed,
   Placement: PlacementApi,
-  Version: "0.13.2"
+  Version: "0.27.4"
 };
 Animate();
