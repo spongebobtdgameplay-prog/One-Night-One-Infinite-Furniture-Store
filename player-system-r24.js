@@ -36,6 +36,7 @@ const ARM_WALL_GAP = 0.035;
 const PLAYER_RADIUS = 0.255;
 const PLAYER_EYE_HEIGHT = 1.68;
 const TURN_RESPONSIVENESS = 13;
+const FOOT_SOLE_SKIN = 0.016;
 
 const State = {
   Scene: null,
@@ -536,7 +537,12 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     Math.max(State.TempLegTarget.y + 0.55, (State.Camera?.position?.y || 1.68) + 0.18)
   ) ?? 0;
 
-  const DesiredGroundOffset = THREE.MathUtils.clamp(GroundHeight - RootFloor, -0.18, 0.18);
+  const RaisedSurfaceSkin = GroundHeight > RootFloor + 0.008 ? FOOT_SOLE_SKIN : 0;
+  const DesiredGroundOffset = THREE.MathUtils.clamp(
+    GroundHeight - RootFloor + RaisedSurfaceSkin,
+    -0.18,
+    0.18
+  );
   const GroundAlpha = ExpAlpha(Delta, Active ? 25 : 18);
 
   if (IsLeft) {
@@ -1022,4 +1028,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.27.9-PHYSICS";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.28.0-PHYSICS";
