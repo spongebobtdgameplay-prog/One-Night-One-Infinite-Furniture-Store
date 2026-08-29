@@ -12,6 +12,7 @@ const StockableNames = new Set([
   "Shelf_Large",
   "Bookshelf",
   "RetailLivingShelfR79",
+  "RetailBedroomCabinetR79",
   "RetailStorageShelfR79",
   "RetailDisplayCabinetR79",
   "RetailStorageCabinetR79"
@@ -179,4 +180,4 @@ const Interval = setInterval(Discover, 1200);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.28.1";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.30.0";
