@@ -310,32 +310,15 @@ function RemoveExistingCoreEntry(Chunk, Model) {
 
 function InstallExactCollision(Chunk, Model) {
   const Signature = TargetSignature(Model);
-  Physics?.RegisterSolidContactObject?.(Model, Chunk.Id);
-  if (ProcessedCollision.get(Model) === Signature) return;
   RemoveExistingCoreEntry(Chunk, Model);
 
-  const Geometry = BuildExactFootprint(Model);
-  const FallbackPieces = Geometry.Triangles.length ? [] : BuildOrientedFallback(Model);
-  if (!Geometry.Triangles.length && !FallbackPieces.length) return;
-  const WorldBox = Geometry.WorldBox.clone();
-  const Entry = {
-    Box: WorldBox,
-    OriginalBox: WorldBox.clone(),
-    OriginalLegacyBox: WorldBox.clone(),
-    ChunkId: Chunk.Id,
-    Type: `${String(Model.name || "Furniture")}ExactCollisionR87`,
-    Active: Boolean(Chunk.Active),
-    CollisionObject: Model,
-    CoreFixR87: true,
-    CoreFixR86: true,
-    PreciseGeometry: true,
-    LegacyCollisionDisabled: true,
-    TestPlayerCollision(Position, Radius = 0.285) {
-      return CircleHitsExact(Position, Radius, Geometry, FallbackPieces);
-    }
-  };
-  Chunk.CollisionEntries.push(Entry);
-  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) Game.CollisionBoxes.push(Entry);
+  Model.userData.RayCollisionSolidR35 = true;
+  Model.userData.LegacyMovementCollisionDisabledR35 = true;
+  Model.traverse(Object => {
+    if (!Object?.isMesh) return;
+    Object.userData.RayCollisionSolidR35 = true;
+  });
+
   ProcessedCollision.set(Model, Signature);
 }
 
@@ -488,4 +471,4 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.30.0-R92";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.0-RAY";
