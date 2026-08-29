@@ -93,8 +93,6 @@ function PointSeparation(Point, Radius, Bounds, Target) {
   const Distances = [
     [Point.x - MinX, -1, 0, 0],
     [MaxX - Point.x, 1, 0, 0],
-    [Point.y - MinY, 0, -1, 0],
-    [MaxY - Point.y, 0, 1, 0],
     [Point.z - MinZ, 0, 0, -1],
     [MaxZ - Point.z, 0, 0, 1]
   ];
