@@ -13,7 +13,16 @@ const SERVER_WAKE_TIMEOUT_MS = 45_000;
 const COMPATIBILITY_CACHE_MS = 60_000;
 const STORE_TIME_RATE = 14;
 const DAY_SECONDS = 24 * 60 * 60;
-const SINGLEPLAYER_WORLD_SEED = 1000;
+
+function GenerateWorldSeed() {
+  const Values = new Uint32Array(1);
+  crypto.getRandomValues(Values);
+  return (Values[0] >>> 0) || 1;
+}
+
+let SinglePlayerWorldSeed = GenerateWorldSeed();
+window.__STORE_WORLD_SEED__ = SinglePlayerWorldSeed;
+window.__STORE_WORLD_SEED_SOURCE__ = "SOLO_RUNTIME";
 
 let SessionToken = localStorage.getItem(TOKEN_KEY) || "";
 let DesiredRoomCode = localStorage.getItem(ROOM_KEY) || "";
@@ -740,6 +749,7 @@ async function SyncRoomSeed(Room = CurrentRoom) {
   if (!Seed) return { ok: false, error: "ROOM_SEED_REQUIRED" };
 
   window.__STORE_WORLD_SEED__ = Seed;
+  window.__STORE_WORLD_SEED_SOURCE__ = "MULTIPLAYER_SERVER_ROOM";
   if (!GameAttached || !Game?.SetWorldSeed) return { ok: true, seed: Seed };
   if ((Number(Game.WorldSeed) >>> 0) === Seed) return { ok: true, seed: Seed };
 
@@ -756,11 +766,17 @@ async function SyncRoomSeed(Room = CurrentRoom) {
   return RoomSeedFlight;
 }
 
-function RestoreSinglePlayerSeed() {
-  window.__STORE_WORLD_SEED__ = SINGLEPLAYER_WORLD_SEED;
+function RestoreSinglePlayerSeed(Fresh = false) {
+  if (Fresh || !Number.isFinite(SinglePlayerWorldSeed) || SinglePlayerWorldSeed <= 0) {
+    SinglePlayerWorldSeed = GenerateWorldSeed();
+  }
+
+  window.__STORE_WORLD_SEED__ = SinglePlayerWorldSeed;
+  window.__STORE_WORLD_SEED_SOURCE__ = "SOLO_RUNTIME";
+
   if (!GameAttached || !Game?.SetWorldSeed) return;
-  if ((Number(Game.WorldSeed) >>> 0) === SINGLEPLAYER_WORLD_SEED) return;
-  Promise.resolve(Game.SetWorldSeed(SINGLEPLAYER_WORLD_SEED)).catch(() => {});
+  if ((Number(Game.WorldSeed) >>> 0) === SinglePlayerWorldSeed) return;
+  Promise.resolve(Game.SetWorldSeed(SinglePlayerWorldSeed)).catch(() => {});
 }
 
 function ClearRoomState() {
@@ -781,7 +797,7 @@ function ClearRoomState() {
   RemoveAllRemotePlayers();
   RenderLobby();
   Dispatch("store-room-change", GetState());
-  RestoreSinglePlayerSeed();
+  RestoreSinglePlayerSeed(HadRoom);
 }
 
 async function RefreshAccount() {
