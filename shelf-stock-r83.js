@@ -1,3 +1,4 @@
+import * as THREE from "three";
 import {
   CreateOnlineSurfaceDecoration,
   OnlineDecorationKeys,
@@ -16,8 +17,16 @@ const StockableNames = new Set([
   "RetailStorageCabinetR79"
 ]);
 const Processing = new WeakSet();
+const ShelfRaycaster = new THREE.Raycaster();
+const ShelfRayOrigin = new THREE.Vector3();
+const ShelfRayDirection = new THREE.Vector3(0, -1, 0);
+const ShelfBox = new THREE.Box3();
+const DecorationBox = new THREE.Box3();
+const ShelfSize = new THREE.Vector3();
+const DecorationCenter = new THREE.Vector3();
 
 function StockTargets(Chunk) {
+  if (String(Chunk?.Layout?.Theme || "").toUpperCase() === "BATHROOMS") return [];
   const Targets = [];
   const Add = Object => {
     if (!Object?.parent || !StockableNames.has(Object.name) || Targets.includes(Object)) return;
@@ -62,6 +71,58 @@ async function Yield() {
   });
 }
 
+function SnapDecorationToShelf(Target, Decoration, Plan) {
+  if (!Target?.parent || !Decoration?.isObject3D) return false;
+
+  Target.updateWorldMatrix(true, true);
+  Decoration.updateWorldMatrix(true, true);
+
+  ShelfBox.setFromObject(Target);
+  DecorationBox.setFromObject(Decoration);
+  if (ShelfBox.isEmpty() || DecorationBox.isEmpty()) return false;
+
+  ShelfBox.getSize(ShelfSize);
+  DecorationBox.getCenter(DecorationCenter);
+
+  const HeightRatio = THREE.MathUtils.clamp(Number(Plan?.HeightRatio) || 0.5, 0.05, 1.0);
+  const DesiredY = ShelfBox.min.y + ShelfSize.y * HeightRatio;
+
+  ShelfRayOrigin.set(
+    DecorationCenter.x,
+    ShelfBox.max.y + 0.08,
+    DecorationCenter.z
+  );
+
+  ShelfRaycaster.set(ShelfRayOrigin, ShelfRayDirection);
+  ShelfRaycaster.near = 0;
+  ShelfRaycaster.far = ShelfSize.y + 0.20;
+
+  const Hits = ShelfRaycaster.intersectObject(Target, true);
+  let BestHit = null;
+  let BestDistance = Infinity;
+
+  for (const Hit of Hits) {
+    if (!Hit?.point) continue;
+    if (Hit.point.y < ShelfBox.min.y - 0.01 || Hit.point.y > ShelfBox.max.y + 0.01) continue;
+    const Distance = Math.abs(Hit.point.y - DesiredY);
+    if (Distance >= BestDistance) continue;
+    BestDistance = Distance;
+    BestHit = Hit;
+  }
+
+  if (!BestHit) return false;
+
+  DecorationBox.setFromObject(Decoration);
+  const Lift = BestHit.point.y + 0.004 - DecorationBox.min.y;
+  if (!Number.isFinite(Lift)) return false;
+
+  Decoration.position.y += Lift;
+  Decoration.updateWorldMatrix(true, true);
+  Decoration.userData.ShelfSurfaceSnappedR91 = true;
+  Decoration.userData.ShelfSurfaceY = BestHit.point.y;
+  return true;
+}
+
 export async function ProcessChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Processing.has(Chunk)) return;
   if (Chunk.Group.userData?.PresentationReadyR83) return;
@@ -85,6 +146,7 @@ export async function ProcessChunk(Chunk) {
           Decoration.userData.ChunkId = Chunk.Id;
           Decoration.userData.DecorationNoCollision = false;
           Decoration.userData.ShelfStockR83 = true;
+          SnapDecorationToShelf(Target, Decoration, Plan);
           Chunk.Group.add(Decoration);
           DecorationIndex += 1;
         } catch (Error) {
@@ -117,4 +179,4 @@ const Interval = setInterval(Discover, 1200);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.27.0";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.28.1";
