@@ -202,6 +202,7 @@ function EnsureHaze() {
   HazeGroup.name = "StreamDistanceHazeR101";
   HazeGroup.userData.StreamAmbientR101 = true;
   HazeGroup.userData.DecorationNoCollision = true;
+  HazeGroup.userData.IgnoreRayCollisionR35 = true;
 
   const Layers = [
     { Z: 0.0, Opacity: 0.58, Scale: 1.00 },
