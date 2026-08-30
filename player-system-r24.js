@@ -151,6 +151,10 @@ const State = {
   },
   LedgeTargetLeft: new THREE.Vector3(),
   LedgeTargetRight: new THREE.Vector3(),
+  SafeFootLeft: new THREE.Vector3(),
+  SafeFootRight: new THREE.Vector3(),
+  SafeFootLeftReady: false,
+  SafeFootRightReady: false,
   SavedRenderPivotPosition: new THREE.Vector3(),
   ContactReaction: 0,
   ContactFront: 0,
@@ -1176,6 +1180,13 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
     );
   }
 
+  ProtectFootFromCurbs(
+    Side,
+    SurfaceStep,
+    State.TempLegTarget,
+    SupportHeight
+  );
+
   const StoredTarget = IsLeft
     ? State.LedgeTargetLeft
     : State.LedgeTargetRight;
@@ -1434,6 +1445,50 @@ function ApplySplitStancePelvis(LeftSupport, RightSupport, Delta) {
   return SplitStance;
 }
 
+function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0) {
+  if (!Target?.isVector3 || !SurfaceStep) return Target;
+
+  const IsLeft = Side < 0;
+  const Safe = IsLeft ? State.SafeFootLeft : State.SafeFootRight;
+  const ReadyKey = IsLeft ? "SafeFootLeftReady" : "SafeFootRightReady";
+
+  if (!State[ReadyKey] || Safe.distanceToSquared(Target) > 0.72 * 0.72) {
+    const Candidate = Target.clone();
+    if (!SurfaceStep.IsFootCurbSafe?.(Candidate, LEDGE_FOOT_RADIUS, 0.055)) {
+      if (Number(GroundHeight) > 0.008) {
+        SurfaceStep.ResolveRaisedFootLedge?.(
+          Candidate,
+          LEDGE_FOOT_RADIUS,
+          GroundHeight
+        );
+      } else {
+        SurfaceStep.ResolveLowerFootLedge?.(
+          Candidate,
+          LEDGE_FOOT_RADIUS,
+          GroundHeight
+        );
+      }
+    }
+    Safe.copy(Candidate);
+    State[ReadyKey] = true;
+  }
+
+  SurfaceStep.ResolveFootRollback?.(
+    Target,
+    Safe,
+    LEDGE_FOOT_RADIUS,
+    0.055
+  );
+
+  if (SurfaceStep.IsFootCurbSafe?.(Target, LEDGE_FOOT_RADIUS, 0.055) !== false) {
+    Safe.copy(Target);
+  } else {
+    Target.copy(Safe);
+  }
+
+  return Target;
+}
+
 function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
   const IsLeft = Side < 0;
   const Upper = IsLeft ? "UpperLegL" : "UpperLegR";
@@ -1534,6 +1589,13 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     );
   }
 
+  ProtectFootFromCurbs(
+    Side,
+    SurfaceStep,
+    State.TempLegTarget,
+    CenterGroundHeight
+  );
+
   const StoredTarget = IsLeft ? State.LedgeTargetLeft : State.LedgeTargetRight;
   StoredTarget.copy(State.TempLegTarget);
 
@@ -1614,6 +1676,19 @@ function ApplyCarpetStepOverlay(Delta) {
       SurfaceStep,
       SplitStance,
       Delta
+    );
+
+    ProtectFootFromCurbs(
+      LeftSupport.Side,
+      SurfaceStep,
+      LeftSupport.Target,
+      LeftSupport.CenterGroundHeight
+    );
+    ProtectFootFromCurbs(
+      RightSupport.Side,
+      SurfaceStep,
+      RightSupport.Target,
+      RightSupport.CenterGroundHeight
     );
 
     // Re-solve after pelvis compensation and world-space stance locking.
@@ -2290,4 +2365,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.14-LATCHED-EDGE";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.19-FOOT-ROLLBACK";
