@@ -830,7 +830,7 @@ async function OptimizeChunkStaticRender(Chunk) {
     Batch.name = `StaticFurnitureBatchR104-${Chunk.Index}-${BatchIndex++}`;
     Batch.userData.ChunkId = Chunk.Id;
     Batch.userData.RenderBatchR104 = true;
-    Batch.userData.VisualContactProxyR104 = true;
+    Batch.userData.DecorationNoCollision = true;
     Batch.castShadow = false;
     Batch.receiveShadow = false;
     Batch.frustumCulled = true;
