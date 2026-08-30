@@ -293,7 +293,18 @@ function SettleHeight(Camera, Delta, Entries) {
     SupportAge < 140 &&
     Number.isFinite(FootSupport.Height)
   ) {
-    TargetFloor = THREE.MathUtils.clamp(Number(FootSupport.Height), 0, MaxStepHeight);
+    const LeftHeight = Number(FootSupport.LeftHeight);
+    const RightHeight = Number(FootSupport.RightHeight);
+    const SplitStance = Number.isFinite(LeftHeight) &&
+      Number.isFinite(RightHeight) &&
+      Math.abs(LeftHeight - RightHeight) > 0.022;
+
+    // A split stance at an edge must not lift/drop the physical root by
+    // averaging one raised foot with one floor foot. Body-center support owns Y;
+    // each leg IK handles its own level independently.
+    if (!SplitStance) {
+      TargetFloor = THREE.MathUtils.clamp(Number(FootSupport.Height), 0, MaxStepHeight);
+    }
   }
 
   const Speed = TargetFloor > AuthoritativeFloorY ? StepUpSpeed : StepDownSpeed;
@@ -375,4 +386,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.2-HEIGHT";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.10-SPLIT-STANCE";
