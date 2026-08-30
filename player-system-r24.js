@@ -324,7 +324,7 @@ function SetMode(ThirdPerson, RequestPointerLock = false) {
     if (State.Pivot) State.Pivot.rotation.y = CameraFacingYaw();
     const Controls = State.Controls || window.__STORE_POINTER_CONTROLS__ || null;
     if (RequestPointerLock && Controls && !document.pointerLockElement && document.hasFocus()) {
-      try { OriginalLock.call(Controls); } catch {}
+      Controls.lock?.();
     }
   }
 
