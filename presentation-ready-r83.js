@@ -5,6 +5,8 @@ const Finalizing = new WeakSet();
 const Stability = new WeakMap();
 const PendingFinalization = new WeakMap();
 const PolishPending = new WeakSet();
+const FinalizationQueue = [];
+let FinalizationRunning = false;
 let DiscoverFlight = null;
 const FurnitureNames = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
@@ -195,6 +197,7 @@ async function RunContentPasses(Chunk) {
 
   RemoveTerminalBeacons(Chunk);
   CoreFix?.ProcessChunk?.(Chunk, true);
+  window.__STORE_RENDER_DISTANCE_LIGHTING__?.ProcessChunk?.(Chunk);
 }
 
 async function RunPolishPasses(Chunk) {
@@ -289,6 +292,40 @@ async function FinalizeChunkNow(Chunk) {
   }
 }
 
+function PumpFinalizationQueue() {
+  if (FinalizationRunning) return;
+
+  while (FinalizationQueue.length) {
+    FinalizationQueue.sort((A, B) => DistanceFromPlayer(A.Chunk) - DistanceFromPlayer(B.Chunk));
+    const Entry = FinalizationQueue.shift();
+    const Chunk = Entry?.Chunk;
+
+    if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) {
+      PendingFinalization.delete(Chunk);
+      Entry?.Resolve?.(false);
+      continue;
+    }
+
+    FinalizationRunning = true;
+
+    Promise.resolve()
+      .then(() => IdleYield())
+      .then(() => FinalizeChunkNow(Chunk))
+      .then(Result => Entry.Resolve(Boolean(Result)))
+      .catch(Error => {
+        console.warn(`Chunk ${Chunk.Index} finalization failed`, Error);
+        Entry.Resolve(false);
+      })
+      .finally(() => {
+        PendingFinalization.delete(Chunk);
+        FinalizationRunning = false;
+        queueMicrotask(PumpFinalizationQueue);
+      });
+
+    return;
+  }
+}
+
 export function FinalizeChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) {
     return Promise.resolve(false);
@@ -305,11 +342,17 @@ export function FinalizeChunk(Chunk) {
   const Existing = PendingFinalization.get(Chunk);
   if (Existing) return Existing;
 
-  const Job = Promise.resolve()
-    .then(() => FinalizeChunkNow(Chunk))
-    .finally(() => PendingFinalization.delete(Chunk));
+  let ResolveJob = null;
+  const Job = new Promise(Resolve => {
+    ResolveJob = Resolve;
+  });
 
   PendingFinalization.set(Chunk, Job);
+  FinalizationQueue.push({
+    Chunk,
+    Resolve: ResolveJob
+  });
+  PumpFinalizationQueue();
   return Job;
 }
 
@@ -366,7 +409,7 @@ function Discover() {
 }
 
 Discover();
-const Interval = setInterval(Discover, 5000);
+const Interval = setInterval(Discover, 1800);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = {
@@ -375,4 +418,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.18-STRICT-CONCURRENT";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.19-PRIORITY-IDLE";
