@@ -443,7 +443,12 @@ function ResolveFootCurbConstraint(Target, Reference = null, Radius = 0.145, Cle
 
     if (Candidate) Target[Candidate.Axis] = Candidate.Value;
 
-    if (!IsFootCurbSafe(Target, SafeRadius, SafeClearance)) {
+    if (!FootSafeForBounds(
+      Target,
+      Bounds,
+      SafeRadius,
+      SafeClearance
+    )) {
       const MinX = Bounds.min.x + Gap;
       const MaxX = Bounds.max.x - Gap;
       const MinZ = Bounds.min.z + Gap;
