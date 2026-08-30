@@ -963,7 +963,7 @@ function PrepareChunk(Index) {
   return PromiseValue;
 }
 
-function WarmMaterialTextures(Material) {
+function CollectMaterialTextures(Material, Output) {
   if (!Material) return;
 
   for (const Key of [
@@ -981,27 +981,60 @@ function WarmMaterialTextures(Material) {
     const Texture = Material[Key];
     if (!Texture?.isTexture || StreamWarmTextures.has(Texture)) continue;
     StreamWarmTextures.add(Texture);
-
-    try {
-      Renderer.initTexture?.(Texture);
-    } catch {}
+    Output.push(Texture);
   }
 }
 
-function WaitForGpuWarmBudget() {
+function WaitForGpuWarmBudget(MinimumMs = 7) {
   return new Promise(Resolve => {
-    if ("requestIdleCallback" in window) {
+    if (!("requestIdleCallback" in window)) {
+      requestAnimationFrame(() => Resolve());
+      return;
+    }
+
+    const TryIdle = () => {
       requestIdleCallback(Deadline => {
-        if (!Deadline.didTimeout && Deadline.timeRemaining() < 7) {
-          requestAnimationFrame(() => Resolve());
+        if (Deadline.didTimeout || Deadline.timeRemaining() >= MinimumMs) {
+          Resolve();
           return;
         }
-        Resolve();
+        TryIdle();
       }, { timeout: 900 });
-    } else {
-      requestAnimationFrame(() => Resolve());
+    };
+
+    TryIdle();
+  });
+}
+
+async function WarmChunkTextures(Chunk) {
+  const Textures = [];
+
+  Chunk.Group.traverse(Object => {
+    if (!Object?.isMesh || !Object.material) return;
+    const Materials = Array.isArray(Object.material)
+      ? Object.material
+      : [Object.material];
+
+    for (const Material of Materials) {
+      CollectMaterialTextures(Material, Textures);
     }
   });
+
+  // Upload only a couple of textures per idle slice. GPU texture upload can be
+  // synchronous on some browsers/drivers and was still capable of a frame hitch.
+  for (let Index = 0; Index < Textures.length; Index += 2) {
+    await WaitForGpuWarmBudget(7);
+
+    for (
+      let BatchIndex = Index;
+      BatchIndex < Math.min(Index + 2, Textures.length);
+      BatchIndex += 1
+    ) {
+      try {
+        Renderer.initTexture?.(Textures[BatchIndex]);
+      } catch {}
+    }
+  }
 }
 
 async function WarmChunkGpu(Chunk) {
@@ -1019,15 +1052,9 @@ async function WarmChunkGpu(Chunk) {
     await WaitForGpuWarmBudget();
     if (Chunk.Cancelled || !Chunk.Group) return false;
 
-    Chunk.Group.traverse(Object => {
-      if (!Object?.isMesh || !Object.material) return;
-      const Materials = Array.isArray(Object.material)
-        ? Object.material
-        : [Object.material];
-      for (const Material of Materials) WarmMaterialTextures(Material);
-    });
+    await WarmChunkTextures(Chunk);
 
-    await new Promise(Resolve => requestAnimationFrame(Resolve));
+    await WaitForGpuWarmBudget(8);
     if (Chunk.Cancelled || !Chunk.Group) return false;
 
     const PreviousParent = Chunk.Group.parent;
