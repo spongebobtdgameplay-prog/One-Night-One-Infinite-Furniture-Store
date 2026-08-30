@@ -167,9 +167,8 @@ function IsStrictTriangleMesh(Object) {
     if (IsWalkableDecoration(Current)) return false;
 
     if (
-      Data.RayCollisionSolidR35 === true ||
       Data.PrecisePlayerStructure === true ||
-      /^(WallLeft|WallRight|ShowroomPartition|RearStoreWallR80|RearStoreClosureR80|StoreBoundary|Door)/i.test(CurrentName)
+      /Wall|Partition|Boundary|RearStore|Door/i.test(CurrentName)
     ) {
       CollisionAuthorized = true;
     }
@@ -1241,4 +1240,4 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
 
 window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.11-RESOLVED-MOTION";
 
-window.__STORE_MOVEMENT_CONTACT_BUILD__ = "V0.35.27-COLLISION-WHITELIST";
+window.__STORE_MOVEMENT_CONTACT_BUILD__ = "V0.35.27-STRUCTURE-ONLY";
