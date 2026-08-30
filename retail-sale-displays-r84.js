@@ -46,6 +46,8 @@ function CloneMaterials(Root) {
     Object.material = Array.isArray(Object.material) ? Copies : Copies[0];
     Object.castShadow = false;
     Object.receiveShadow = false;
+    Object.frustumCulled = true;
+    Object.geometry?.computeBoundingSphere?.();
   });
 }
 function TextureHasImage(Texture) {
@@ -108,7 +110,7 @@ async function LoadTemplate(Key) {
 
             Root.traverse(Item => {
               if (!Item?.isMesh) return;
-              Item.frustumCulled = false;
+              Item.frustumCulled = true;
               Item.geometry?.computeVertexNormals?.();
               Item.geometry?.computeBoundingBox?.();
               Item.geometry?.computeBoundingSphere?.();
@@ -179,7 +181,7 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
     Object.userData.ForceSolidCollisionR30 = true;
     Object.traverse(Item => {
       if (!Item?.isMesh) return;
-      Item.frustumCulled = false;
+      Item.frustumCulled = true;
       Item.castShadow = false;
       Item.receiveShadow = false;
     });
