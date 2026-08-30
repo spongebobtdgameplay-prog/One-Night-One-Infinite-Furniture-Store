@@ -439,12 +439,8 @@ function AddDenseDepartmentSlots(Layout, Theme) {
     }
   } else if (Theme === "BATHROOMS") {
     Extra.push(
-      Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -8.55, -0.95, 0),
-      Slot("Density.Bathroom.Left.ToiletB", "Bathroom_Toilet", -11.10, 0.95, 0),
-      Slot("Density.Bathroom.Right.ToiletA", "Bathroom_Toilet", 8.55, 0.95, Math.PI),
-      Slot("Density.Bathroom.Right.ToiletB", "Bathroom_Toilet", 11.10, -0.95, Math.PI),
-      Slot("Density.Bathroom.Left.ToiletC", "Bathroom_Toilet", -7.05, 8.00, 0),
-      Slot("Density.Bathroom.Right.ToiletC", "Bathroom_Toilet", 7.05, -8.00, Math.PI)
+      Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -9.15, -1.10, 0),
+      Slot("Density.Bathroom.Right.ToiletA", "Bathroom_Toilet", 9.15, 1.10, Math.PI)
     );
   } else if (Theme === "WAREHOUSE" || Theme === "STORAGE") {
     let NumberIndex = 0;
