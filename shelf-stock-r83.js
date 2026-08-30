@@ -154,7 +154,9 @@ export async function ProcessChunk(Chunk) {
           console.warn("Shelf stock decoration unavailable", Error);
         }
       }
-      if (TargetIndex % 2 === 1) await Yield();
+      // Raycasting and decoration cloning for each stocked shelf is
+      // intentionally split across frames.
+      if (TargetIndex < Targets.length - 1) await Yield();
     }
     Chunk.Group.userData.ShelfStockR83 = true;
     Chunk.Group.userData.ShelfStockCountR83 = DecorationIndex;
@@ -180,4 +182,4 @@ function Discover() {
 Discover();
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.16-PIPELINE";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.16-BUDGET";
