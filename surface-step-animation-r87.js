@@ -595,6 +595,290 @@ function ResolveFootRollback(Target, PreviousSafe, Radius = 0.145, Clearance = 0
   };
 }
 
+function FootHullMetrics(Hull) {
+  const ForwardX = Number(Hull?.ForwardX) || 0;
+  const ForwardZ = Number(Hull?.ForwardZ) || 1;
+  const RightX = Number(Hull?.RightX) || 1;
+  const RightZ = Number(Hull?.RightZ) || 0;
+  const HalfLength = THREE.MathUtils.clamp(Number(Hull?.HalfLength) || 0.145, 0.10, 0.24);
+  const HalfWidth = THREE.MathUtils.clamp(Number(Hull?.HalfWidth) || 0.078, 0.05, 0.15);
+  const SoleOffset = THREE.MathUtils.clamp(Number(Hull?.SoleOffset) || 0.055, 0.025, 0.14);
+
+  return {
+    ExtentX:
+      Math.abs(ForwardX) * HalfLength +
+      Math.abs(RightX) * HalfWidth,
+    ExtentZ:
+      Math.abs(ForwardZ) * HalfLength +
+      Math.abs(RightZ) * HalfWidth,
+    SoleOffset
+  };
+}
+
+function FootHullSafeForBounds(Position, Bounds, Hull, Clearance) {
+  if (!FiniteBounds(Bounds)) return true;
+
+  const Metrics = FootHullMetrics(Hull);
+  const MinX = Position.x - Metrics.ExtentX;
+  const MaxX = Position.x + Metrics.ExtentX;
+  const MinZ = Position.z - Metrics.ExtentZ;
+  const MaxZ = Position.z + Metrics.ExtentZ;
+  const SoleBottom = Position.y - Metrics.SoleOffset;
+
+  if (SoleBottom >= Bounds.max.y + Clearance) return true;
+
+  const FullyOutside =
+    MaxX <= Bounds.min.x - Clearance ||
+    MinX >= Bounds.max.x + Clearance ||
+    MaxZ <= Bounds.min.z - Clearance ||
+    MinZ >= Bounds.max.z + Clearance;
+
+  if (FullyOutside) return true;
+
+  const FullySupportedOnTop =
+    SoleBottom >= Bounds.max.y - 0.003 &&
+    MinX >= Bounds.min.x + Clearance &&
+    MaxX <= Bounds.max.x - Clearance &&
+    MinZ >= Bounds.min.z + Clearance &&
+    MaxZ <= Bounds.max.z - Clearance;
+
+  return FullySupportedOnTop;
+}
+
+function IsFootHullSafe(Position, Hull, Clearance = 0.010) {
+  if (!Position?.isVector3) return true;
+
+  const SafeClearance = THREE.MathUtils.clamp(
+    Number(Clearance) || 0.010,
+    0.006,
+    0.030
+  );
+
+  for (const Record of Rugs.values()) {
+    if (!FootHullSafeForBounds(
+      Position,
+      Record.Bounds,
+      Hull,
+      SafeClearance
+    )) return false;
+  }
+
+  return true;
+}
+
+function ResolveFootHullConstraint(Target, Reference = null, Hull = null, Clearance = 0.010) {
+  if (!Target?.isVector3) return Target;
+
+  const SafeClearance = THREE.MathUtils.clamp(
+    Number(Clearance) || 0.010,
+    0.006,
+    0.030
+  );
+  const Metrics = FootHullMetrics(Hull);
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+    if (FootHullSafeForBounds(Target, Bounds, Hull, SafeClearance)) continue;
+
+    const SoleBottom = Target.y - Metrics.SoleOffset;
+    const CenterInside =
+      Target.x >= Bounds.min.x &&
+      Target.x <= Bounds.max.x &&
+      Target.z >= Bounds.min.z &&
+      Target.z <= Bounds.max.z;
+
+    const MinTopX = Bounds.min.x + Metrics.ExtentX + SafeClearance;
+    const MaxTopX = Bounds.max.x - Metrics.ExtentX - SafeClearance;
+    const MinTopZ = Bounds.min.z + Metrics.ExtentZ + SafeClearance;
+    const MaxTopZ = Bounds.max.z - Metrics.ExtentZ - SafeClearance;
+    const CanFitOnTop =
+      MinTopX <= MaxTopX &&
+      MinTopZ <= MaxTopZ;
+
+    if (
+      CenterInside &&
+      CanFitOnTop &&
+      SoleBottom >= Bounds.max.y - 0.003
+    ) {
+      Target.x = THREE.MathUtils.clamp(Target.x, MinTopX, MaxTopX);
+      Target.z = THREE.MathUtils.clamp(Target.z, MinTopZ, MaxTopZ);
+      Target.y = Math.max(
+        Target.y,
+        Bounds.max.y + Metrics.SoleOffset
+      );
+      continue;
+    }
+
+    const Outside = [
+      {
+        Axis: "x",
+        Value: Bounds.min.x - Metrics.ExtentX - SafeClearance,
+        Distance: Math.abs(Target.x - (Bounds.min.x - Metrics.ExtentX - SafeClearance)),
+        Side: "minX"
+      },
+      {
+        Axis: "x",
+        Value: Bounds.max.x + Metrics.ExtentX + SafeClearance,
+        Distance: Math.abs(Target.x - (Bounds.max.x + Metrics.ExtentX + SafeClearance)),
+        Side: "maxX"
+      },
+      {
+        Axis: "z",
+        Value: Bounds.min.z - Metrics.ExtentZ - SafeClearance,
+        Distance: Math.abs(Target.z - (Bounds.min.z - Metrics.ExtentZ - SafeClearance)),
+        Side: "minZ"
+      },
+      {
+        Axis: "z",
+        Value: Bounds.max.z + Metrics.ExtentZ + SafeClearance,
+        Distance: Math.abs(Target.z - (Bounds.max.z + Metrics.ExtentZ + SafeClearance)),
+        Side: "maxZ"
+      }
+    ];
+
+    let PreferredSide = "";
+
+    if (Reference?.isVector3) {
+      const ReferenceMetrics = Metrics;
+      if (Reference.x + ReferenceMetrics.ExtentX <= Bounds.min.x - SafeClearance) {
+        PreferredSide = "minX";
+      } else if (Reference.x - ReferenceMetrics.ExtentX >= Bounds.max.x + SafeClearance) {
+        PreferredSide = "maxX";
+      } else if (Reference.z + ReferenceMetrics.ExtentZ <= Bounds.min.z - SafeClearance) {
+        PreferredSide = "minZ";
+      } else if (Reference.z - ReferenceMetrics.ExtentZ >= Bounds.max.z + SafeClearance) {
+        PreferredSide = "maxZ";
+      }
+    }
+
+    let Candidate = PreferredSide
+      ? Outside.find(Item => Item.Side === PreferredSide)
+      : null;
+
+    if (!Candidate) {
+      Outside.sort((A, B) => A.Distance - B.Distance);
+      Candidate = Outside[0];
+    }
+
+    if (Candidate) Target[Candidate.Axis] = Candidate.Value;
+  }
+
+  return Target;
+}
+
+function ResolveFootHullSweep(Target, PreviousSafe, Hull = null, Clearance = 0.010) {
+  if (!Target?.isVector3) return { Safe: true, RolledBack: false };
+
+  const SafeClearance = THREE.MathUtils.clamp(
+    Number(Clearance) || 0.010,
+    0.006,
+    0.030
+  );
+
+  if (!PreviousSafe?.isVector3) {
+    ResolveFootHullConstraint(Target, null, Hull, SafeClearance);
+    return {
+      Safe: IsFootHullSafe(Target, Hull, SafeClearance),
+      RolledBack: true
+    };
+  }
+
+  if (!IsFootHullSafe(PreviousSafe, Hull, SafeClearance)) {
+    ResolveFootHullConstraint(
+      PreviousSafe,
+      Target,
+      Hull,
+      SafeClearance
+    );
+  }
+
+  const Distance = PreviousSafe.distanceTo(Target);
+
+  if (Distance > 1.10) {
+    ResolveFootHullConstraint(
+      Target,
+      PreviousSafe,
+      Hull,
+      SafeClearance
+    );
+    return {
+      Safe: IsFootHullSafe(Target, Hull, SafeClearance),
+      RolledBack: true
+    };
+  }
+
+  const Steps = THREE.MathUtils.clamp(
+    Math.ceil(Distance / 0.008),
+    4,
+    128
+  );
+
+  let LastSafeT = 0;
+
+  for (let Index = 1; Index <= Steps; Index += 1) {
+    const T = Index / Steps;
+    FootCurbProbe.lerpVectors(PreviousSafe, Target, T);
+
+    if (IsFootHullSafe(FootCurbProbe, Hull, SafeClearance)) {
+      LastSafeT = T;
+      continue;
+    }
+
+    let Low = LastSafeT;
+    let High = T;
+
+    for (let Iteration = 0; Iteration < 16; Iteration += 1) {
+      const Mid = (Low + High) * 0.5;
+      FootCurbProbe.lerpVectors(PreviousSafe, Target, Mid);
+
+      if (IsFootHullSafe(FootCurbProbe, Hull, SafeClearance)) {
+        Low = Mid;
+      } else {
+        High = Mid;
+      }
+    }
+
+    const OriginalTarget = FootCurbProbe.copy(Target);
+    Target.lerpVectors(
+      PreviousSafe,
+      OriginalTarget,
+      Math.max(0, Low - 0.00025)
+    );
+
+    ResolveFootHullConstraint(
+      Target,
+      PreviousSafe,
+      Hull,
+      SafeClearance
+    );
+
+    return {
+      Safe: IsFootHullSafe(Target, Hull, SafeClearance),
+      RolledBack: true
+    };
+  }
+
+  if (!IsFootHullSafe(Target, Hull, SafeClearance)) {
+    ResolveFootHullConstraint(
+      Target,
+      PreviousSafe,
+      Hull,
+      SafeClearance
+    );
+
+    return {
+      Safe: IsFootHullSafe(Target, Hull, SafeClearance),
+      RolledBack: true
+    };
+  }
+
+  return {
+    Safe: true,
+    RolledBack: false
+  };
+}
+
 function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0, Direction = null) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return false;
@@ -680,7 +964,10 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   IsFootCurbSafe,
   ResolveFootCurbConstraint,
   ResolveFootRollback,
+  IsFootHullSafe,
+  ResolveFootHullConstraint,
+  ResolveFootHullSweep,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.29-ZERO-CLIP-SWEEP";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.30-MESH-DERIVED-FOOT-HULL";
