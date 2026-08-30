@@ -87,12 +87,23 @@ function DecorationPlans(Chunk, Model) {
   return Keys.map(Key => DecorationPlanFor(Key, Model)).filter(Boolean);
 }
 
+function DecorationYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => Resolve(), { timeout: 700 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
+}
+
 async function AddFurnitureDecorations(Chunk) {
   if (Chunk.Group.userData?.StableFurnitureDecorR83) return;
   const Models = (Chunk.Models || []).filter(Model => Model?.parent && FurnitureNames.has(Model.name));
   let Added = 0;
   for (let Index = 0; Index < Models.length; Index += 1) {
-    for (const Plan of DecorationPlans(Chunk, Models[Index])) {
+    const Plans = DecorationPlans(Chunk, Models[Index]);
+    for (const Plan of Plans) {
       try {
         const Decoration = await CreateOnlineSurfaceDecoration(Plan.Key, Models[Index], Plan);
         if (!Decoration) continue;
@@ -104,6 +115,10 @@ async function AddFurnitureDecorations(Chunk) {
       } catch (Error) {
         console.warn("Stable furniture decoration unavailable", Error);
       }
+    }
+
+    if (Plans.length && Index < Models.length - 1) {
+      await DecorationYield();
     }
   }
   Chunk.Group.userData.StableFurnitureDecorR83 = true;
