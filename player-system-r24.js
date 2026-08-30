@@ -65,6 +65,10 @@ const EDGE_FOOT_TANGENT_OFFSET = 0.095;
 const FOOT_PROBE_TOE = 0.115;
 const FOOT_PROBE_HEEL = 0.075;
 const FOOT_PROBE_SIDE = 0.058;
+const CARPET_FORCE_CLEARANCE = 0.010;
+const CARPET_FORCE_MAX_SINGLE = 0.095;
+const CARPET_FORCE_MAX_TOTAL = 0.26;
+const CARPET_FORCE_PASSES = 5;
 
 const State = {
   Scene: null,
@@ -196,6 +200,10 @@ const State = {
   TempFootVertex: new THREE.Vector3(),
   TempFootBonePosition: new THREE.Vector3(),
   TempFootMeasureDelta: new THREE.Vector3(),
+  TempBodyPartPosition: new THREE.Vector3(),
+  TempBodyForce: new THREE.Vector3(),
+  TempBestBodyForce: new THREE.Vector3(),
+  TempFootForceCandidate: new THREE.Vector3(),
   TempCurbActual: new THREE.Vector3(),
   TempCurbCorrected: new THREE.Vector3(),
   TempCurbDelta: new THREE.Vector3(),
@@ -215,6 +223,27 @@ const State = {
   SavedCameraQuaternion: new THREE.Quaternion(),
   SavedHeadScale: new THREE.Vector3()
 };
+
+const CarpetBodyForceProxies = Object.freeze([
+  { Bone: "Head", Radius: 0.120 },
+  { Bone: "Neck", Radius: 0.100 },
+  { Bone: "Chest", Radius: 0.165 },
+  { Bone: "Torso", Radius: 0.170 },
+  { Bone: "Abdomen", Radius: 0.160 },
+  { Bone: "Hips", Radius: 0.165 },
+  { Bone: "ShoulderL", Radius: 0.115 },
+  { Bone: "ShoulderR", Radius: 0.115 },
+  { Bone: "UpperArmL", Radius: 0.105 },
+  { Bone: "UpperArmR", Radius: 0.105 },
+  { Bone: "LowerArmL", Radius: 0.090 },
+  { Bone: "LowerArmR", Radius: 0.090 },
+  { Bone: "WristL", Radius: 0.075 },
+  { Bone: "WristR", Radius: 0.075 },
+  { Bone: "UpperLegL", Radius: 0.130 },
+  { Bone: "UpperLegR", Radius: 0.130 },
+  { Bone: "LowerLegL", Radius: 0.105 },
+  { Bone: "LowerLegR", Radius: 0.105 }
+]);
 
 const BoneNames = {
   Hips: "Hips",
@@ -2056,6 +2085,153 @@ function ApplyCarpetStepOverlay(Delta) {
   AddBoneRotation("Chest", -0.004 * BodyLean, 0, 0);
 }
 
+function ShiftWorldFootState(Force) {
+  if (!Force?.isVector3) return;
+
+  if (State.SafeFootLeftReady) State.SafeFootLeft.add(Force);
+  if (State.SafeFootRightReady) State.SafeFootRight.add(Force);
+  State.LedgeTargetLeft.add(Force);
+  State.LedgeTargetRight.add(Force);
+
+  if (State.LedgeLockLeft?.Active) State.LedgeLockLeft.Position.add(Force);
+  if (State.LedgeLockRight?.Active) State.LedgeLockRight.Position.add(Force);
+}
+
+function RecordCarpetForceContact(Force, Depth) {
+  const Contact = window.__STORE_MOVEMENT_CONTACT__ ||= {};
+  if (!Contact.Normal?.isVector3) Contact.Normal = new THREE.Vector3();
+  if (!Contact.Position?.isVector3) Contact.Position = new THREE.Vector3();
+  if (!Contact.DesiredDirection?.isVector3) Contact.DesiredDirection = new THREE.Vector3();
+  if (!Contact.SlideDirection?.isVector3) Contact.SlideDirection = new THREE.Vector3();
+
+  Contact.Normal.copy(Force);
+  if (Contact.Normal.lengthSq() > 0.000001) Contact.Normal.normalize();
+  Contact.Position.copy(State.Pivot?.position || State.Camera?.position || Force);
+  Contact.Strength = 1;
+  Contact.PenetrationDepth = Math.max(
+    Number(Contact.PenetrationDepth) || 0,
+    Number(Depth) || 0
+  );
+  Contact.IntentInward = 1;
+  Contact.Sliding = false;
+  Contact.Stepped = false;
+  Contact.Type = "CarpetCurbForce";
+  Contact.LastHit = performance.now();
+}
+
+function ApplyCarpetInvisibleForce() {
+  const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
+  if (
+    !SurfaceStep ||
+    !State.Pivot ||
+    !State.Camera ||
+    typeof SurfaceStep.ResolveBodyPartCurbForce !== "function" ||
+    !SurfaceStep.NearRug?.(State.Pivot.position, 0.95)
+  ) return;
+
+  const Hull = UpdateFootHullOrientation();
+  let TotalPush = 0;
+
+  for (
+    let Pass = 0;
+    Pass < CARPET_FORCE_PASSES && TotalPush < CARPET_FORCE_MAX_TOTAL;
+    Pass += 1
+  ) {
+    State.Pivot.updateMatrixWorld(true);
+    State.TempBestBodyForce.set(0, 0, 0);
+    let BestDepth = 0;
+
+    for (const Proxy of CarpetBodyForceProxies) {
+      const Bone = State.Bones.get(Proxy.Bone);
+      if (!Bone) continue;
+
+      Bone.getWorldPosition(State.TempBodyPartPosition);
+      const Result = SurfaceStep.ResolveBodyPartCurbForce(
+        State.TempBodyPartPosition,
+        Proxy.Radius,
+        State.TempBodyForce,
+        CARPET_FORCE_CLEARANCE
+      );
+
+      const Depth = Number(Result?.Depth) || 0;
+      if (!Result?.Hit || Depth <= BestDepth) continue;
+
+      BestDepth = Depth;
+      State.TempBestBodyForce.copy(Result.Separation);
+    }
+
+    for (const Side of [-1, 1]) {
+      const FootName = Side < 0 ? "FootL" : "FootR";
+      const Foot = State.Bones.get(FootName);
+      if (!Foot) continue;
+
+      Foot.getWorldPosition(State.TempBodyPartPosition);
+
+      if (
+        SurfaceStep.IsFootHullSafe?.(
+          State.TempBodyPartPosition,
+          Hull,
+          FOOT_CURB_CLEARANCE
+        ) !== false
+      ) continue;
+
+      State.TempFootForceCandidate.copy(State.TempBodyPartPosition);
+      const Reference = Side < 0
+        ? State.SafeFootLeft
+        : State.SafeFootRight;
+
+      SurfaceStep.ResolveFootHullConstraint?.(
+        State.TempFootForceCandidate,
+        Reference,
+        Hull,
+        FOOT_CURB_CLEARANCE
+      );
+
+      State.TempBodyForce
+        .copy(State.TempFootForceCandidate)
+        .sub(State.TempBodyPartPosition);
+      State.TempBodyForce.y = 0;
+
+      const Depth = State.TempBodyForce.length();
+      if (Depth <= BestDepth) continue;
+
+      BestDepth = Depth;
+      State.TempBestBodyForce.copy(State.TempBodyForce);
+    }
+
+    State.TempBestBodyForce.y = 0;
+    const Length = State.TempBestBodyForce.length();
+    if (Length <= 0.0002) break;
+
+    const Remaining = Math.max(
+      0,
+      CARPET_FORCE_MAX_TOTAL - TotalPush
+    );
+    const PushLength = Math.min(
+      Length,
+      CARPET_FORCE_MAX_SINGLE,
+      Remaining
+    );
+    if (PushLength <= 0.0002) break;
+
+    State.TempBestBodyForce.setLength(PushLength);
+
+    State.Camera.position.add(State.TempBestBodyForce);
+    State.Pivot.position.add(State.TempBestBodyForce);
+
+    if (State.HasPosition) {
+      State.LastPosition.add(State.TempBestBodyForce);
+    }
+
+    ShiftWorldFootState(State.TempBestBodyForce);
+    RecordCarpetForceContact(State.TempBestBodyForce, BestDepth);
+
+    TotalPush += PushLength;
+    State.Pivot.updateMatrixWorld(true);
+    State.Camera.updateMatrixWorld(true);
+  }
+}
+
 function UpdatePhysicalContactReaction(Delta) {
   const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
   const Age = performance.now() - Number(Contact?.LastHit ?? -Infinity);
@@ -2307,6 +2483,7 @@ function ApplyProceduralOverlay(Delta) {
   ApplyFirstPersonLookOverlay();
 
   ApplyCarpetStepOverlay(Delta);
+  ApplyCarpetInvisibleForce();
   State.Pivot.updateMatrixWorld(true);
 }
 
@@ -2680,4 +2857,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.30-MESH-DERIVED-FOOT-HULL";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.31-FULL-BODY-CURB-FORCE";
