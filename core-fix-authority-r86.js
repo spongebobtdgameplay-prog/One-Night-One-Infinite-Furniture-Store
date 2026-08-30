@@ -472,4 +472,4 @@ ProcessAll();
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.15-EVENT";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.16-EVENT";
