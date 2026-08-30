@@ -790,6 +790,10 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     0.18
   );
 
+  const EffectiveLift = CenterGroundHeight < 0.008 && Step?.Entering === false
+    ? Lift * 0.18
+    : Lift;
+
   const PreviousOffset = IsLeft ? State.FootGroundLeft : State.FootGroundRight;
   const DroppingOffLedge = DesiredGroundOffset < PreviousOffset - 0.012;
   const GroundAlpha = ExpAlpha(
@@ -803,14 +807,14 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
       DesiredGroundOffset,
       GroundAlpha
     );
-    State.TempLegTarget.y += State.FootGroundLeft + Lift;
+    State.TempLegTarget.y += State.FootGroundLeft + EffectiveLift;
   } else {
     State.FootGroundRight = THREE.MathUtils.lerp(
       State.FootGroundRight,
       DesiredGroundOffset,
       GroundAlpha
     );
-    State.TempLegTarget.y += State.FootGroundRight + Lift;
+    State.TempLegTarget.y += State.FootGroundRight + EffectiveLift;
   }
 
   // When the sole center has moved to the lower floor, keep the shoe outside
@@ -876,8 +880,10 @@ function ApplyCarpetStepOverlay(Delta) {
     window.__STORE_FOOT_SUPPORT__ = {
       Active: Boolean(SurfaceStep.NearRug?.(State.Pivot.position, 0.42)),
       Height: THREE.MathUtils.clamp(SupportHeight, 0, 0.30),
-      LeftHeight: LeftSupport.GroundHeight,
-      RightHeight: RightSupport.GroundHeight,
+      LeftHeight: Number(LeftSupport.CenterGroundHeight) || 0,
+      RightHeight: Number(RightSupport.CenterGroundHeight) || 0,
+      LeftVisualHeight: LeftSupport.GroundHeight,
+      RightVisualHeight: RightSupport.GroundHeight,
       LeftWeight,
       RightWeight,
       UpdatedAt: performance.now()
