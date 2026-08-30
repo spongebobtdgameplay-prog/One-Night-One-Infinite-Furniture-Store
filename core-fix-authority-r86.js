@@ -472,6 +472,45 @@ function ChunkSignature(Chunk) {
   ].join(":");
 }
 
+function CollisionBudgetYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => Resolve(), { timeout: 180 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
+}
+
+export async function ProcessChunkAsync(Chunk, Force = false) {
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return;
+
+  const BeforeSignature = ChunkSignature(Chunk);
+  if (
+    !Force &&
+    ProcessedChunks.get(Chunk) === BeforeSignature &&
+    Chunk.Group.userData?.CoreFixR88
+  ) return;
+
+  RemoveDecorativeWindows(Chunk);
+  PurgeGhostAndLegacyEntries(Chunk);
+  RegisterWalkableRugs(Chunk);
+
+  const Roots = CollectManagedRoots(Chunk);
+  for (let Index = 0; Index < Roots.length; Index += 1) {
+    const Root = Roots[Index];
+    FixDarkMaterials(Root);
+    InstallExactCollision(Chunk, Root);
+    if (Index > 0 && Index % 2 === 0) await CollisionBudgetYield();
+  }
+
+  FixRetailZoneColors(Chunk);
+  Chunk.Group.userData.CoreFixR88 = true;
+  Chunk.Group.userData.CoreFixR87 = true;
+  Chunk.Group.userData.CoreFixR86 = true;
+  ProcessedChunks.set(Chunk, ChunkSignature(Chunk));
+}
+
 export function ProcessChunk(Chunk, Force = false) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return;
 
@@ -514,6 +553,6 @@ export function ProcessAll() {
 // ~950 ms forever.
 ProcessAll();
 
-window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
+window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk, ProcessChunkAsync };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.26-CACHED-EXACT";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.26-BUDGETED-EXACT";
