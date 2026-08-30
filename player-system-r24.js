@@ -87,6 +87,11 @@ const State = {
   LastSprintAt: -Infinity,
   FootGroundLeft: 0,
   FootGroundRight: 0,
+  ContactReaction: 0,
+  ContactFront: 0,
+  ContactBack: 0,
+  ContactSide: 0,
+  ContactIntent: 0,
   TempForward: new THREE.Vector3(),
   TempRight: new THREE.Vector3(),
   TempUp: new THREE.Vector3(),
@@ -744,10 +749,183 @@ function ApplyCarpetStepOverlay(Delta) {
   AddBoneRotation("Chest", -0.004 * BodyLean, 0, 0);
 }
 
+function UpdatePhysicalContactReaction(Delta) {
+  const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
+  const Age = performance.now() - Number(Contact?.LastHit ?? -Infinity);
+  const Valid = Boolean(
+    Contact?.Normal?.isVector3 &&
+    Age >= 0 &&
+    Age < 260 &&
+    !Contact?.Stepped
+  );
+
+  const Fade = Valid
+    ? 1 - THREE.MathUtils.clamp(Age / 260, 0, 1)
+    : 0;
+  const TargetReaction = Valid
+    ? THREE.MathUtils.clamp(Number(Contact.Strength) || 0, 0, 1) * Fade
+    : 0;
+
+  const ReactionAlpha = ExpAlpha(
+    Delta,
+    TargetReaction > State.ContactReaction ? 24 : 8.5
+  );
+  State.ContactReaction = THREE.MathUtils.lerp(
+    State.ContactReaction,
+    TargetReaction,
+    ReactionAlpha
+  );
+
+  let TargetFront = 0;
+  let TargetBack = 0;
+  let TargetSide = 0;
+  let TargetIntent = 0;
+
+  if (Valid && State.Pivot) {
+    const Yaw = State.Pivot.rotation.y;
+    const ForwardX = Math.sin(Yaw);
+    const ForwardZ = Math.cos(Yaw);
+    const RightX = Math.cos(Yaw);
+    const RightZ = -Math.sin(Yaw);
+
+    const ForwardDot =
+      Contact.Normal.x * ForwardX +
+      Contact.Normal.z * ForwardZ;
+
+    TargetFront = THREE.MathUtils.clamp(-ForwardDot, 0, 1);
+    TargetBack = THREE.MathUtils.clamp(ForwardDot, 0, 1);
+    TargetSide = THREE.MathUtils.clamp(
+      Contact.Normal.x * RightX +
+      Contact.Normal.z * RightZ,
+      -1,
+      1
+    );
+    TargetIntent = THREE.MathUtils.clamp(
+      Number(Contact.IntentInward) || 0,
+      0,
+      1
+    );
+  }
+
+  const DirectionAlpha = ExpAlpha(Delta, Valid ? 18 : 7);
+  State.ContactFront = THREE.MathUtils.lerp(
+    State.ContactFront,
+    TargetFront,
+    DirectionAlpha
+  );
+  State.ContactBack = THREE.MathUtils.lerp(
+    State.ContactBack,
+    TargetBack,
+    DirectionAlpha
+  );
+  State.ContactSide = THREE.MathUtils.lerp(
+    State.ContactSide,
+    TargetSide,
+    DirectionAlpha
+  );
+  State.ContactIntent = THREE.MathUtils.lerp(
+    State.ContactIntent,
+    TargetIntent,
+    DirectionAlpha
+  );
+
+  return State.ContactReaction;
+}
+
+function ApplyPhysicalContactReaction(Reaction) {
+  if (Reaction <= 0.001) return;
+
+  const Front = State.ContactFront;
+  const Back = State.ContactBack;
+  const Side = State.ContactSide;
+  const Intent = State.ContactIntent;
+  const Compression = Reaction * (0.48 + Intent * 0.52);
+  const FrontBrace = Compression * Front;
+  const BackBrace = Compression * Back;
+  const SideBrace = Compression * Side;
+  const DepthBoost = THREE.MathUtils.clamp(
+    Number(window.__STORE_MOVEMENT_CONTACT__?.PenetrationDepth) / 0.055 || 0,
+    0,
+    1
+  );
+  const Recoil = Compression * (0.82 + DepthBoost * 0.18);
+
+  // Lower body absorbs the contact first so the feet stay visually planted.
+  AddBoneRotation("Hips",
+    0.050 * FrontBrace - 0.030 * BackBrace,
+    SideBrace * -0.030,
+    SideBrace * -0.070
+  );
+  AddBoneRotation("UpperLegL",
+    0.095 * FrontBrace + 0.035 * Recoil,
+    SideBrace * 0.018,
+    SideBrace * -0.026
+  );
+  AddBoneRotation("UpperLegR",
+    0.095 * FrontBrace + 0.035 * Recoil,
+    SideBrace * 0.018,
+    SideBrace * -0.026
+  );
+  AddBoneRotation("LowerLegL", -0.090 * FrontBrace, 0, SideBrace * 0.010);
+  AddBoneRotation("LowerLegR", -0.090 * FrontBrace, 0, SideBrace * 0.010);
+  AddBoneRotation("FootL", 0.024 * FrontBrace, 0, SideBrace * -0.008);
+  AddBoneRotation("FootR", 0.024 * FrontBrace, 0, SideBrace * -0.008);
+
+  // Spine flexes in a chain instead of the whole model snapping as one rigid part.
+  AddBoneRotation("Abdomen",
+    -0.060 * FrontBrace + 0.035 * BackBrace,
+    SideBrace * -0.028,
+    SideBrace * -0.055
+  );
+  AddBoneRotation("Torso",
+    -0.090 * FrontBrace + 0.050 * BackBrace,
+    SideBrace * -0.040,
+    SideBrace * -0.080
+  );
+  AddBoneRotation("Chest",
+    0.052 * FrontBrace - 0.032 * BackBrace,
+    SideBrace * 0.032,
+    SideBrace * 0.060
+  );
+  AddBoneRotation("Neck",
+    0.025 * FrontBrace - 0.018 * BackBrace,
+    SideBrace * 0.018,
+    SideBrace * 0.025
+  );
+
+  // Near-side shoulder gives first; both arms brace on a frontal impact.
+  const LeftWeight = THREE.MathUtils.clamp(0.72 - Side * 0.38, 0.34, 1.10);
+  const RightWeight = THREE.MathUtils.clamp(0.72 + Side * 0.38, 0.34, 1.10);
+
+  AddBoneRotation("ShoulderL",
+    -0.070 * FrontBrace * LeftWeight,
+    SideBrace * -0.025,
+    0.045 * Recoil * LeftWeight
+  );
+  AddBoneRotation("ShoulderR",
+    -0.070 * FrontBrace * RightWeight,
+    SideBrace * -0.025,
+    -0.045 * Recoil * RightWeight
+  );
+  AddBoneRotation("UpperArmL",
+    -0.105 * FrontBrace * LeftWeight,
+    SideBrace * -0.030,
+    0.060 * Recoil * LeftWeight
+  );
+  AddBoneRotation("UpperArmR",
+    -0.105 * FrontBrace * RightWeight,
+    SideBrace * -0.030,
+    -0.060 * Recoil * RightWeight
+  );
+  AddBoneRotation("LowerArmL", -0.090 * FrontBrace * LeftWeight, 0, 0);
+  AddBoneRotation("LowerArmR", -0.090 * FrontBrace * RightWeight, 0, 0);
+}
+
 function ApplyProceduralOverlay(Delta) {
   if (!State.Pivot) return;
 
-  const Move = State.MoveAmount;
+  const Reaction = UpdatePhysicalContactReaction(Delta);
+  const Move = State.MoveAmount * (1 - Reaction * 0.74);
   const Sprint = State.Sprinting ? 1 : 0;
   const Swing = Math.sin(State.Phase);
   const AccelLean = THREE.MathUtils.clamp(State.SmoothedAcceleration * 0.008, -0.045, 0.045);
@@ -772,30 +950,7 @@ function ApplyProceduralOverlay(Delta) {
   AddBoneRotation("FootL", 0, 0, State.LocalStrafe * 0.014 * Move);
   AddBoneRotation("FootR", 0, 0, State.LocalStrafe * 0.014 * Move);
 
-  const Contact = window.__STORE_MOVEMENT_CONTACT__;
-  const ContactAge = performance.now() - Number(Contact?.LastHit ?? -Infinity);
-  if (Contact?.Normal?.isVector3 && ContactAge >= 0 && ContactAge < 150 && !Contact.Stepped) {
-    const Fade = 1 - THREE.MathUtils.clamp(ContactAge / 150, 0, 1);
-    const Push = THREE.MathUtils.clamp(Number(Contact.Strength) || 0, 0, 1) * Fade;
-    const FacingX = Math.sin(State.Pivot.rotation.y);
-    const FacingZ = Math.cos(State.Pivot.rotation.y);
-    const RightX = Math.cos(State.Pivot.rotation.y);
-    const RightZ = -Math.sin(State.Pivot.rotation.y);
-    const FrontContact = THREE.MathUtils.clamp(-(Contact.Normal.x * FacingX + Contact.Normal.z * FacingZ), 0, 1);
-    const SideContact = THREE.MathUtils.clamp(Contact.Normal.x * RightX + Contact.Normal.z * RightZ, -1, 1);
-    const Compression = Push * (0.35 + FrontContact * 0.65);
-
-    AddBoneRotation("Hips", -0.018 * Compression, 0, SideContact * 0.022 * Push);
-    AddBoneRotation("Abdomen", -0.032 * Compression, SideContact * -0.014 * Push, SideContact * -0.020 * Push);
-    AddBoneRotation("Torso", -0.052 * Compression, SideContact * -0.020 * Push, SideContact * -0.028 * Push);
-    AddBoneRotation("Chest", 0.026 * Compression, SideContact * 0.016 * Push, SideContact * 0.022 * Push);
-    AddBoneRotation("UpperLegL", 0.055 * Compression, 0, 0);
-    AddBoneRotation("UpperLegR", 0.055 * Compression, 0, 0);
-    AddBoneRotation("LowerLegL", -0.045 * Compression, 0, 0);
-    AddBoneRotation("LowerLegR", -0.045 * Compression, 0, 0);
-    AddBoneRotation("ShoulderL", -0.030 * Compression, 0, SideContact * 0.018 * Push);
-    AddBoneRotation("ShoulderR", -0.030 * Compression, 0, SideContact * 0.018 * Push);
-  }
+  ApplyPhysicalContactReaction(Reaction);
 
   ApplyCarpetStepOverlay(Delta);
   State.Pivot.updateMatrixWorld(true);
@@ -1018,7 +1173,17 @@ function GetMovementSpeed(WantsSprint, Moving) {
   State.WantsSprint = Boolean(WantsSprint);
   State.Moving = Boolean(Moving);
   State.Sprinting = State.WantsSprint && State.Moving && !State.Exhausted && State.Stamina > 0.01;
-  BasePlayer.GetMovementSpeed?.(false, State.Moving);
+
+  const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
+  const ContactAge = performance.now() - Number(Contact?.LastHit ?? -Infinity);
+  const HardBlocked = Boolean(
+    ContactAge >= 0 &&
+    ContactAge < 130 &&
+    Number(Contact?.IntentInward) > 0.58 &&
+    State.SmoothedVelocity.length() < 0.48
+  );
+
+  BasePlayer.GetMovementSpeed?.(false, State.Moving && !HardBlocked);
   return State.Sprinting ? SPRINT_SPEED : WALK_SPEED;
 }
 
@@ -1139,4 +1304,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.3-CORNER";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.6-PHYSICAL-REACTION";
