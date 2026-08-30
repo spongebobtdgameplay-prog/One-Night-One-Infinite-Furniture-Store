@@ -58,12 +58,10 @@ const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
 const CHUNKS_AHEAD = 2;
-const CHUNKS_BEHIND = 1;
-const PREFETCH_CHUNKS = 1;
-const STREAM_PROMOTION_DISTANCE = 18;
-const STREAM_KEEP_BEHIND = 1;
-const STREAM_CULL_BEHIND_DOT = -0.10;
-const STREAM_ALWAYS_VISIBLE_DISTANCE = 18;
+const CHUNKS_BEHIND = 2;
+const PREFETCH_CHUNKS = 2;
+const STREAM_PROMOTION_DISTANCE = 30;
+const STREAM_KEEP_BEHIND = 2;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
@@ -87,8 +85,6 @@ let LastObjectiveText = "";
 let SeedResetFlight = null;
 let LastChunkMaintenanceAt = -Infinity;
 let LastMaintainedChunkIndex = Number.NaN;
-const StreamViewDirection = new THREE.Vector3();
-const StreamToChunk = new THREE.Vector3();
 const StreamWarmScene = new THREE.Scene();
 const StreamWarmTextures = new WeakSet();
 const StreamWarmAmbient = new THREE.AmbientLight(0xffffff, 0.75);
@@ -307,7 +303,7 @@ const MaterialPalettes = {
   Window_Large1: [Pbr(DarkSteelTexture, 0x7f898c, 0.46, 0.65)]
 };
 
-const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
+const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
 const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
 
 const ModelDefinitions = {
@@ -318,12 +314,12 @@ const ModelDefinitions = {
   Bed_King: { Url: "Models/Bedroom/GLB/Bed_King.glb", Axis: "z", Target: 2.08 },
   Bed_Single: { Url: "Models/Bedroom/GLB/Bed_Single.glb", Axis: "z", Target: 2.02 },
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
-  Shelf_Large: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.08, PreserveMaterials: true },
-  Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
+  Shelf_Large: { Url: "Models/Storage/GLB/Shelf_Large.glb", Axis: "y", Target: 2.08 },
+  Bookshelf: { Url: "Models/Storage/GLB/Bookshelf.glb", Axis: "y", Target: 2.02 },
   Kitchen_Cabinet1: { Url: ReplicaCabinetUrl, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
-  Kitchen_Oven: { Url: "Models/Kitchen/GLB/Kitchen_Oven.glb", Axis: "y", Target: 0.91 },
-  Kitchen_Sink: { Url: "Models/Kitchen/GLB/Kitchen_Sink.glb", Axis: "y", Target: 0.95 },
+  Kitchen_Oven: { Url: `${KayKitRestaurantBase}oven.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
+  Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf`, Axis: "y", Target: 0.95, PreserveMaterials: true },
   Bathroom_Sink: {
     Url: "Models/Kitchen/GLB/Kitchen_Sink.glb",
     Axis: "y",
@@ -1212,33 +1208,11 @@ function TryActivateIndex(Index) {
 }
 
 function UpdateChunkVisibility() {
-  const CurrentIndex = ChunkIndexForZ(Camera.position.z);
-  Camera.getWorldDirection(StreamViewDirection);
-  StreamViewDirection.y = 0;
-  if (StreamViewDirection.lengthSq() <= 0.000001) StreamViewDirection.set(0, 0, -1);
-  else StreamViewDirection.normalize();
-
   for (const Chunk of ActiveChunks.values()) {
     if (!Chunk?.Group) continue;
-
-    let Visible = true;
-    if (Chunk.Index !== CurrentIndex) {
-      StreamToChunk.set(
-        0 - Camera.position.x,
-        0,
-        Chunk.CenterZ - Camera.position.z
-      );
-      const Distance = StreamToChunk.length();
-
-      if (Distance > STREAM_ALWAYS_VISIBLE_DISTANCE && Distance > 0.001) {
-        StreamToChunk.divideScalar(Distance);
-        Visible = StreamViewDirection.dot(StreamToChunk) > STREAM_CULL_BEHIND_DOT;
-      }
-    }
-
-    if (Chunk.Group.visible !== Visible) Chunk.Group.visible = Visible;
+    if (!Chunk.Group.visible) Chunk.Group.visible = true;
     for (const Object of Chunk.ExternalObjects || []) {
-      if (Object && Object.visible !== Visible) Object.visible = Visible;
+      if (Object && !Object.visible) Object.visible = true;
     }
   }
 }
@@ -1327,6 +1301,7 @@ async function PrepareInitialWorld() {
     if (Chunk) ActivateChunk(Chunk);
   }
   RequestChunk(3).catch(() => {});
+  RequestChunk(4).catch(() => {});
 }
 
 function NormalizeWorldSeed(Value) {
@@ -1646,8 +1621,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.16";
-window.__STORE_VERSION__ = "0.35.16";
+window.__STORE_GAME_BUILD__ = "V0.35.17";
+window.__STORE_VERSION__ = "0.35.17";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1669,6 +1644,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.16"
+  Version: "0.35.17"
 };
 Animate();
