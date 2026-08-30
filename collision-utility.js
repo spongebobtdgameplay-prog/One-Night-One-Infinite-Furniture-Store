@@ -897,8 +897,9 @@ function ResolveRaycastHorizontalMove(Start, Delta, Radius, Options = {}) {
   const TangentRatio = DesiredLength > 0.000001 ? Remaining.length() / DesiredLength : 0;
   if (TangentRatio < 0.08 || Remaining.lengthSq() <= 0.000001) return Finish(First);
 
-  const Friction = THREE.MathUtils.lerp(0.76, 0.94, THREE.MathUtils.clamp(TangentRatio, 0, 1));
-  Remaining.multiplyScalar(Friction);
+  // Contact removes only inward motion. Preserve tangent speed so walls
+  // constrain the player without producing the old sticky/dragging feel.
+  Remaining.multiplyScalar(0.995);
 
   const Slide = SweepVisibleCapsuleHorizontal(First.Position, Remaining, Radius, Options);
   const Position = Slide.Position.clone();
@@ -1080,7 +1081,7 @@ const CollisionUtility = {
 };
 
 window.__STORE_COLLISION_UTILITY__ = CollisionUtility;
-window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.3-CORNER";
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.8-LOW-DRAG";
 
 export default CollisionUtility;
 export {
