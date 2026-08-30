@@ -130,6 +130,7 @@ const State = {
     SignedDistance: 0,
     TravelProgress: 0,
     ResolvedFrames: 0,
+    HasCrossedLead: false,
     Phase: "Source",
     BoundsMinX: 0,
     BoundsMaxX: 0,
@@ -855,7 +856,21 @@ function ResetEdgeTransition() {
   State.EdgeTransition.RugId = "";
   State.EdgeTransition.LastSeenAt = -Infinity;
   State.EdgeTransition.ResolvedFrames = 0;
+  State.EdgeTransition.HasCrossedLead = false;
   State.EdgeTransition.Phase = "Source";
+  State.EdgeTransition.NormalX = 0;
+  State.EdgeTransition.NormalZ = 0;
+  State.EdgeTransition.TangentX = 1;
+  State.EdgeTransition.TangentZ = 0;
+  State.EdgeTransition.EdgeX = 0;
+  State.EdgeTransition.EdgeZ = 0;
+  State.EdgeTransition.Height = 0;
+  State.EdgeTransition.SignedDistance = 0;
+  State.EdgeTransition.TravelProgress = 0;
+  State.EdgeTransition.BoundsMinX = 0;
+  State.EdgeTransition.BoundsMaxX = 0;
+  State.EdgeTransition.BoundsMinZ = 0;
+  State.EdgeTransition.BoundsMaxZ = 0;
   State.LocomotionSurfaceState = "FlatGround";
   State.LedgePelvisOffsetX = 0;
   State.LedgePelvisOffsetZ = 0;
@@ -943,6 +958,7 @@ function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
     Existing.StartedAt = Now;
     Existing.LastSeenAt = Now;
     Existing.ResolvedFrames = 0;
+    Existing.HasCrossedLead = false;
     Existing.LeadSide = Step?.Side === -1
       ? -1
       : Step?.Side === 1
@@ -1019,6 +1035,10 @@ function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
   Existing.TravelProgress = Progress;
   Existing.Phase = EdgePhaseForProgress(Progress);
 
+  if (Progress >= EDGE_LEAD_SWITCH_DISTANCE) {
+    Existing.HasCrossedLead = true;
+  }
+
   const TangentOutside = StoredEdgeTangentOutsideDistance(
     Existing,
     State.Pivot.position
@@ -1027,8 +1047,12 @@ function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
   // Release only after the body has clearly reached either stable side for
   // several consecutive frames. One bad query/frame cannot end the state.
   const FarDestination = Progress >= EDGE_RELEASE_DISTANCE;
-  const FarSource = Progress <= -EDGE_RELEASE_DISTANCE;
-  const SameLevelResolved = FarDestination || FarSource;
+  const FarSourceAfterReversal =
+    Existing.HasCrossedLead &&
+    Progress <= -EDGE_RELEASE_DISTANCE;
+  const SameLevelResolved =
+    FarDestination ||
+    FarSourceAfterReversal;
   const TangentStillRelevant =
     TangentOutside <= EDGE_TANGENT_RELEASE_PADDING;
 
@@ -1302,6 +1326,7 @@ function ApplyGeometryEdgeTransition(SurfaceStep, Step, Delta, Travel) {
     TravelProgress: Transition.TravelProgress,
     SignedDistance: Transition.SignedDistance,
     ResolvedFrames: Transition.ResolvedFrames,
+    HasCrossedLead: Transition.HasCrossedLead,
     UpdatedAt: performance.now()
   };
 
