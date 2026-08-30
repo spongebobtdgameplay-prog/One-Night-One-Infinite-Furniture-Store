@@ -570,8 +570,12 @@ function UpdateMotion(Delta) {
     State.Sprinting ? 10.0 : 7.0,
     State.MoveAmount
   );
+  const EdgeCadenceScale = State.LocomotionSurfaceState === "EdgeTransition"
+    ? 0.34
+    : 1;
+
   if (State.ResolvedMoving || State.Moving) {
-    State.Phase += Delta * Cadence;
+    State.Phase += Delta * Cadence * EdgeCadenceScale;
   }
 }
 
@@ -840,6 +844,12 @@ function ResetEdgeTransition() {
   State.LocomotionSurfaceState = "FlatGround";
   State.LedgePelvisOffsetX = 0;
   State.LedgePelvisOffsetZ = 0;
+
+  window.__STORE_EDGE_TRANSITION__ = {
+    Active: false,
+    State: "FlatGround",
+    UpdatedAt: performance.now()
+  };
 }
 
 function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
