@@ -56,10 +56,13 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 3;
-const CHUNKS_BEHIND = 3;
+const CHUNKS_AHEAD = 2;
+const CHUNKS_BEHIND = 1;
 const PREFETCH_CHUNKS = 1;
-const STREAM_PROMOTION_DISTANCE = 10;
+const STREAM_PROMOTION_DISTANCE = 7;
+const STREAM_KEEP_BEHIND = 1;
+const STREAM_CULL_BEHIND_DOT = -0.10;
+const STREAM_ALWAYS_VISIBLE_DISTANCE = 18;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
@@ -83,6 +86,8 @@ let LastObjectiveText = "";
 let SeedResetFlight = null;
 let LastChunkMaintenanceAt = -Infinity;
 let LastMaintainedChunkIndex = Number.NaN;
+const StreamViewDirection = new THREE.Vector3();
+const StreamToChunk = new THREE.Vector3();
 
 function MixSeed32(Value) {
   let Mixed = Value >>> 0;
@@ -900,31 +905,74 @@ function ActivateChunk(Chunk) {
   return true;
 }
 
+function ReleaseChunkReferences(Chunk) {
+  if (!Chunk) return;
+
+  // Geometry/material resources are shared with ModelCache, so do not dispose
+  // them here. Remove scene/object references so old aisles can be collected.
+  Chunk.Group?.clear?.();
+  for (const Object of Chunk.ExternalObjects || []) Object?.parent?.remove?.(Object);
+
+  for (const Key of [
+    "Models",
+    "Lights",
+    "Tasks",
+    "TaskObjects",
+    "TaskRecords",
+    "ExternalObjects",
+    "CollisionEntries",
+    "StructureBounds",
+    "ReservedBounds",
+    "PendingLoads"
+  ]) {
+    if (Array.isArray(Chunk[Key])) Chunk[Key].length = 0;
+  }
+
+  Chunk.Layout = null;
+  Chunk.Cancelled = true;
+  Chunk.Ready = false;
+}
+
 function DeactivateChunk(Index, KeepPrepared = true) {
   const Chunk = ActiveChunks.get(Index);
   if (!Chunk) return;
+
   Scene.remove(Chunk.Group);
-  for (const Object of Chunk.ExternalObjects) Scene.remove(Object);
-  for (const Task of Chunk.TaskRecords) Tasks.delete(Task.Id);
+  for (const Object of Chunk.ExternalObjects || []) Scene.remove(Object);
+  for (const Task of Chunk.TaskRecords || []) Tasks.delete(Task.Id);
+
   for (let CollisionIndex = CollisionBoxes.length - 1; CollisionIndex >= 0; CollisionIndex -= 1) {
     if (CollisionBoxes[CollisionIndex].ChunkId === Chunk.Id) CollisionBoxes.splice(CollisionIndex, 1);
   }
-  for (const Entry of Chunk.CollisionEntries) Entry.Active = false;
+  for (const Entry of Chunk.CollisionEntries || []) Entry.Active = false;
+
   for (let ChildIndex = Scene.children.length - 1; ChildIndex >= 0; ChildIndex -= 1) {
     const Child = Scene.children[ChildIndex];
-    if (Child.userData?.ChunkId === Chunk.Id && Child !== Chunk.Group && !Chunk.ExternalObjects.includes(Child)) Scene.remove(Child);
+    if (
+      Child.userData?.ChunkId === Chunk.Id &&
+      Child !== Chunk.Group &&
+      !(Chunk.ExternalObjects || []).includes(Child)
+    ) {
+      Scene.remove(Child);
+    }
   }
+
   Chunk.Active = false;
   ActiveChunks.delete(Index);
-  if (KeepPrepared && !Chunk.Cancelled) PreparedChunks.set(Index, Chunk);
-  else Chunk.Cancelled = true;
+
+  if (KeepPrepared && !Chunk.Cancelled) {
+    PreparedChunks.set(Index, Chunk);
+  } else {
+    PreparedChunks.delete(Index);
+    ReleaseChunkReferences(Chunk);
+  }
 }
 
 function DropPreparedChunk(Index) {
   const Chunk = PreparedChunks.get(Index);
   if (!Chunk) return;
-  Chunk.Cancelled = true;
   PreparedChunks.delete(Index);
+  ReleaseChunkReferences(Chunk);
 }
 
 function RequestChunk(Index) {
@@ -939,51 +987,122 @@ function TryActivateIndex(Index) {
   return Prepared?.Ready ? ActivateChunk(Prepared) : false;
 }
 
-function EnsureChunksAroundPlayer() {
+function UpdateChunkVisibility() {
   const CurrentIndex = ChunkIndexForZ(Camera.position.z);
+  Camera.getWorldDirection(StreamViewDirection);
+  StreamViewDirection.y = 0;
+  if (StreamViewDirection.lengthSq() <= 0.000001) StreamViewDirection.set(0, 0, -1);
+  else StreamViewDirection.normalize();
+
+  for (const Chunk of ActiveChunks.values()) {
+    if (!Chunk?.Group) continue;
+
+    let Visible = true;
+    if (Chunk.Index !== CurrentIndex) {
+      StreamToChunk.set(
+        0 - Camera.position.x,
+        0,
+        Chunk.CenterZ - Camera.position.z
+      );
+      const Distance = StreamToChunk.length();
+
+      if (Distance > STREAM_ALWAYS_VISIBLE_DISTANCE && Distance > 0.001) {
+        StreamToChunk.divideScalar(Distance);
+        Visible = StreamViewDirection.dot(StreamToChunk) > STREAM_CULL_BEHIND_DOT;
+      }
+    }
+
+    if (Chunk.Group.visible !== Visible) Chunk.Group.visible = Visible;
+    for (const Object of Chunk.ExternalObjects || []) {
+      if (Object && Object.visible !== Visible) Object.visible = Visible;
+    }
+  }
+}
+
+function EnsureChunksAroundPlayer() {
+  const CurrentIndex = Math.max(0, ChunkIndexForZ(Camera.position.z));
   const Now = performance.now();
-  if (CurrentIndex === LastMaintainedChunkIndex && Now - LastChunkMaintenanceAt < 120) return;
+  if (CurrentIndex === LastMaintainedChunkIndex && Now - LastChunkMaintenanceAt < 120) {
+    UpdateChunkVisibility();
+    return;
+  }
+
   LastMaintainedChunkIndex = CurrentIndex;
   LastChunkMaintenanceAt = Now;
   LastChunkIndex = CurrentIndex;
-  const MinIndex = CurrentIndex - CHUNKS_BEHIND;
+
+  const MinIndex = Math.max(0, CurrentIndex - CHUNKS_BEHIND);
   const MaxIndex = CurrentIndex + CHUNKS_AHEAD;
-  const PrefetchMin = MinIndex - PREFETCH_CHUNKS;
   const PrefetchMax = MaxIndex + PREFETCH_CHUNKS;
   const WantedActive = new Set();
 
+  // Keep the current aisle and a very small render window only.
   for (let Index = MinIndex; Index <= MaxIndex; Index += 1) {
     WantedActive.add(Index);
-    if (!TryActivateIndex(Index)) RequestChunk(Index).catch(Error => console.warn(`Chunk ${Index} preparation failed`, Error));
+    if (!TryActivateIndex(Index)) {
+      RequestChunk(Index).catch(Error => {
+        console.warn(`Chunk ${Index} preparation failed`, Error);
+      });
+    }
   }
 
-  RequestChunk(PrefetchMin).catch(() => {});
+  // Only prefetch forward. The store is forward-infinite; generating behind
+  // the player wastes the exact CPU/memory needed by the next showroom.
   RequestChunk(PrefetchMax).catch(() => {});
 
-  const DistanceToTop = Math.max(0, ChunkTopZ(CurrentIndex) - Camera.position.z);
-  const DistanceToBottom = Math.max(0, Camera.position.z - ChunkBottomZ(CurrentIndex));
-  if (DistanceToTop <= STREAM_PROMOTION_DISTANCE && TryActivateIndex(PrefetchMin)) WantedActive.add(PrefetchMin);
-  if (DistanceToBottom <= STREAM_PROMOTION_DISTANCE && TryActivateIndex(PrefetchMax)) WantedActive.add(PrefetchMax);
+  const DistanceToBottom = Math.max(
+    0,
+    Camera.position.z - ChunkBottomZ(CurrentIndex)
+  );
+  if (
+    DistanceToBottom <= STREAM_PROMOTION_DISTANCE &&
+    TryActivateIndex(PrefetchMax)
+  ) {
+    WantedActive.add(PrefetchMax);
+  }
 
+  // Old aisles are not kept as giant hidden object trees. Keep at most one
+  // immediate aisle behind; everything older is released and can regenerate
+  // deterministically if the player returns.
   for (const Index of [...ActiveChunks.keys()]) {
-    if (!WantedActive.has(Index)) DeactivateChunk(Index, Index >= PrefetchMin && Index <= PrefetchMax);
-  }
-  for (const Index of [...PreparedChunks.keys()]) {
-    if (Index < PrefetchMin || Index > PrefetchMax) DropPreparedChunk(Index);
+    if (WantedActive.has(Index)) continue;
+    const KeepPrepared =
+      Index >= CurrentIndex - STREAM_KEEP_BEHIND &&
+      Index <= PrefetchMax &&
+      Index >= 0;
+    DeactivateChunk(Index, KeepPrepared && Index >= CurrentIndex);
   }
 
-  if (AisleCounter) AisleCounter.textContent = CurrentIndex >= 0 ? `${CurrentIndex + 1}` : `B${Math.abs(CurrentIndex)}`;
+  for (const Index of [...PreparedChunks.keys()]) {
+    const Keep =
+      Index >= Math.max(0, CurrentIndex - STREAM_KEEP_BEHIND) &&
+      Index <= PrefetchMax;
+    if (!Keep) DropPreparedChunk(Index);
+  }
+
+  UpdateChunkVisibility();
+
+  if (AisleCounter) {
+    AisleCounter.textContent = CurrentIndex >= 0
+      ? `${CurrentIndex + 1}`
+      : `B${Math.abs(CurrentIndex)}`;
+  }
 }
 
+
 async function PrepareInitialWorld() {
-  const Order = [0, -1, 1, -2, 2, -3, 3];
+  // Build only what gameplay can actually see/use at boot. Older code built
+  // three negative chunks that forward-generation immediately deleted.
+  const Order = [0, 1, 2];
   for (let Position = 0; Position < Order.length; Position += 1) {
-    if (BootStatus) BootStatus.textContent = `Assembling buffered store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
+    if (BootStatus) {
+      BootStatus.textContent =
+        `Assembling store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
+    }
     const Chunk = await PrepareChunk(Order[Position]);
     if (Chunk) ActivateChunk(Chunk);
   }
-  RequestChunk(-4).catch(() => {});
-  RequestChunk(4).catch(() => {});
+  RequestChunk(3).catch(() => {});
 }
 
 function NormalizeWorldSeed(Value) {
@@ -1242,6 +1361,7 @@ function Animate() {
   if (Started) {
     UpdateMovement(Delta);
     EnsureChunksAroundPlayer();
+    UpdateChunkVisibility();
     UpdateClock(Delta);
     UpdateObjective();
     UpdateInteractionPrompt();
@@ -1302,8 +1422,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.14";
-window.__STORE_VERSION__ = "0.35.14";
+window.__STORE_GAME_BUILD__ = "V0.35.15";
+window.__STORE_VERSION__ = "0.35.15";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1324,6 +1444,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.14"
+  Version: "0.35.15"
 };
 Animate();
