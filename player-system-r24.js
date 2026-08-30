@@ -866,17 +866,10 @@ function ApplyLedgeFootLock(Support, SurfaceStep, SplitStance, Delta) {
     );
   }
 
-  const Blend = ExpAlpha(Delta, 34);
-  Support.Target.x = THREE.MathUtils.lerp(
-    Support.Target.x,
-    Lock.Position.x,
-    Blend
-  );
-  Support.Target.z = THREE.MathUtils.lerp(
-    Support.Target.z,
-    Lock.Position.z,
-    Blend
-  );
+  // A planted stance foot is a hard world-space constraint. Easing here
+  // allowed one-frame visual penetration at sharp ledges.
+  Support.Target.x = Lock.Position.x;
+  Support.Target.z = Lock.Position.z;
 }
 
 function ApplySplitStancePelvis(LeftSupport, RightSupport, Delta) {
