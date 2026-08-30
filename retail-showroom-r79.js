@@ -382,10 +382,10 @@ function Discover() {
   for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk);
 }
 
-Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key))).then(Discover);
+// Templates are warmed once. Chunk processing is owned by the single
+// presentation pipeline; do not poll every aisle independently.
+await Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key)));
 Discover();
-const Interval = setInterval(Discover, 850);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.0-RAY";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.16-PIPELINE";
