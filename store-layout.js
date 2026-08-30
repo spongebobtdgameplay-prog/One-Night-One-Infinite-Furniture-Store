@@ -18,8 +18,8 @@ const Footprints = Object.freeze({
   Kitchen_Cabinet1: [1.05, 0.58],
   Kitchen_Fridge: [0.84, 0.78],
   Kitchen_Oven: [0.98, 1.14],
-  Kitchen_Sink: [1.12, 1.12],
-  Bathroom_Sink: [1.10, 0.66],
+  Kitchen_Sink: [1.05, 0.72],
+  Bathroom_Sink: [0.92, 0.68],
   Bathroom_Bathtub: [0.80, 1.72],
   Bathroom_Toilet: [0.62, 0.78],
   Light_Floor1: [0.48, 0.48],
@@ -787,4 +787,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.18-TRANSITION-DENSITY";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.24-SINK-FIT";
