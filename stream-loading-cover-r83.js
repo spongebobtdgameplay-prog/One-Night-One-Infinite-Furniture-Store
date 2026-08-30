@@ -83,6 +83,53 @@ let NoticeStartedAt = -Infinity;
 const PriorityFlights = new Map();
 const HazeMaterials = [];
 const AmbientMaterials = [];
+const LegacyStreamBarrierPattern = /StreamLoading|LoadingGate|StoreBoundary|StreamBarrier|FrontierBarrier|StreamingBarrier/i;
+
+function IsLegacyStreamBarrierEntry(Entry) {
+  if (!Entry) return false;
+  const Type = String(Entry.Type || "");
+  const ObjectName = String(Entry.CollisionObject?.name || "");
+  return LegacyStreamBarrierPattern.test(Type) ||
+    LegacyStreamBarrierPattern.test(ObjectName) ||
+    Entry.StreamLoadingBarrierR83 === true;
+}
+
+function PurgeLegacyStreamBarriers() {
+  if (Array.isArray(Game.CollisionBoxes)) {
+    for (let Index = Game.CollisionBoxes.length - 1; Index >= 0; Index -= 1) {
+      const Entry = Game.CollisionBoxes[Index];
+      if (!IsLegacyStreamBarrierEntry(Entry)) continue;
+      Entry.Active = false;
+      Game.CollisionBoxes.splice(Index, 1);
+    }
+  }
+
+  const Seen = new Set();
+  for (const Collection of [Game.ActiveChunks, Game.PreparedChunks]) {
+    for (const Chunk of Collection?.values?.() || []) {
+      if (!Chunk || Seen.has(Chunk)) continue;
+      Seen.add(Chunk);
+      for (let Index = (Chunk.CollisionEntries?.length || 0) - 1; Index >= 0; Index -= 1) {
+        const Entry = Chunk.CollisionEntries[Index];
+        if (!IsLegacyStreamBarrierEntry(Entry)) continue;
+        Entry.Active = false;
+        Chunk.CollisionEntries.splice(Index, 1);
+      }
+    }
+  }
+
+  for (let Index = Game.Scene.children.length - 1; Index >= 0; Index -= 1) {
+    const Object = Game.Scene.children[Index];
+    if (!Object || Object === HazeGroup) continue;
+    const Name = String(Object.name || "");
+    if (
+      LegacyStreamBarrierPattern.test(Name) ||
+      Object.userData?.StreamLoadingBarrierR83 === true
+    ) {
+      Game.Scene.remove(Object);
+    }
+  }
+}
 
 function FindChunk(Index) {
   const Active = Game.ActiveChunks.get(Index);
@@ -283,6 +330,8 @@ function SetHazeStrength(DistanceToEdge) {
 
 function SetHazeActive(Value, CurrentChunk = null, DistanceToEdge = 30) {
   const Next = Boolean(Value);
+  const Changed = HazeActive !== Next;
+
   if (Next) {
     PositionHaze(CurrentChunk);
     SetHazeStrength(DistanceToEdge);
@@ -293,6 +342,8 @@ function SetHazeActive(Value, CurrentChunk = null, DistanceToEdge = 30) {
 
   HazeActive = Next;
   window.__STORE_STREAM_LOADING__ = Next;
+
+  if (Changed && !Next) PurgeLegacyStreamBarriers();
 }
 
 function SetOverlayVisible(Value) {
@@ -431,6 +482,7 @@ function Tick() {
 }
 
 EnsureHaze();
+PurgeLegacyStreamBarriers();
 requestAnimationFrame(Tick);
 
 addEventListener("pagehide", () => {
@@ -447,4 +499,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   IsTraversalReady,
   IsAlreadyVisible
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.22-DISTANT-AMBIENT";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.26-NO-STALE-BARRIER";
