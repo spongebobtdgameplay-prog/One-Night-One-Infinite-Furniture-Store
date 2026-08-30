@@ -149,7 +149,6 @@ function CoreReady(Chunk) {
 
   const Stable = UpdateStability(Chunk);
   return Boolean(
-    Stable.StableFor >= 360 &&
     Chunk.Group.userData?.PriceTagsR83 &&
     CompactTagCount(Chunk) >= Stable.Count &&
     !HasVisibleLegacyPriceSign(Chunk)
