@@ -64,6 +64,8 @@ function CloneMaterials(Root) {
     Object.material = Array.isArray(Object.material) ? Replaced : Replaced[0];
     Object.castShadow = false;
     Object.receiveShadow = false;
+    Object.frustumCulled = true;
+    Object.geometry?.computeBoundingSphere?.();
   });
 }
 
