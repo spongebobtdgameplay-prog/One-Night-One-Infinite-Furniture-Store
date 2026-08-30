@@ -320,13 +320,14 @@ function ResolveAllVisibleContacts(Pivot) {
 function HideFirstPersonHead(Pivot) {
   if (Player.IsThirdPerson?.()) return;
 
-  for (const Name of ["Neck", "Head"]) {
-    const Bone = Pivot.getObjectByName(Name);
-    if (!Bone?.isBone) continue;
-    Scratch.SavedScales.set(Bone, Bone.scale.clone());
-    Bone.scale.setScalar(0.00001);
+  const Head = Pivot.getObjectByName("Head");
+  if (Head?.isBone) {
+    Scratch.SavedScales.set(Head, Head.scale.clone());
+    Head.scale.setScalar(0.00001);
   }
 
+  // Keep the neck bone at full scale. Shrinking it created a visible hole
+  // when the first-person camera was forced into a steep corner angle.
   Pivot.traverse(Object => {
     if (!Object?.isMesh || !/head|helmet|hardhat|hair/i.test(String(Object.name || ""))) return;
     Scratch.SavedVisibility.set(Object, Object.visible);
@@ -385,4 +386,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.0-RAY";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.3-NECK";
