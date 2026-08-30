@@ -197,7 +197,11 @@ async function RunContentPasses(Chunk) {
   await IdleYield();
 
   RemoveTerminalBeacons(Chunk);
-  CoreFix?.ProcessChunk?.(Chunk, true);
+  if (CoreFix?.ProcessChunkAsync) {
+    await CoreFix.ProcessChunkAsync(Chunk, true);
+  } else {
+    CoreFix?.ProcessChunk?.(Chunk, true);
+  }
   Materials?.ProcessChunk?.(Chunk);
   await Game.OptimizeChunkStaticRender?.(Chunk);
   window.__STORE_APPLY_TEXTURE_BUDGET_TO_CHUNK__?.(Chunk);
@@ -217,7 +221,11 @@ async function RunPolishPasses(Chunk) {
 
   // Per-chunk only. Never rescan the full world just because one aisle finished.
   Materials?.ProcessChunk?.(Chunk);
-  CoreFix?.ProcessChunk?.(Chunk);
+  if (CoreFix?.ProcessChunkAsync) {
+    await CoreFix.ProcessChunkAsync(Chunk);
+  } else {
+    CoreFix?.ProcessChunk?.(Chunk);
+  }
 
   const Ready = CoreReady(Chunk);
   Chunk.Group.userData.PresentationReadyR83 = true;
@@ -422,4 +430,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.26-BUDGETED-PRESENTATION";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.26-IDLE-COLLISION";
