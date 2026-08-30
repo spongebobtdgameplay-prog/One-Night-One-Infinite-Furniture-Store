@@ -29,6 +29,8 @@ function StateFor(Mixer) {
     ContactDriven: false,
     ContactPressure: 0,
     ContactIntent: 0,
+    ResolvedMoving: false,
+    ResolvedSpeed: 0,
     Target: "idle"
   };
   MixerStates.set(Mixer, State);
@@ -61,18 +63,40 @@ function UpdateMeasuredMotion(Mixer, Delta) {
   if (!State.HasPosition) {
     State.LastPosition.copy(State.WorldPosition);
     State.HasPosition = true;
-    return State;
   }
 
   const SafeDelta = Math.max(Delta, 0.001);
-  const Distance = Math.hypot(
-    State.WorldPosition.x - State.LastPosition.x,
-    State.WorldPosition.z - State.LastPosition.z
+  const MotionFrame = window.__STORE_RESOLVED_MOVEMENT_FRAME__ || null;
+  const MotionAge = performance.now() - Number(MotionFrame?.UpdatedAt ?? -Infinity);
+  const FreshResolved = Boolean(
+    MotionFrame?.Resolved?.isVector3 &&
+    MotionAge >= 0 &&
+    MotionAge < 90
   );
+
+  let RawSpeed = 0;
+  if (FreshResolved) {
+    State.ResolvedMoving = Boolean(MotionFrame.HasMovement);
+    State.ResolvedSpeed = Math.max(0, Number(MotionFrame.Speed) || 0);
+    RawSpeed = State.ResolvedSpeed;
+  } else {
+    const Distance = Math.hypot(
+      State.WorldPosition.x - State.LastPosition.x,
+      State.WorldPosition.z - State.LastPosition.z
+    );
+    RawSpeed = Distance / SafeDelta;
+    State.ResolvedMoving = Distance > 0.00025;
+    State.ResolvedSpeed = RawSpeed;
+  }
+
   State.LastPosition.copy(State.WorldPosition);
-  const RawSpeed = Distance / SafeDelta;
+
   const Alpha = 1 - Math.exp(-SafeDelta * SpeedResponse);
-  State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, RawSpeed, Alpha);
+  State.SmoothedSpeed = THREE.MathUtils.lerp(
+    State.SmoothedSpeed,
+    RawSpeed,
+    Alpha
+  );
 
   const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
   const ContactAge = performance.now() - Number(Contact?.LastHit ?? -Infinity);
@@ -91,9 +115,13 @@ function UpdateMeasuredMotion(Mixer, Delta) {
     0,
     1
   );
+
+  // Bracing is only the no-displacement case. The moment collision resolves
+  // into actual sideways/forward movement, locomotion owns the animation.
   const Bracing = Boolean(
     FreshContact &&
-    ContactIntent > 0.22
+    ContactIntent > 0.22 &&
+    !State.ResolvedMoving
   );
 
   State.ContactDriven = Bracing;
@@ -108,9 +136,9 @@ function UpdateMeasuredMotion(Mixer, Delta) {
     Alpha
   );
 
-  if (Bracing) {
-    // The user is still trying to move. Keep an attempt cadence alive;
-    // the procedural body reaction turns it into a brace/shuffle.
+  if (State.ResolvedMoving) {
+    State.Moving = true;
+  } else if (Bracing) {
     State.Moving = true;
   } else if (State.Moving) {
     if (State.SmoothedSpeed < MoveExitSpeed) State.Moving = false;
@@ -129,7 +157,9 @@ function ApplyAnimationWeights(Mixer, Delta, State) {
   const Sprinting = Boolean(Player?.IsSprinting?.());
   const FirstPerson = !Boolean(Player?.IsThirdPerson?.());
   const UseSprintClip = Sprinting && !FirstPerson && Boolean(Actions.sprint);
-  const Bracing = Boolean(State?.ContactDriven);
+  const ResolvedMoving = Boolean(State?.ResolvedMoving);
+  const ResolvedSpeed = Math.max(0, Number(State?.ResolvedSpeed) || 0);
+  const Bracing = Boolean(State?.ContactDriven) && !ResolvedMoving;
   const Pressure = THREE.MathUtils.clamp(Number(State?.ContactPressure) || 0, 0, 1);
   const Intent = THREE.MathUtils.clamp(Number(State?.ContactIntent) || 0, 0, 1);
 
@@ -139,9 +169,15 @@ function ApplyAnimationWeights(Mixer, Delta, State) {
     sprint: 0
   };
 
-  if (Bracing) {
-    // Blend a slow attempt cycle into idle instead of either freezing or
-    // letting the full walk clip stride through the obstacle.
+  if (ResolvedMoving) {
+    // Final physics displacement is authoritative. If the body moved, force a
+    // locomotion clip this frame so there is never visible collision skating.
+    let Target = UseSprintClip ? "sprint" : "walk";
+    if (!Actions[Target]) Target = Actions.walk ? "walk" : Actions.sprint ? "sprint" : "idle";
+    DesiredWeights[Target] = 1;
+    State.Target = Target;
+  } else if (Bracing) {
+    // No actual displacement: show effort/brace instead of a full stride.
     const AttemptWeight = THREE.MathUtils.clamp(
       0.24 + Intent * 0.18 - Pressure * 0.06,
       0.20,
@@ -181,9 +217,15 @@ function ApplyAnimationWeights(Mixer, Delta, State) {
     );
 
     if (typeof Action.setEffectiveTimeScale === "function") {
-      const TargetScale = Bracing && Kind === "walk"
-        ? THREE.MathUtils.lerp(0.72, 0.42, Pressure)
-        : 1;
+      const TargetScale = ResolvedMoving && (Kind === "walk" || Kind === "sprint")
+        ? THREE.MathUtils.clamp(
+            ResolvedSpeed / (Kind === "sprint" ? 5.35 : 3.45),
+            0.58,
+            1.15
+          )
+        : Bracing && Kind === "walk"
+          ? THREE.MathUtils.lerp(0.72, 0.42, Pressure)
+          : 1;
       const CurrentScale = Number(Action.getEffectiveTimeScale?.()) || 1;
       Action.setEffectiveTimeScale(
         THREE.MathUtils.lerp(CurrentScale, TargetScale, Alpha)
@@ -202,4 +244,4 @@ THREE.AnimationMixer.prototype.update = function UpdateAnimationFromMotionAndVie
 };
 
 window.__STORE_ANIMATION_MOTION_AUTHORITY__ = MixerStates;
-window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.7-FORCE-BRACE";
+window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.11-RESOLVED-WALK";
