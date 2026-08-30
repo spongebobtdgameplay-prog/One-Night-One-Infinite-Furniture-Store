@@ -4,6 +4,7 @@ if (!Game?.PreparedChunks || !Game?.ActiveChunks) throw new Error("Game must loa
 const Finalizing = new WeakSet();
 const Stability = new WeakMap();
 const PendingFinalization = new WeakMap();
+const PolishPending = new WeakSet();
 let FinalizationTail = Promise.resolve();
 let DiscoverFlight = null;
 const FurnitureNames = new Set([
@@ -109,16 +110,20 @@ function LayoutOccupancyReady(Chunk) {
   return true;
 }
 
-function CoreReady(Chunk) {
+function TraversalReady(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
   if (!Chunk.Layout?.Authority || Chunk.Layout.Authority !== "StoreLayoutV1") return false;
   if (Chunk.Group.userData?.LayoutAuthority !== Chunk.Layout.Authority) return false;
   if (!LayoutOccupancyReady(Chunk)) return false;
-  const Stable = UpdateStability(Chunk);
-  const ShelfStocked = window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ?? Boolean(Chunk.Group.userData?.ShelfStockR83);
-  const SaleDisplaysReady = window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk) ?? false;
+
+  const ShelfStocked =
+    window.__STORE_SHELF_STOCK_R83__?.IsStocked?.(Chunk) ??
+    Boolean(Chunk.Group.userData?.ShelfStockR83);
+  const SaleDisplaysReady =
+    window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk) ??
+    Boolean(Chunk.Group.userData?.RetailSaleDisplaysR84);
+
   return Boolean(
-    Stable.StableFor >= 360 &&
     Chunk.Group.userData?.WorldPolishR72 &&
     Chunk.Group.userData?.VisualRedesignR76 &&
     Chunk.Group.userData?.RetailShowroomR79 &&
@@ -127,9 +132,18 @@ function CoreReady(Chunk) {
     Chunk.Group.userData?.CoreFixR86 &&
     ShelfStocked &&
     SaleDisplaysReady &&
-    Chunk.Group.userData?.PriceTagsR83 &&
     PartitionsFinished(Chunk) &&
-    RearFinished(Chunk) &&
+    RearFinished(Chunk)
+  );
+}
+
+function CoreReady(Chunk) {
+  if (!TraversalReady(Chunk)) return false;
+
+  const Stable = UpdateStability(Chunk);
+  return Boolean(
+    Stable.StableFor >= 360 &&
+    Chunk.Group.userData?.PriceTagsR83 &&
     CompactTagCount(Chunk) >= Stable.Count &&
     !HasVisibleLegacyPriceSign(Chunk)
   );
@@ -146,11 +160,10 @@ function IdleYield() {
   });
 }
 
-async function RunWorldPasses(Chunk) {
+async function RunContentPasses(Chunk) {
   const Visual = window.__STORE_VISUAL_REDESIGN_R73__;
   const Retail = window.__STORE_RETAIL_SHOWROOM_R79__;
   const Finish = window.__STORE_FINISH_R80__;
-  const Tags = window.__STORE_COMPACT_PRICE_TAGS_R83__;
   const Zones = window.__STORE_RETAIL_ZONES_R82__;
   const Organize = window.__STORE_RETAIL_ORGANIZATION_R83__;
   const ShelfStock = window.__STORE_SHELF_STOCK_R83__;
@@ -171,47 +184,106 @@ async function RunWorldPasses(Chunk) {
   if (ShelfStock?.ProcessChunk) await ShelfStock.ProcessChunk(Chunk);
   Finish?.ProcessChunk?.(Chunk);
   if (Chunk.Index === 0) await Finish?.EnsureRearClosure?.();
-  await IdleYield();
 
-  await Tags?.RebuildChunk?.(Chunk);
   RemoveTerminalBeacons(Chunk);
-  window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessAll?.();
-  CoreFix?.ProcessChunk?.(Chunk);
+  CoreFix?.ProcessChunk?.(Chunk, true);
 }
 
+async function RunPolishPasses(Chunk) {
+  if (!Chunk?.Group || Chunk.Cancelled) return;
+
+  const Tags = window.__STORE_COMPACT_PRICE_TAGS_R83__;
+  const Materials = window.__STORE_VISIBLE_MATERIALS_R77__;
+  const CoreFix = window.__STORE_CORE_FIX_R86__;
+
+  await IdleYield();
+  await Tags?.RebuildChunk?.(Chunk);
+  RemoveTerminalBeacons(Chunk);
+
+  // Per-chunk only. Never rescan the full world just because one aisle finished.
+  Materials?.ProcessChunk?.(Chunk);
+  CoreFix?.ProcessChunk?.(Chunk, true);
+
+  const Ready = CoreReady(Chunk);
+  Chunk.Group.userData.PresentationReadyR83 = true;
+  Chunk.Group.userData.PresentationReadyR82 = true;
+  Chunk.Group.userData.PresentationReadyAt = performance.now();
+
+  if (!Ready) {
+    Chunk.Group.userData.PresentationDegradedR83 = true;
+  } else {
+    delete Chunk.Group.userData.PresentationDegradedR83;
+  }
+}
+
+function SchedulePolish(Chunk) {
+  if (
+    !Chunk?.Group ||
+    Chunk.Cancelled ||
+    Chunk.Group.userData?.PresentationReadyR83 ||
+    PolishPending.has(Chunk)
+  ) return;
+
+  PolishPending.add(Chunk);
+  setTimeout(async () => {
+    try {
+      if (!Chunk.Cancelled && Chunk.Group) await RunPolishPasses(Chunk);
+    } catch (Error) {
+      console.warn("Deferred showroom polish failed", Error);
+      if (Chunk?.Group && !Chunk.Cancelled) {
+        // Do not retry forever or block streaming for cosmetic work.
+        Chunk.Group.userData.PresentationReadyR83 = true;
+        Chunk.Group.userData.PresentationDegradedR83 = true;
+      }
+    } finally {
+      PolishPending.delete(Chunk);
+    }
+  }, 180);
+}
+
+
 async function FinalizeChunkNow(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Chunk.Group.userData?.PresentationReadyR83) return false;
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
+
+  if (Chunk.Group.userData?.TraversalReadyR83) {
+    SchedulePolish(Chunk);
+    return true;
+  }
 
   Finalizing.add(Chunk);
   try {
-    await RunWorldPasses(Chunk);
+    await RunContentPasses(Chunk);
 
-    const StabilityStart = performance.now();
-    while (!CoreReady(Chunk) && performance.now() - StabilityStart < 900) {
-      UpdateStability(Chunk);
-      await Delay(90);
+    if (!TraversalReady(Chunk)) {
+      await IdleYield();
+      await RunContentPasses(Chunk);
     }
 
-    if (!CoreReady(Chunk)) {
-      await RunWorldPasses(Chunk);
-      const RepairStart = performance.now();
-      while (!CoreReady(Chunk) && performance.now() - RepairStart < 520) {
-        UpdateStability(Chunk);
-        await Delay(90);
-      }
+    let Ready = TraversalReady(Chunk);
+
+    // Hard anti-deadlock fallback: if all planned layout objects exist after two
+    // content passes, open traversal even if one optional module forgot a flag.
+    if (
+      !Ready &&
+      Chunk.Ready &&
+      LayoutOccupancyReady(Chunk) &&
+      PartitionsFinished(Chunk) &&
+      RearFinished(Chunk)
+    ) {
+      Chunk.Group.userData.TraversalDegradedR83 = true;
+      Ready = true;
     }
 
-    if (!CoreReady(Chunk)) {
-      Chunk.Group.userData.PresentationRetryAfter = performance.now() + 700;
-      console.warn(`Chunk ${Chunk.Id} is not presentation-ready yet; deferring instead of exposing a partial aisle.`);
+    if (!Ready) {
+      Chunk.Group.userData.TraversalRetryAfter = performance.now() + 360;
       return false;
     }
 
-    Chunk.Group.userData.PresentationReadyR83 = true;
-    Chunk.Group.userData.PresentationReadyR82 = true;
-    Chunk.Group.userData.PresentationReadyAt = performance.now();
-    delete Chunk.Group.userData.PresentationRetryAfter;
-    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk, true);
+    Chunk.Group.userData.TraversalReadyR83 = true;
+    Chunk.Group.userData.TraversalReadyAt = performance.now();
+    delete Chunk.Group.userData.TraversalRetryAfter;
+
+    SchedulePolish(Chunk);
     return true;
   } finally {
     Finalizing.delete(Chunk);
@@ -219,9 +291,16 @@ async function FinalizeChunkNow(Chunk) {
 }
 
 export function FinalizeChunk(Chunk) {
-  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group || Chunk.Group.userData?.PresentationReadyR83) return Promise.resolve(false);
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) {
+    return Promise.resolve(false);
+  }
 
-  const RetryAfter = Number(Chunk.Group.userData?.PresentationRetryAfter) || 0;
+  if (Chunk.Group.userData?.TraversalReadyR83) {
+    SchedulePolish(Chunk);
+    return Promise.resolve(true);
+  }
+
+  const RetryAfter = Number(Chunk.Group.userData?.TraversalRetryAfter) || 0;
   if (RetryAfter > performance.now()) return Promise.resolve(false);
 
   const Existing = PendingFinalization.get(Chunk);
@@ -246,13 +325,18 @@ async function PrimeBootWorld() {
 }
 
 await PrimeBootWorld();
-window.__STORE_REQUIRE_PRESENTATION_READY__ = true;
+window.__STORE_REQUIRE_PRESENTATION_READY__ = false;
+window.__STORE_REQUIRE_TRAVERSAL_READY__ = true;
 
 const PreviousPreparedGet = Game.PreparedChunks.get.bind(Game.PreparedChunks);
 Game.PreparedChunks.get = function(Index) {
   const Chunk = PreviousPreparedGet(Index);
   if (!Chunk || Chunk.Cancelled || Chunk.Active) return Chunk;
-  if (Chunk.Ready && !Chunk.Group?.userData?.PresentationReadyR83) return null;
+  if (
+    Chunk.Ready &&
+    !Chunk.Group?.userData?.TraversalReadyR83 &&
+    !Chunk.Group?.userData?.PresentationReadyR83
+  ) return null;
   return Chunk;
 };
 
@@ -267,7 +351,12 @@ function NextFinalizeCandidate() {
   const Now = performance.now();
   const Candidates = [];
   for (const Chunk of Game.PreparedChunks.values()) {
-    if (!Chunk?.Ready || Chunk.Cancelled || Chunk.Group?.userData?.PresentationReadyR83) continue;
+    if (
+      !Chunk?.Ready ||
+      Chunk.Cancelled ||
+      Chunk.Group?.userData?.TraversalReadyR83 ||
+      Chunk.Group?.userData?.PresentationReadyR83
+    ) continue;
     if (PendingFinalization.has(Chunk) || Finalizing.has(Chunk)) continue;
     const RetryAfter = Number(Chunk.Group.userData?.PresentationRetryAfter) || 0;
     if (RetryAfter > Now) continue;
@@ -294,5 +383,10 @@ Discover();
 const Interval = setInterval(Discover, 280);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.4-STREAM";
+window.__STORE_PRESENTATION_READY_R83__ = {
+  FinalizeChunk,
+  TraversalReady,
+  CoreReady,
+  Discover
+};
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.15-TRAVERSAL";
