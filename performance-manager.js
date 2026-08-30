@@ -371,5 +371,6 @@ addEventListener("store-settings-change", () => { PerfState.TextureStamp = ""; P
 setInterval(ApplyPerformance, 650);
 setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
+window.__STORE_APPLY_PERFORMANCE__ = ApplyPerformance;
 window.__STORE_PERFORMANCE_BUILD__ = "V0.35.19-LIGHT-BUDGET";
 window.__STORE_SETTINGS_BUILD__ = "V0.35.19-LIGHT-BUDGET";
