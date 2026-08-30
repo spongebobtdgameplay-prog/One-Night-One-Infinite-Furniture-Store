@@ -46,7 +46,6 @@ const State = {
   Scene: null,
   Camera: null,
   Renderer: null,
-  CollisionBoxes: null,
   Controls: null,
   ThirdPerson: true,
   Distance: THIRD_PERSON_DEFAULT,
@@ -744,32 +743,6 @@ function RotateBoneToward(BoneName, ChildName, Target) {
   State.Pivot?.updateMatrixWorld(true);
 }
 
-function SegmentAabbDistance(Start, End, Bounds, Padding = CAMERA_PADDING) {
-  State.TempOffset.copy(End).sub(Start);
-  let TMin = 0;
-  let TMax = 1;
-
-  for (const Axis of ["x", "y", "z"]) {
-    const Origin = Start[Axis];
-    const Direction = State.TempOffset[Axis];
-    const Min = Bounds.min[Axis] - Padding;
-    const Max = Bounds.max[Axis] + Padding;
-
-    if (Math.abs(Direction) < 0.0000001) {
-      if (Origin < Min || Origin > Max) return null;
-      continue;
-    }
-
-    let Near = (Min - Origin) / Direction;
-    let Far = (Max - Origin) / Direction;
-    if (Near > Far) [Near, Far] = [Far, Near];
-    TMin = Math.max(TMin, Near);
-    TMax = Math.min(TMax, Far);
-    if (TMin > TMax) return null;
-  }
-
-  return TMin;
-}
 
 function ClampFirstPersonTargetToContacts(Target, Start) {
   if (!State.Scene || !Start?.isVector3 || !Target?.isVector3) return Target;
@@ -930,7 +903,6 @@ function Attach(Context) {
   State.Scene = Context.Scene;
   State.Camera = Context.Camera;
   State.Renderer = Context.Renderer;
-  State.CollisionBoxes = Context.CollisionBoxes;
   BasePlayer.Attach(Context);
   ApplyInputMode();
 }
