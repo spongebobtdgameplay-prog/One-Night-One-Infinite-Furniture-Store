@@ -175,9 +175,9 @@ function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
 }
 
+// Initial discovery only. Runtime stocking is sequenced by presentation
+// so it cannot collide with other chunk passes mid-frame.
 Discover();
-const Interval = setInterval(Discover, 1200);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.30.0";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.16-PIPELINE";
