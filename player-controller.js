@@ -400,14 +400,22 @@ function UpdateCharacterTransform(Delta) {
 
 function UpdateCharacter(Delta, Time) {
   if (!State.CharacterReady) return;
-  UpdateCharacterTransform(Delta);
+
+  const ExternalAuthority = window.__STORE_PLAYER_TRANSFORM_AUTHORITY__ === "R24";
+  if (!ExternalAuthority) UpdateCharacterTransform(Delta);
+
   const DesiredState = State.Sprinting ? "sprint" : State.Moving ? "walk" : "idle";
   if (State.Mixer && State.Actions.size) {
     SetAnimationState(DesiredState);
     State.Mixer.update(Delta);
-  } else ManualPose(Delta, Time);
-  if (!IsThirdPerson()) ApplyFirstPersonPose(Delta);
-  SetViewVisibility(!IsThirdPerson());
+  } else if (!ExternalAuthority) {
+    ManualPose(Delta, Time);
+  }
+
+  if (!ExternalAuthority) {
+    if (!IsThirdPerson()) ApplyFirstPersonPose(Delta);
+    SetViewVisibility(!IsThirdPerson());
+  }
 }
 
 function SegmentAabbDistance(Start, End, Bounds, Padding = 0.10) {
@@ -621,5 +629,5 @@ window.__STORE_PLAYER__ = {
   IsThirdPerson
 };
 
-window.__STORE_PLAYER_BUILD__ = "V0.11";
+window.__STORE_PLAYER_BUILD__ = "V0.35.2-BASE";
 requestAnimationFrame(Frame);
