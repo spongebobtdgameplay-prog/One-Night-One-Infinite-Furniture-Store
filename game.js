@@ -42,6 +42,7 @@ const GameTimer = new THREE.Clock();
 const KeyState = new Set();
 const CollisionBoxes = [];
 const ModelCache = new Map();
+const RugCanvasCache = new Map();
 const ActiveChunks = new Map();
 const PreparedChunks = new Map();
 const PreparingChunks = new Map();
@@ -363,8 +364,14 @@ function ScheduleGenerationWork(Job) {
 function PumpGenerationQueue() {
   if (GenerationRunning || !GenerationQueue.length) return;
   GenerationRunning = true;
+
   const Run = async () => {
     const Entry = GenerationQueue.shift();
+    if (!Entry) {
+      GenerationRunning = false;
+      return;
+    }
+
     try {
       Entry.Resolve(await Entry.Job());
     } catch (Error) {
@@ -372,12 +379,30 @@ function PumpGenerationQueue() {
     } finally {
       GenerationRunning = false;
       const Continue = () => PumpGenerationQueue();
-      if (document.visibilityState === "visible") requestAnimationFrame(Continue);
-      else setTimeout(Continue, 24);
+
+      // Never chain another generation job into the same frame.
+      if (document.visibilityState === "visible") {
+        requestAnimationFrame(Continue);
+      } else {
+        setTimeout(Continue, 32);
+      }
     }
   };
-  if ("requestIdleCallback" in window) requestIdleCallback(() => Run(), { timeout: 300 });
-  else setTimeout(Run, 8);
+
+  if ("requestIdleCallback" in window) {
+    requestIdleCallback(Deadline => {
+      // requestIdleCallback can fire with almost no actual budget. Starting a
+      // model clone/showroom build there is what caused visible frame spikes.
+      if (!Deadline.didTimeout && Deadline.timeRemaining() < 6) {
+        GenerationRunning = false;
+        requestAnimationFrame(PumpGenerationQueue);
+        return;
+      }
+      Run();
+    }, { timeout: 1000 });
+  } else {
+    setTimeout(Run, 12);
+  }
 }
 
 function OverlapsXZ(A, B, Padding = 0) {
@@ -672,13 +697,26 @@ function CreateRugTexture(Chunk, Entry) {
     ["#3d4841", "#9fb8a8", "#28302c"],
     ["#4a3b34", "#c59670", "#2d2521"]
   ];
-  const Variant = Math.abs(Math.trunc(Number(Entry.Variant) || 0));
-  const PaletteIndex = Math.floor(SeededRandom(Chunk.Seed + Variant * 17 + 31) * Palettes.length);
-  const [Base, Accent, Dark] = Palettes[PaletteIndex];
-  const RepeatX = Math.max(3, Entry.Width * 1.45);
-  const RepeatY = Math.max(3, Entry.Depth * 1.45);
 
-  return CreateTexture(256, RepeatX, RepeatY, (Context, Size) => {
+  const Variant = Math.abs(Math.trunc(Number(Entry.Variant) || 0));
+  const PaletteIndex = Math.floor(
+    SeededRandom(Chunk.Seed + Variant * 17 + 31) * Palettes.length
+  );
+  const StripeVariant = Variant % 4;
+  const CacheKey = \`\${PaletteIndex}:\${StripeVariant}\`;
+
+  let TextureCanvas = RugCanvasCache.get(CacheKey);
+
+  if (!TextureCanvas) {
+    const [Base, Accent, Dark] = Palettes[PaletteIndex];
+    const Size = 256;
+    const StripeOffset = StripeVariant * 13;
+
+    TextureCanvas = document.createElement("canvas");
+    TextureCanvas.width = Size;
+    TextureCanvas.height = Size;
+    const Context = TextureCanvas.getContext("2d", { alpha: false });
+
     Context.fillStyle = Base;
     Context.fillRect(0, 0, Size, Size);
 
@@ -700,7 +738,6 @@ function CreateRugTexture(Chunk, Entry) {
     Context.globalAlpha = 0.34;
     Context.strokeStyle = Dark;
     Context.lineWidth = 5;
-    const StripeOffset = (Variant % 4) * 13;
     for (let Stripe = -Size; Stripe < Size * 2; Stripe += 54) {
       Context.beginPath();
       Context.moveTo(Stripe + StripeOffset, 0);
@@ -718,16 +755,40 @@ function CreateRugTexture(Chunk, Entry) {
       Context.stroke();
     }
 
-    for (let Dot = 0; Dot < 680; Dot += 1) {
-      const X = SeededRandom(Chunk.Seed + Variant * 101 + Dot * 3 + 1) * Size;
-      const Y = SeededRandom(Chunk.Seed + Variant * 101 + Dot * 3 + 2) * Size;
-      const Alpha = 0.025 + SeededRandom(Chunk.Seed + Variant * 101 + Dot * 3 + 3) * 0.055;
-      Context.fillStyle = `rgba(255,245,225,${Alpha.toFixed(3)})`;
+    // Fibers are generated once per reusable pattern instead of once per rug.
+    const FiberSeed =
+      7000 +
+      PaletteIndex * 1009 +
+      StripeVariant * 313;
+    for (let Dot = 0; Dot < 420; Dot += 1) {
+      const X = SeededRandom(FiberSeed + Dot * 3 + 1) * Size;
+      const Y = SeededRandom(FiberSeed + Dot * 3 + 2) * Size;
+      const Alpha =
+        0.025 +
+        SeededRandom(FiberSeed + Dot * 3 + 3) * 0.055;
+      Context.fillStyle =
+        \`rgba(255,245,225,\${Alpha.toFixed(3)})\`;
       Context.fillRect(X, Y, 1, 1);
     }
 
     Context.globalAlpha = 1;
-  });
+    RugCanvasCache.set(CacheKey, TextureCanvas);
+  }
+
+  const Texture = new THREE.CanvasTexture(TextureCanvas);
+  Texture.wrapS = THREE.RepeatWrapping;
+  Texture.wrapT = THREE.RepeatWrapping;
+  Texture.repeat.set(
+    Math.max(3, Entry.Width * 1.45),
+    Math.max(3, Entry.Depth * 1.45)
+  );
+  Texture.colorSpace = THREE.SRGBColorSpace;
+  Texture.anisotropy = Math.min(
+    4,
+    Renderer.capabilities.getMaxAnisotropy()
+  );
+
+  return Texture;
 }
 
 function CreateRugMaterial(Chunk, Entry) {
