@@ -66,9 +66,10 @@ const VIEW_KEEP_DISTANCE = 185;
 const VIEW_KEEP_HOLD_MS = 2200;
 const PREPARED_BACK_CACHE = 5;
 const PREPARED_FORWARD_EXTRA = 2;
-const OBJECT_STREAM_INTERVAL_MS = 45;
+const OBJECT_STREAM_INTERVAL_MS = 90;
 const OBJECT_STREAM_NEAR_DISTANCE = 38;
 const OBJECT_STREAM_FAR_DISTANCE = 88;
+const PRICE_TAG_STREAM_DISTANCE = 28;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
@@ -325,9 +326,9 @@ const KhronosSampleBase = "https://raw.githubusercontent.com/KhronosGroup/glTF-S
 const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
 
 const ModelDefinitions = {
-  Couch_Large1: { Url: `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`, Axis: "x", Target: 2.45, PreserveMaterials: true },
-  Couch_L: { Url: `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`, Axis: "x", Target: 2.80, PreserveMaterials: true },
-  Chair_2: { Url: `${KhronosSampleBase}ChairDamaskPurplegold/glTF-Binary/ChairDamaskPurplegold.glb`, Axis: "y", Target: 1.00, PreserveMaterials: true },
+  Couch_Large1: { Url: `${KayKitFurnitureBase}couch_pillows.gltf`, Axis: "x", Target: 2.45, PreserveMaterials: true },
+  Couch_L: { Url: `${KayKitFurnitureBase}couch.gltf`, Axis: "x", Target: 2.80, PreserveMaterials: true },
+  Chair_2: { Url: `${KayKitFurnitureBase}armchair_pillows.gltf`, Axis: "y", Target: 1.00, PreserveMaterials: true },
   Table_RoundLarge: { Url: `${KayKitFurnitureBase}table_medium.gltf`, Axis: "x", Target: 1.55, PreserveMaterials: true },
   Bed_King: { Url: "Models/Bedroom/GLB/Bed_King.glb", Axis: "z", Target: 2.08 },
   Bed_Single: { Url: "Models/Bedroom/GLB/Bed_Single.glb", Axis: "z", Target: 2.02 },
@@ -337,17 +338,8 @@ const ModelDefinitions = {
   Kitchen_Cabinet1: { Url: ReplicaCabinetUrl, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
-  Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink_backsplash.gltf`, Axis: "y", Target: 0.95, PreserveMaterials: true },
-  Bathroom_Sink: {
-    Url: "Models/Kitchen/GLB/Kitchen_Sink.glb",
-    Axis: "y",
-    Target: 0.30,
-    RemoveNodes: ["Kitchen"],
-    SupportModel: "Kitchen_Cabinet1",
-    SupportHeight: 0.76,
-    SupportWidth: 0.96,
-    SupportDepth: 0.56
-  },
+  Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf`, Axis: "y", Target: 0.90, PreserveMaterials: true },
+  Bathroom_Sink: { Url: `${KayKitRestaurantBase}kitchentable_sink.gltf`, Axis: "y", Target: 0.84, PreserveMaterials: true },
   Bathroom_Bathtub: { Url: "Models/Bathroom/GLB/Bathroom_Bathtub.glb", Axis: "z", Target: 1.82 },
   Bathroom_Toilet: { Url: "Models/Bathroom/GLB/Bathroom_Toilet.glb", Axis: "y", Target: 0.82 },
   Light_Floor1: { Url: "Models/Lighting/GLB/Light_Floor1.glb", Axis: "y", Target: 1.58 },
@@ -359,7 +351,7 @@ const CollisionProfiles = {
   Couch_Large1: [2.25, 0.90], Couch_L: [2.45, 1.65], Chair_2: [0.78, 0.76], Table_RoundLarge: [1.38, 1.38],
   Bed_King: [1.90, 2.02], Bed_Single: [1.02, 1.96], NightStand_2: [0.52, 0.48], Shelf_Large: [1.75, 0.50],
   Bookshelf: [1.45, 0.42], Kitchen_Cabinet1: [1.05, 0.58], Kitchen_Fridge: [0.84, 0.78], Kitchen_Oven: [0.98, 1.14],
-  Kitchen_Sink: [1.12, 1.12], Bathroom_Sink: [1.10, 0.66], Bathroom_Bathtub: [0.80, 1.72], Bathroom_Toilet: [0.62, 0.78]
+  Kitchen_Sink: [1.05, 0.72], Bathroom_Sink: [0.92, 0.68], Bathroom_Bathtub: [0.80, 1.72], Bathroom_Toilet: [0.62, 0.78]
 };
 
 const PlacementProfiles = {
@@ -574,6 +566,12 @@ function PrepareModel(Name, Model) {
   const EmbeddedLights = [];
   Model.traverse(Object => {
     if (Object?.isLight && Object.parent) EmbeddedLights.push(Object);
+    if (Object?.isMesh) {
+      Object.frustumCulled = true;
+      Object.castShadow = false;
+      Object.receiveShadow = false;
+      Object.geometry?.computeBoundingSphere?.();
+    }
   });
   for (const Light of EmbeddedLights) Light.parent?.remove(Light);
 
@@ -1395,6 +1393,16 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
       StreamToObject.copy(StreamObjectPosition).sub(Camera.position);
       StreamToObject.y = 0;
       const DistanceSq = StreamToObject.lengthSq();
+      const IsPriceTag = Boolean(Object.userData?.CompactPriceAuthorityR83);
+
+      if (
+        IsPriceTag &&
+        DistanceSq > PRICE_TAG_STREAM_DISTANCE * PRICE_TAG_STREAM_DISTANCE
+      ) {
+        SetObjectStreamCulled(Object, true);
+        continue;
+      }
+
       const VisibleNow = StreamFrustum.intersectsBox(Bounds);
 
       if (
@@ -1892,8 +1900,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.23";
-window.__STORE_VERSION__ = "0.35.23";
+window.__STORE_GAME_BUILD__ = "V0.35.24";
+window.__STORE_VERSION__ = "0.35.24";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1917,6 +1925,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.23"
+  Version: "0.35.24"
 };
 Animate();
