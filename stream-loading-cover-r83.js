@@ -14,13 +14,13 @@ if (
 const Overlay = document.createElement("div");
 Overlay.id = "StreamLoadingCoverR83";
 Overlay.setAttribute("aria-hidden", "true");
-Overlay.innerHTML = \`
+Overlay.innerHTML = `
   <div class="StreamLoadingInnerR83">
     <strong>BUFFERING NEXT AISLE</strong>
     <span>Preparing nearby furniture...</span>
     <i></i>
   </div>
-\`;
+`;
 
 Object.assign(Overlay.style, {
   position: "fixed",
@@ -35,7 +35,7 @@ Object.assign(Overlay.style, {
 });
 
 const Style = document.createElement("style");
-Style.textContent = \`
+Style.textContent = `
 .StreamLoadingInnerR83{
   min-width:230px;
   display:flex;
@@ -64,7 +64,7 @@ Style.textContent = \`
   from{background-position:-160px 0}
   to{background-position:160px 0}
 }
-\`;
+`;
 document.head.appendChild(Style);
 document.body.appendChild(Overlay);
 
@@ -207,7 +207,7 @@ function PrioritizeNext(Index) {
       return Presentation?.FinalizeChunk?.(Chunk) ?? false;
     })
     .catch(Error => {
-      console.warn(\`Priority stream preparation failed for chunk \${Index}\`, Error);
+      console.warn(`Priority stream preparation failed for chunk ${Index}`, Error);
       return false;
     })
     .finally(() => {
