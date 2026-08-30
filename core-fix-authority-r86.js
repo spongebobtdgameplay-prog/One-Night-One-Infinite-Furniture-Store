@@ -312,6 +312,32 @@ function InstallExactCollision(Chunk, Model) {
   const Signature = TargetSignature(Model);
   RemoveExistingCoreEntry(Chunk, Model);
 
+  const Geometry = BuildExactFootprint(Model);
+  const FallbackPieces = BuildOrientedFallback(Model);
+  const StableBox = Geometry.WorldBox.clone();
+
+  const Entry = {
+    Box: StableBox.clone(),
+    OriginalBox: StableBox.clone(),
+    OriginalLegacyBox: StableBox.clone(),
+    ChunkId: Chunk.Id,
+    Type: `${String(Model.name || "Furniture")}ExactMeshR87`,
+    Active: Boolean(Chunk.Active),
+    CoreFixR87: true,
+    CoreFixR88: true,
+    PreciseGeometry: true,
+    LegacyCollisionDisabled: true,
+    CollisionObject: Model,
+    TestPlayerCollision(Position, Radius = 0.28) {
+      return CircleHitsExact(Position, Radius, Geometry, FallbackPieces);
+    }
+  };
+
+  Chunk.CollisionEntries.push(Entry);
+  if (Chunk.Active && !Game.CollisionBoxes.includes(Entry)) {
+    Game.CollisionBoxes.push(Entry);
+  }
+
   Model.userData.RayCollisionSolidR35 = true;
   Model.userData.LegacyMovementCollisionDisabledR35 = true;
   Model.traverse(Object => {
@@ -472,4 +498,4 @@ ProcessAll();
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.16-EVENT";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.17-EXACT-MESH";
