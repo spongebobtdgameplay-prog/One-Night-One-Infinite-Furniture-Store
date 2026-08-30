@@ -888,6 +888,83 @@ function ResolveFootHullSweep(Target, PreviousSafe, Hull = null, Clearance = 0.0
   };
 }
 
+function ResolveBodyPartCurbForce(Position, Radius = 0.10, Target = null, Clearance = 0.010) {
+  const Out = Target?.isVector3 ? Target : new THREE.Vector3();
+  Out.set(0, 0, 0);
+
+  if (!Position?.isVector3) {
+    return {
+      Hit: false,
+      Depth: 0,
+      Separation: Out
+    };
+  }
+
+  const SafeRadius = THREE.MathUtils.clamp(
+    Number(Radius) || 0.10,
+    0.035,
+    0.30
+  );
+  const SafeClearance = THREE.MathUtils.clamp(
+    Number(Clearance) || 0.010,
+    0.006,
+    0.035
+  );
+
+  let BestDepth = 0;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    if (
+      Position.y - SafeRadius >=
+      Bounds.max.y + SafeClearance
+    ) continue;
+
+    const MinX = Bounds.min.x - SafeRadius - SafeClearance;
+    const MaxX = Bounds.max.x + SafeRadius + SafeClearance;
+    const MinZ = Bounds.min.z - SafeRadius - SafeClearance;
+    const MaxZ = Bounds.max.z + SafeRadius + SafeClearance;
+
+    if (
+      Position.x <= MinX ||
+      Position.x >= MaxX ||
+      Position.z <= MinZ ||
+      Position.z >= MaxZ
+    ) continue;
+
+    const TopSupported =
+      Position.y - SafeRadius >= Bounds.max.y - 0.003 &&
+      Position.x >= Bounds.min.x + SafeRadius + SafeClearance &&
+      Position.x <= Bounds.max.x - SafeRadius - SafeClearance &&
+      Position.z >= Bounds.min.z + SafeRadius + SafeClearance &&
+      Position.z <= Bounds.max.z - SafeRadius - SafeClearance;
+
+    if (TopSupported) continue;
+
+    const Left = Position.x - MinX;
+    const Right = MaxX - Position.x;
+    const Back = Position.z - MinZ;
+    const Front = MaxZ - Position.z;
+    const Depth = Math.min(Left, Right, Back, Front);
+
+    if (Depth <= BestDepth) continue;
+    BestDepth = Depth;
+
+    if (Depth === Left) Out.set(-Depth, 0, 0);
+    else if (Depth === Right) Out.set(Depth, 0, 0);
+    else if (Depth === Back) Out.set(0, 0, -Depth);
+    else Out.set(0, 0, Depth);
+  }
+
+  return {
+    Hit: BestDepth > 0,
+    Depth: BestDepth,
+    Separation: Out
+  };
+}
+
 function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0, Direction = null) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return false;
@@ -976,7 +1053,8 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   IsFootHullSafe,
   ResolveFootHullConstraint,
   ResolveFootHullSweep,
+  ResolveBodyPartCurbForce,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.30-MESH-DERIVED-FOOT-HULL";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.31-FULL-BODY-CURB-FORCE";
