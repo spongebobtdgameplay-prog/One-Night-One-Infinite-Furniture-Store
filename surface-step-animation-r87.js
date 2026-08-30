@@ -363,6 +363,24 @@ function FootFullyOnTop(Position, Bounds, Radius, Clearance) {
     Bounds.max.y - 0.003;
 }
 
+function FootSafeForBounds(Position, Bounds, Radius, Clearance) {
+  if (!FiniteBounds(Bounds)) return true;
+
+  const Reach = Radius + Clearance;
+  if (
+    Position.x < Bounds.min.x - Reach ||
+    Position.x > Bounds.max.x + Reach ||
+    Position.z < Bounds.min.z - Reach ||
+    Position.z > Bounds.max.z + Reach
+  ) return true;
+
+  if (FootClearsCurbVertically(Position, Bounds, Clearance)) return true;
+  if (FootFullyOutside(Position, Bounds, Radius, Clearance)) return true;
+  if (FootFullyOnTop(Position, Bounds, Radius, Clearance)) return true;
+
+  return false;
+}
+
 function IsFootCurbSafe(Position, Radius = 0.145, Clearance = 0.010) {
   if (!Position?.isVector3) return true;
 
@@ -370,22 +388,12 @@ function IsFootCurbSafe(Position, Radius = 0.145, Clearance = 0.010) {
   const SafeClearance = THREE.MathUtils.clamp(Number(Clearance) || 0.010, 0.006, 0.030);
 
   for (const Record of Rugs.values()) {
-    const Bounds = Record.Bounds;
-    if (!FiniteBounds(Bounds)) continue;
-
-    const Reach = SafeRadius + SafeClearance;
-    if (
-      Position.x < Bounds.min.x - Reach ||
-      Position.x > Bounds.max.x + Reach ||
-      Position.z < Bounds.min.z - Reach ||
-      Position.z > Bounds.max.z + Reach
-    ) continue;
-
-    if (FootClearsCurbVertically(Position, Bounds, SafeClearance)) continue;
-    if (FootFullyOutside(Position, Bounds, SafeRadius, SafeClearance)) continue;
-    if (FootFullyOnTop(Position, Bounds, SafeRadius, SafeClearance)) continue;
-
-    return false;
+    if (!FootSafeForBounds(
+      Position,
+      Record.Bounds,
+      SafeRadius,
+      SafeClearance
+    )) return false;
   }
 
   return true;
@@ -401,7 +409,12 @@ function ResolveFootCurbConstraint(Target, Reference = null, Radius = 0.145, Cle
   for (const Record of Rugs.values()) {
     const Bounds = Record.Bounds;
     if (!FiniteBounds(Bounds)) continue;
-    if (IsFootCurbSafe(Target, SafeRadius, SafeClearance)) continue;
+    if (FootSafeForBounds(
+      Target,
+      Bounds,
+      SafeRadius,
+      SafeClearance
+    )) continue;
 
     const Outside = [
       { Axis: "x", Value: Bounds.min.x - Gap, Distance: Math.abs(Target.x - (Bounds.min.x - Gap)), Side: "minX" },
