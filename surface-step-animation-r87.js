@@ -595,30 +595,37 @@ function ResolveFootRollback(Target, PreviousSafe, Radius = 0.145, Clearance = 0
   };
 }
 
-function FootHullMetrics(Hull) {
+const FootHullMetricScratch = {
+  ExtentX: 0.145,
+  ExtentZ: 0.078,
+  SoleOffset: 0.055
+};
+
+function ReadFootHullMetrics(Hull, Out = FootHullMetricScratch) {
   const ForwardX = Number(Hull?.ForwardX) || 0;
   const ForwardZ = Number(Hull?.ForwardZ) || 1;
   const RightX = Number(Hull?.RightX) || 1;
   const RightZ = Number(Hull?.RightZ) || 0;
   const HalfLength = THREE.MathUtils.clamp(Number(Hull?.HalfLength) || 0.145, 0.10, 0.24);
   const HalfWidth = THREE.MathUtils.clamp(Number(Hull?.HalfWidth) || 0.078, 0.05, 0.15);
-  const SoleOffset = THREE.MathUtils.clamp(Number(Hull?.SoleOffset) || 0.055, 0.025, 0.14);
 
-  return {
-    ExtentX:
-      Math.abs(ForwardX) * HalfLength +
-      Math.abs(RightX) * HalfWidth,
-    ExtentZ:
-      Math.abs(ForwardZ) * HalfLength +
-      Math.abs(RightZ) * HalfWidth,
-    SoleOffset
-  };
+  Out.ExtentX =
+    Math.abs(ForwardX) * HalfLength +
+    Math.abs(RightX) * HalfWidth;
+  Out.ExtentZ =
+    Math.abs(ForwardZ) * HalfLength +
+    Math.abs(RightZ) * HalfWidth;
+  Out.SoleOffset = THREE.MathUtils.clamp(
+    Number(Hull?.SoleOffset) || 0.055,
+    0.025,
+    0.14
+  );
+
+  return Out;
 }
 
-function FootHullSafeForBounds(Position, Bounds, Hull, Clearance) {
+function FootHullSafeForBounds(Position, Bounds, Metrics, Clearance) {
   if (!FiniteBounds(Bounds)) return true;
-
-  const Metrics = FootHullMetrics(Hull);
   const MinX = Position.x - Metrics.ExtentX;
   const MaxX = Position.x + Metrics.ExtentX;
   const MinZ = Position.z - Metrics.ExtentZ;
@@ -654,11 +661,13 @@ function IsFootHullSafe(Position, Hull, Clearance = 0.010) {
     0.030
   );
 
+  const Metrics = ReadFootHullMetrics(Hull);
+
   for (const Record of Rugs.values()) {
     if (!FootHullSafeForBounds(
       Position,
       Record.Bounds,
-      Hull,
+      Metrics,
       SafeClearance
     )) return false;
   }
@@ -674,12 +683,12 @@ function ResolveFootHullConstraint(Target, Reference = null, Hull = null, Cleara
     0.006,
     0.030
   );
-  const Metrics = FootHullMetrics(Hull);
+  const Metrics = ReadFootHullMetrics(Hull);
 
   for (const Record of Rugs.values()) {
     const Bounds = Record.Bounds;
     if (!FiniteBounds(Bounds)) continue;
-    if (FootHullSafeForBounds(Target, Bounds, Hull, SafeClearance)) continue;
+    if (FootHullSafeForBounds(Target, Bounds, Metrics, SafeClearance)) continue;
 
     const SoleBottom = Target.y - Metrics.SoleOffset;
     const CenterInside =
