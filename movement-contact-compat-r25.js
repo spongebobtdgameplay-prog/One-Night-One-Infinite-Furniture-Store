@@ -1,12 +1,19 @@
 import * as THREE from "three";
 
 const Contact = window.__STORE_MOVEMENT_CONTACT__ ||= {};
+const ResolvedMovementFrame = window.__STORE_RESOLVED_MOVEMENT_FRAME__ ||= {};
 const Game = window.__STORE_GAME__ || null;
 const Physics = window.__STORE_PROCEDURAL_PHYSICS__ || null;
 const Collision = window.__STORE_COLLISION_UTILITY__ || null;
 
 function EnsureVector(Key) {
   if (!Contact[Key]?.isVector3) Contact[Key] = new THREE.Vector3();
+}
+
+function EnsureMovementFrameVector(Key) {
+  if (!ResolvedMovementFrame[Key]?.isVector3) {
+    ResolvedMovementFrame[Key] = new THREE.Vector3();
+  }
 }
 
 for (const Key of [
@@ -16,6 +23,17 @@ for (const Key of [
   "SlideDirection",
   "CharacterFacing"
 ]) EnsureVector(Key);
+
+for (const Key of [
+  "Start",
+  "End",
+  "Requested",
+  "Resolved",
+  "Direction"
+]) EnsureMovementFrameVector(Key);
+
+if (!Number.isFinite(ResolvedMovementFrame.Serial)) ResolvedMovementFrame.Serial = 0;
+if (!Number.isFinite(ResolvedMovementFrame.UpdatedAt)) ResolvedMovementFrame.UpdatedAt = -Infinity;
 
 if (!Number.isFinite(Contact.Strength)) Contact.Strength = 0;
 if (!Number.isFinite(Contact.SlideAmount)) Contact.SlideAmount = 0;
@@ -944,6 +962,52 @@ function StrictTriangleSweep(Start, End, Radius, Records) {
 }
 
 
+function PublishResolvedMovementFrame(Start, RequestedEnd, FinalPosition, Delta, Verified) {
+  const SafeDelta = Math.max(0.001, Number(Delta) || 0.016);
+
+  ResolvedMovementFrame.Start.copy(Start);
+  ResolvedMovementFrame.End.copy(FinalPosition);
+  ResolvedMovementFrame.Requested.copy(RequestedEnd).sub(Start);
+  ResolvedMovementFrame.Requested.y = 0;
+  ResolvedMovementFrame.Resolved.copy(FinalPosition).sub(Start);
+  ResolvedMovementFrame.Resolved.y = 0;
+
+  const RequestedDistance = ResolvedMovementFrame.Requested.length();
+  const ResolvedDistance = ResolvedMovementFrame.Resolved.length();
+
+  if (ResolvedDistance > 0.000001) {
+    ResolvedMovementFrame.Direction
+      .copy(ResolvedMovementFrame.Resolved)
+      .divideScalar(ResolvedDistance);
+  } else {
+    ResolvedMovementFrame.Direction.set(0, 0, 0);
+  }
+
+  ResolvedMovementFrame.RequestedDistance = RequestedDistance;
+  ResolvedMovementFrame.Distance = ResolvedDistance;
+  ResolvedMovementFrame.Speed = ResolvedDistance / SafeDelta;
+  ResolvedMovementFrame.Delta = SafeDelta;
+
+  // Any visible lateral displacement must be represented by locomotion.
+  // The epsilon only rejects floating-point jitter.
+  ResolvedMovementFrame.HasMovement = ResolvedDistance > 0.00025;
+  ResolvedMovementFrame.InputMoving = RequestedDistance > 0.00025;
+  ResolvedMovementFrame.CorrectionOnly =
+    ResolvedMovementFrame.HasMovement && !ResolvedMovementFrame.InputMoving;
+  ResolvedMovementFrame.CollisionAdjusted =
+    Boolean(Verified?.Hit) ||
+    Math.abs(RequestedDistance - ResolvedDistance) > 0.0004;
+  ResolvedMovementFrame.ForceConstrained = Boolean(Verified?.ForceConstrained);
+  ResolvedMovementFrame.ConstraintPressure = THREE.MathUtils.clamp(
+    Number(Verified?.ConstraintPressure) || 0,
+    0,
+    1
+  );
+  ResolvedMovementFrame.UpdatedAt = performance.now();
+  ResolvedMovementFrame.Serial += 1;
+  return ResolvedMovementFrame;
+}
+
 function RecordStrictContact(Start, RequestedEnd, Verified) {
   const Hit = Verified?.Contact;
   if (!Verified?.Hit || !Hit) return;
@@ -1086,6 +1150,14 @@ function InstallStrictMovementVerifier() {
     Camera.position.x = Verified.Position.x;
     Camera.position.z = Verified.Position.z;
 
+    PublishResolvedMovementFrame(
+      Scratch.Start,
+      Scratch.RequestedEnd,
+      Camera.position,
+      Delta,
+      Verified
+    );
+
     if (Verified.Hit) {
       RecordStrictContact(
         Scratch.Start,
@@ -1152,4 +1224,4 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
   }
 };
 
-window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.9-NO-SKATE";
+window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.11-RESOLVED-MOTION";
