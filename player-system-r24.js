@@ -663,15 +663,23 @@ function SolveTwoBoneLeg(UpperName, LowerName, FootName, Target, PoleSide = 1) {
   return true;
 }
 
-function FootprintGroundHeight(SurfaceStep, Position, Travel, StartY) {
+function FootprintGroundProfile(SurfaceStep, Position, Travel, StartY) {
   const Raycast = SurfaceStep?.RaycastGroundHeight;
-  if (typeof Raycast !== "function") return 0;
+  if (typeof Raycast !== "function") {
+    return {
+      Height: 0,
+      CenterHeight: 0,
+      SupportFraction: 0,
+      RaisedSamples: 0,
+      SampleCount: 1
+    };
+  }
 
   State.TempFootSide.set(Travel.z, 0, -Travel.x);
   if (State.TempFootSide.lengthSq() <= 0.000001) State.TempFootSide.set(1, 0, 0);
   else State.TempFootSide.normalize();
 
-  let Height = Raycast(Position, StartY) ?? 0;
+  const CenterHeight = Math.max(0, Raycast(Position, StartY) ?? 0);
   const Samples = [
     [FOOT_PROBE_TOE, 0],
     [-FOOT_PROBE_HEEL, 0],
@@ -681,14 +689,47 @@ function FootprintGroundHeight(SurfaceStep, Position, Travel, StartY) {
     [FOOT_PROBE_TOE * 0.82, -FOOT_PROBE_SIDE * 0.82]
   ];
 
+  let RaisedSamples = CenterHeight > 0.008 ? 1 : 0;
+  let HeightSum = CenterHeight * 2.8;
+  let WeightSum = 2.8;
+
   for (const [Forward, Side] of Samples) {
     State.TempFootProbe.copy(Position)
       .addScaledVector(Travel, Forward)
       .addScaledVector(State.TempFootSide, Side);
-    Height = Math.max(Height, Raycast(State.TempFootProbe, StartY) ?? 0);
+
+    const SampleHeight = Math.max(
+      0,
+      Raycast(State.TempFootProbe, StartY) ?? 0
+    );
+
+    if (SampleHeight > 0.008) RaisedSamples += 1;
+    HeightSum += SampleHeight;
+    WeightSum += 1;
   }
 
-  return Height;
+  const SampleCount = Samples.length + 1;
+  const SupportFraction = THREE.MathUtils.clamp(
+    RaisedSamples / SampleCount,
+    0,
+    1
+  );
+
+  // The center of the sole decides which level the foot belongs to. Surrounding
+  // probes only soften the transition; a single heel/toe left on the rug can no
+  // longer hold the entire foot up.
+  const WeightedHeight = WeightSum > 0 ? HeightSum / WeightSum : CenterHeight;
+  const Height = CenterHeight > 0.008
+    ? THREE.MathUtils.lerp(WeightedHeight, CenterHeight, 0.72)
+    : WeightedHeight * SupportFraction * 0.22;
+
+  return {
+    Height,
+    CenterHeight,
+    SupportFraction,
+    RaisedSamples,
+    SampleCount
+  };
 }
 
 function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
@@ -733,12 +774,14 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     State.TempLegTarget.y + 0.55,
     (State.Camera?.position?.y || 1.68) + 0.18
   );
-  const GroundHeight = FootprintGroundHeight(
+  const GroundProfile = FootprintGroundProfile(
     SurfaceStep,
     State.TempLegTarget,
     Travel,
     GroundRayStartY
   );
+  const GroundHeight = GroundProfile.Height;
+  const CenterGroundHeight = GroundProfile.CenterHeight;
 
   const RaisedSurfaceSkin = GroundHeight > RootFloor + 0.008 ? FOOT_SOLE_SKIN : 0;
   const DesiredGroundOffset = THREE.MathUtils.clamp(
@@ -746,14 +789,39 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     -0.18,
     0.18
   );
-  const GroundAlpha = ExpAlpha(Delta, Active ? 25 : 18);
+
+  const PreviousOffset = IsLeft ? State.FootGroundLeft : State.FootGroundRight;
+  const DroppingOffLedge = DesiredGroundOffset < PreviousOffset - 0.012;
+  const GroundAlpha = ExpAlpha(
+    Delta,
+    DroppingOffLedge ? 38 : (Active ? 25 : 18)
+  );
 
   if (IsLeft) {
-    State.FootGroundLeft = THREE.MathUtils.lerp(State.FootGroundLeft, DesiredGroundOffset, GroundAlpha);
+    State.FootGroundLeft = THREE.MathUtils.lerp(
+      State.FootGroundLeft,
+      DesiredGroundOffset,
+      GroundAlpha
+    );
     State.TempLegTarget.y += State.FootGroundLeft + Lift;
   } else {
-    State.FootGroundRight = THREE.MathUtils.lerp(State.FootGroundRight, DesiredGroundOffset, GroundAlpha);
+    State.FootGroundRight = THREE.MathUtils.lerp(
+      State.FootGroundRight,
+      DesiredGroundOffset,
+      GroundAlpha
+    );
     State.TempLegTarget.y += State.FootGroundRight + Lift;
+  }
+
+  // When the sole center has moved to the lower floor, keep the shoe outside
+  // the rug's vertical ledge face instead of allowing the ankle/foot mesh to
+  // cross through it during the descent.
+  if (CenterGroundHeight < 0.008) {
+    SurfaceStep.ResolveLowerFootLedge?.(
+      State.TempLegTarget,
+      0.074,
+      CenterGroundHeight
+    );
   }
 
   SolveTwoBoneLeg(Upper, Lower, Foot, State.TempLegTarget, Side);
@@ -765,7 +833,11 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
 
   return {
     GroundHeight,
-    SupportWeight: Arc > 0.001 ? THREE.MathUtils.lerp(1, 0.10, THREE.MathUtils.clamp(Arc, 0, 1)) : 1,
+    CenterGroundHeight,
+    SupportFraction: GroundProfile.SupportFraction,
+    SupportWeight: Arc > 0.001
+      ? THREE.MathUtils.lerp(1, 0.10, THREE.MathUtils.clamp(Arc, 0, 1))
+      : Math.max(0.18, GroundProfile.SupportFraction),
     Arc
   };
 }
@@ -1444,4 +1516,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.9-NECK-CONTACT";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.10-LEDGE-FEET";
