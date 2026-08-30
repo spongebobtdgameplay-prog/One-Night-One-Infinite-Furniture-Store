@@ -183,12 +183,20 @@ function GetNearestLedgeState(Position, Direction = null, Range = 0.34) {
         MotionDot = Direction.x * Edge.NormalX + Direction.z * Edge.NormalZ;
       }
 
+      const MotionAlignment = Math.abs(MotionDot);
+      const DirectionPenalty =
+        Direction?.isVector3 && Direction.lengthSq() > 0.000001
+          ? (1 - THREE.MathUtils.clamp(MotionAlignment, 0, 1)) * 0.18
+          : 0;
+      const Score = Distance + DirectionPenalty;
+
       const Candidate = {
         RugId: Record.Id,
         Object: Record.Object,
         Bounds,
         Height: Bounds.max.y,
         Distance,
+        Score,
         SignedDistance,
         Inside: SignedDistance <= 0,
         Entering: MotionDot < -0.05,
@@ -206,7 +214,7 @@ function GetNearestLedgeState(Position, Direction = null, Range = 0.34) {
           : THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z)
       };
 
-      if (!Best || Candidate.Distance < Best.Distance) Best = Candidate;
+      if (!Best || Candidate.Score < Best.Score) Best = Candidate;
     }
   }
 
@@ -400,4 +408,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.13-EDGE-QUERY";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.14-LATCH-QUERY";
