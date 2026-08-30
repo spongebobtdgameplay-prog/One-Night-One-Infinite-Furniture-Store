@@ -1,5 +1,5 @@
-const Cache = "20260830-v03521-stream1";
-const Version = "0.35.21";
+const Cache = "20260830-v03522-viewport1";
+const Version = "0.35.22";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
