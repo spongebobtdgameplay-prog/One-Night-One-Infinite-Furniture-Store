@@ -259,9 +259,9 @@ function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
 }
 
+// Initial discovery only. Runtime chunks are handed here explicitly by
+// presentation-ready; duplicate polling caused generation bursts.
 Discover();
-const Interval = setInterval(Discover, 900);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.0-RAY";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.16-PIPELINE";
