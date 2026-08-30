@@ -47,7 +47,8 @@ const FIRST_PERSON_BODY_FOLLOW_MOVING = THREE.MathUtils.degToRad(28);
 const FIRST_PERSON_BODY_FOLLOW_IDLE_RATE = 10.0;
 const FIRST_PERSON_BODY_FOLLOW_MOVING_RATE = 14.0;
 const FOOT_SOLE_SKIN = 0.006;
-const LEDGE_FOOT_RADIUS = 0.125;
+const FOOT_CURB_CLEARANCE = 0.010;
+const LEDGE_FOOT_RADIUS = 0.145;
 const LEDGE_LOCK_MAX_AGE = 360;
 const LEDGE_LOCK_MAX_DRIFT = 0.20;
 const LEDGE_PELVIS_MAX = 0.045;
@@ -59,7 +60,7 @@ const EDGE_RELEASE_FRAMES = 4;
 const EDGE_LEAD_SWITCH_DISTANCE = -0.115;
 const EDGE_TRAIL_SWITCH_DISTANCE = 0.125;
 const EDGE_TANGENT_RELEASE_PADDING = 0.38;
-const EDGE_FOOT_NORMAL_OFFSET = 0.138;
+const EDGE_FOOT_NORMAL_OFFSET = 0.160;
 const EDGE_FOOT_TANGENT_OFFSET = 0.095;
 const FOOT_PROBE_TOE = 0.115;
 const FOOT_PROBE_HEEL = 0.075;
@@ -181,6 +182,9 @@ const State = {
   TempHip: new THREE.Vector3(),
   TempKnee: new THREE.Vector3(),
   TempFoot: new THREE.Vector3(),
+  TempCurbActual: new THREE.Vector3(),
+  TempCurbCorrected: new THREE.Vector3(),
+  TempCurbDelta: new THREE.Vector3(),
   TempLegTarget: new THREE.Vector3(),
   TempKneeTarget: new THREE.Vector3(),
   TempLegAxis: new THREE.Vector3(),
@@ -1189,8 +1193,7 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
     Side,
     SurfaceStep,
     State.TempLegTarget,
-    SupportHeight,
-    CrossingAllowed
+    SupportHeight
   );
 
   const StoredTarget = IsLeft
@@ -1312,6 +1315,9 @@ function ApplyGeometryEdgeTransition(SurfaceStep, Step, Delta, Travel) {
     RightSupport.Target,
     RightSupport.Side
   );
+
+  EnforceSolvedFootCurb(LeftSupport, SurfaceStep);
+  EnforceSolvedFootCurb(RightSupport, SurfaceStep);
 
   // Feet stay level with their actual support planes.
   AddBoneRotation("FootL", LeftSupport.WantsTop ? -0.012 : 0.010, 0, 0);
@@ -1452,57 +1458,161 @@ function ApplySplitStancePelvis(LeftSupport, RightSupport, Delta) {
   return SplitStance;
 }
 
-function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0, AllowCrossing = false) {
+function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0) {
   if (!Target?.isVector3 || !SurfaceStep) return Target;
 
   const IsLeft = Side < 0;
   const Safe = IsLeft ? State.SafeFootLeft : State.SafeFootRight;
   const ReadyKey = IsLeft ? "SafeFootLeftReady" : "SafeFootRightReady";
+  const IsSafe = Position =>
+    SurfaceStep.IsFootCurbSafe?.(
+      Position,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    ) !== false;
 
-  if (!State[ReadyKey] || Safe.distanceToSquared(Target) > 0.72 * 0.72) {
-    const Candidate = Target.clone();
-    if (!SurfaceStep.IsFootCurbSafe?.(Candidate, LEDGE_FOOT_RADIUS, 0.055)) {
+  if (!State[ReadyKey]) {
+    State.TempCurbCorrected.copy(Target);
+
+    if (!IsSafe(State.TempCurbCorrected)) {
+      SurfaceStep.ResolveFootCurbConstraint?.(
+        State.TempCurbCorrected,
+        null,
+        LEDGE_FOOT_RADIUS,
+        FOOT_CURB_CLEARANCE
+      );
+    }
+
+    if (!IsSafe(State.TempCurbCorrected)) {
       if (Number(GroundHeight) > 0.008) {
         SurfaceStep.ResolveRaisedFootLedge?.(
-          Candidate,
+          State.TempCurbCorrected,
           LEDGE_FOOT_RADIUS,
           GroundHeight
         );
       } else {
         SurfaceStep.ResolveLowerFootLedge?.(
-          Candidate,
+          State.TempCurbCorrected,
           LEDGE_FOOT_RADIUS,
           GroundHeight
         );
       }
-    }
-    Safe.copy(Candidate);
-    State[ReadyKey] = true;
-  }
 
-  if (AllowCrossing) {
-    if (SurfaceStep.IsFootCurbSafe?.(Target, LEDGE_FOOT_RADIUS, 0.055) !== false) {
-      Safe.copy(Target);
-    } else {
-      Target.copy(Safe);
+      SurfaceStep.ResolveFootCurbConstraint?.(
+        State.TempCurbCorrected,
+        null,
+        LEDGE_FOOT_RADIUS,
+        FOOT_CURB_CLEARANCE
+      );
     }
-    return Target;
+
+    Safe.copy(State.TempCurbCorrected);
+    State[ReadyKey] = true;
   }
 
   SurfaceStep.ResolveFootRollback?.(
     Target,
     Safe,
     LEDGE_FOOT_RADIUS,
-    0.055
+    FOOT_CURB_CLEARANCE
   );
 
-  if (SurfaceStep.IsFootCurbSafe?.(Target, LEDGE_FOOT_RADIUS, 0.055) !== false) {
+  if (!IsSafe(Target)) {
+    SurfaceStep.ResolveFootCurbConstraint?.(
+      Target,
+      Safe,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    );
+  }
+
+  if (IsSafe(Target)) {
     Safe.copy(Target);
   } else {
     Target.copy(Safe);
   }
 
   return Target;
+}
+
+function EnforceSolvedFootCurb(Support, SurfaceStep) {
+  if (!Support?.Target?.isVector3 || !SurfaceStep || !State.Pivot) return;
+
+  const FootBone = State.Bones.get(Support.Foot);
+  if (!FootBone) return;
+
+  const Safe = Support.Side < 0
+    ? State.SafeFootLeft
+    : State.SafeFootRight;
+
+  for (let Pass = 0; Pass < 2; Pass += 1) {
+    State.Pivot.updateMatrixWorld(true);
+    FootBone.getWorldPosition(State.TempCurbActual);
+
+    if (
+      SurfaceStep.IsFootCurbSafe?.(
+        State.TempCurbActual,
+        LEDGE_FOOT_RADIUS,
+        FOOT_CURB_CLEARANCE
+      ) !== false
+    ) {
+      Safe.copy(State.TempCurbActual);
+      return;
+    }
+
+    State.TempCurbCorrected.copy(State.TempCurbActual);
+    SurfaceStep.ResolveFootCurbConstraint?.(
+      State.TempCurbCorrected,
+      Safe,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    );
+
+    State.TempCurbDelta
+      .copy(State.TempCurbCorrected)
+      .sub(State.TempCurbActual);
+
+    if (State.TempCurbDelta.lengthSq() <= 0.00000025) {
+      Support.Target.copy(Safe);
+    } else {
+      Support.Target.add(State.TempCurbDelta);
+    }
+
+    ProtectFootFromCurbs(
+      Support.Side,
+      SurfaceStep,
+      Support.Target,
+      Support.CenterGroundHeight
+    );
+
+    SolveTwoBoneLeg(
+      Support.Upper,
+      Support.Lower,
+      Support.Foot,
+      Support.Target,
+      Support.Side
+    );
+  }
+
+  State.Pivot.updateMatrixWorld(true);
+  FootBone.getWorldPosition(State.TempCurbActual);
+
+  if (
+    SurfaceStep.IsFootCurbSafe?.(
+      State.TempCurbActual,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    ) === false
+  ) {
+    Support.Target.copy(Safe);
+    SolveTwoBoneLeg(
+      Support.Upper,
+      Support.Lower,
+      Support.Foot,
+      Support.Target,
+      Support.Side
+    );
+  }
 }
 
 function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
@@ -1609,8 +1719,7 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     Side,
     SurfaceStep,
     State.TempLegTarget,
-    CenterGroundHeight,
-    Arc > 0.22
+    CenterGroundHeight
   );
 
   const StoredTarget = IsLeft ? State.LedgeTargetLeft : State.LedgeTargetRight;
@@ -1699,15 +1808,13 @@ function ApplyCarpetStepOverlay(Delta) {
       LeftSupport.Side,
       SurfaceStep,
       LeftSupport.Target,
-      LeftSupport.CenterGroundHeight,
-      Boolean(LeftSupport.CrossingAllowed || LeftSupport.Arc > 0.22)
+      LeftSupport.CenterGroundHeight
     );
     ProtectFootFromCurbs(
       RightSupport.Side,
       SurfaceStep,
       RightSupport.Target,
-      RightSupport.CenterGroundHeight,
-      Boolean(RightSupport.CrossingAllowed || RightSupport.Arc > 0.22)
+      RightSupport.CenterGroundHeight
     );
 
     // Re-solve after pelvis compensation and world-space stance locking.
@@ -1725,6 +1832,9 @@ function ApplyCarpetStepOverlay(Delta) {
       RightSupport.Target,
       RightSupport.Side
     );
+
+    EnforceSolvedFootCurb(LeftSupport, SurfaceStep);
+    EnforceSolvedFootCurb(RightSupport, SurfaceStep);
 
     const LeftWeight = Math.max(0.05, Number(LeftSupport.SupportWeight) || 0);
     const RightWeight = Math.max(0.05, Number(RightSupport.SupportWeight) || 0);
@@ -2384,4 +2494,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.19-FOOT-ROLLBACK";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.29-ZERO-CLIP-FEET";
