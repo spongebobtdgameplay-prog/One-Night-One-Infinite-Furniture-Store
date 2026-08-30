@@ -80,6 +80,8 @@ const State = {
   Acceleration: 0,
   SmoothedAcceleration: 0,
   MoveAmount: 0,
+  ResolvedMoving: false,
+  ResolvedSpeed: 0,
   LocalForward: 0,
   LocalStrafe: 0,
   TurnRate: 0,
@@ -457,21 +459,78 @@ function UpdateMotion(Delta) {
     State.HasYaw = true;
   }
 
-  State.Velocity.copy(State.Camera.position).sub(State.LastPosition).divideScalar(Math.max(Delta, 0.001));
-  State.Velocity.y = 0;
-  State.LastPosition.copy(State.Camera.position);
-  State.SmoothedVelocity.lerp(State.Velocity, ExpAlpha(Delta, 10));
+  const MotionFrame = window.__STORE_RESOLVED_MOVEMENT_FRAME__ || null;
+  const MotionAge = performance.now() - Number(MotionFrame?.UpdatedAt ?? -Infinity);
+  const FreshResolvedMotion = Boolean(
+    MotionFrame?.Resolved?.isVector3 &&
+    MotionAge >= 0 &&
+    MotionAge < 90
+  );
 
-  const Speed = State.SmoothedVelocity.length();
-  const TargetMove = THREE.MathUtils.clamp(Speed / (State.Sprinting ? SPRINT_SPEED : WALK_SPEED), 0, 1);
-  State.MoveAmount = THREE.MathUtils.lerp(State.MoveAmount, TargetMove, ExpAlpha(Delta, 9));
+  if (FreshResolvedMotion) {
+    const FrameDelta = Math.max(
+      0.001,
+      Number(MotionFrame.Delta) || Delta || 0.016
+    );
+    State.Velocity.copy(MotionFrame.Resolved).divideScalar(FrameDelta);
+    State.Velocity.y = 0;
+    State.ResolvedMoving = Boolean(MotionFrame.HasMovement);
+    State.ResolvedSpeed = Math.max(0, Number(MotionFrame.Speed) || State.Velocity.length());
+  } else {
+    State.Velocity
+      .copy(State.Camera.position)
+      .sub(State.LastPosition)
+      .divideScalar(Math.max(Delta, 0.001));
+    State.Velocity.y = 0;
+    State.ResolvedMoving = State.Velocity.lengthSq() > 0.0004;
+    State.ResolvedSpeed = State.Velocity.length();
+  }
+
+  State.LastPosition.copy(State.Camera.position);
+
+  const VelocityResponse = State.ResolvedMoving ? 22 : 12;
+  State.SmoothedVelocity.lerp(
+    State.Velocity,
+    ExpAlpha(Delta, VelocityResponse)
+  );
+
+  const Speed = FreshResolvedMotion
+    ? State.ResolvedSpeed
+    : State.SmoothedVelocity.length();
+
+  const SpeedScale = State.Sprinting ? SPRINT_SPEED : WALK_SPEED;
+  let TargetMove = THREE.MathUtils.clamp(Speed / SpeedScale, 0, 1);
+
+  // If physics produced visible lateral displacement, locomotion must visibly
+  // engage on this frame. Never let smoothing turn real movement into skating.
+  if (State.ResolvedMoving) {
+    TargetMove = Math.max(TargetMove, 0.24);
+  }
+
+  const MoveResponse = State.ResolvedMoving ? 28 : 11;
+  State.MoveAmount = THREE.MathUtils.lerp(
+    State.MoveAmount,
+    TargetMove,
+    ExpAlpha(Delta, MoveResponse)
+  );
 
   State.Acceleration = (Speed - State.PreviousSpeed) / Math.max(Delta, 0.001);
   State.PreviousSpeed = Speed;
-  State.SmoothedAcceleration = THREE.MathUtils.lerp(State.SmoothedAcceleration, State.Acceleration, ExpAlpha(Delta, 7));
+  State.SmoothedAcceleration = THREE.MathUtils.lerp(
+    State.SmoothedAcceleration,
+    State.Acceleration,
+    ExpAlpha(Delta, 7)
+  );
 
-  const Cadence = THREE.MathUtils.lerp(4.8, State.Sprinting ? 10.0 : 7.0, State.MoveAmount);
-  State.Phase += Delta * Cadence;
+  const CadenceFloor = State.ResolvedMoving ? 5.2 : 4.8;
+  const Cadence = THREE.MathUtils.lerp(
+    CadenceFloor,
+    State.Sprinting ? 10.0 : 7.0,
+    State.MoveAmount
+  );
+  if (State.ResolvedMoving || State.Moving) {
+    State.Phase += Delta * Cadence;
+  }
 }
 
 function UpdateCharacterFacing(Delta) {
@@ -1522,4 +1581,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.10-LEDGE-FEET";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.11-RESOLVED-WALK";
