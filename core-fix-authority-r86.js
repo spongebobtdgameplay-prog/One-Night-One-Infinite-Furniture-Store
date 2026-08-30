@@ -465,10 +465,11 @@ export function ProcessAll() {
   }
 }
 
+// Initial pass only. New chunks are processed explicitly by presentation-ready
+// after their furniture/retail passes finish. Avoid rescanning every chunk every
+// ~950 ms forever.
 ProcessAll();
-const Interval = setInterval(ProcessAll, 950);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.0-RAY";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.15-EVENT";
