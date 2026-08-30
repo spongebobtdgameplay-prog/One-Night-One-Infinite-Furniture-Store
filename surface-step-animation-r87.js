@@ -117,6 +117,102 @@ function NearRug(Position, Padding = 0.35) {
   return false;
 }
 
+function GetNearestLedgeState(Position, Direction = null, Range = 0.34) {
+  if (!Position?.isVector3) return null;
+
+  const SafeRange = THREE.MathUtils.clamp(Number(Range) || 0.34, 0.16, 0.50);
+  let Best = null;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    const Edges = [
+      {
+        Axis: "x",
+        Boundary: Bounds.min.x,
+        NormalX: -1,
+        NormalZ: 0,
+        AlongMin: Bounds.min.z,
+        AlongMax: Bounds.max.z,
+        AlongValue: Position.z
+      },
+      {
+        Axis: "x",
+        Boundary: Bounds.max.x,
+        NormalX: 1,
+        NormalZ: 0,
+        AlongMin: Bounds.min.z,
+        AlongMax: Bounds.max.z,
+        AlongValue: Position.z
+      },
+      {
+        Axis: "z",
+        Boundary: Bounds.min.z,
+        NormalX: 0,
+        NormalZ: -1,
+        AlongMin: Bounds.min.x,
+        AlongMax: Bounds.max.x,
+        AlongValue: Position.x
+      },
+      {
+        Axis: "z",
+        Boundary: Bounds.max.z,
+        NormalX: 0,
+        NormalZ: 1,
+        AlongMin: Bounds.min.x,
+        AlongMax: Bounds.max.x,
+        AlongValue: Position.x
+      }
+    ];
+
+    for (const Edge of Edges) {
+      if (
+        Edge.AlongValue < Edge.AlongMin - 0.22 ||
+        Edge.AlongValue > Edge.AlongMax + 0.22
+      ) continue;
+
+      const SignedDistance = Edge.Axis === "x"
+        ? (Position.x - Edge.Boundary) * Edge.NormalX
+        : (Position.z - Edge.Boundary) * Edge.NormalZ;
+      const Distance = Math.abs(SignedDistance);
+      if (Distance > SafeRange) continue;
+
+      let MotionDot = 0;
+      if (Direction?.isVector3 && Direction.lengthSq() > 0.000001) {
+        MotionDot = Direction.x * Edge.NormalX + Direction.z * Edge.NormalZ;
+      }
+
+      const Candidate = {
+        RugId: Record.Id,
+        Object: Record.Object,
+        Bounds,
+        Height: Bounds.max.y,
+        Distance,
+        SignedDistance,
+        Inside: SignedDistance <= 0,
+        Entering: MotionDot < -0.05,
+        Exiting: MotionDot > 0.05,
+        MotionDot,
+        NormalX: Edge.NormalX,
+        NormalZ: Edge.NormalZ,
+        TangentX: -Edge.NormalZ,
+        TangentZ: Edge.NormalX,
+        EdgeX: Edge.Axis === "x"
+          ? Edge.Boundary
+          : THREE.MathUtils.clamp(Position.x, Bounds.min.x, Bounds.max.x),
+        EdgeZ: Edge.Axis === "z"
+          ? Edge.Boundary
+          : THREE.MathUtils.clamp(Position.z, Bounds.min.z, Bounds.max.z)
+      };
+
+      if (!Best || Candidate.Distance < Best.Distance) Best = Candidate;
+    }
+  }
+
+  return Best;
+}
+
 function RaycastGroundHeight(Position, StartY = null) {
   if (!Position?.isVector3) return 0;
 
@@ -296,6 +392,7 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   TriggerStep,
   UpdateCrossingState,
   GetStepState,
+  GetNearestLedgeState,
   NearRug,
   RaycastGroundHeight,
   ResolveRaisedFootLedge,
@@ -303,4 +400,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.12-FOOT-LOCK";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.13-EDGE-QUERY";
