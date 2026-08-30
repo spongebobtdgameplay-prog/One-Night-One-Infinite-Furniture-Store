@@ -1209,7 +1209,18 @@ addEventListener("resize", () => {
   Renderer.setSize(innerWidth, innerHeight, false);
 });
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
-addEventListener("unhandledrejection", Event => ShowError(String(Event.reason || "Unknown loading error.")));
+addEventListener("unhandledrejection", Event => {
+  const Reason = Event.reason;
+  const Name = String(Reason?.name || "");
+  const Message = String(Reason?.message || Reason || "");
+
+  if (Name === "NotAllowedError" && /pointer\s*lock|requestPointerLock/i.test(Message)) {
+    Event.preventDefault();
+    return;
+  }
+
+  ShowError(Message || "Unknown loading error.");
+});
 
 const PlacementApi = {
   IsCircleSafe(X, Z, Radius, ChunkId = null) {
@@ -1225,8 +1236,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.2";
-window.__STORE_VERSION__ = "0.35.2";
+window.__STORE_GAME_BUILD__ = "V0.35.3";
+window.__STORE_VERSION__ = "0.35.3";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1247,6 +1258,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.2"
+  Version: "0.35.3"
 };
 Animate();
