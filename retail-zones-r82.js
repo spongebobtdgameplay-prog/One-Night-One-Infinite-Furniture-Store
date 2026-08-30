@@ -229,9 +229,8 @@ function Discover() {
 }
 
 await PreloadRetailZoneAssets();
+// Initial discovery only. Runtime zone placement is sequenced by presentation-ready.
 Discover();
-const Interval = setInterval(Discover, 700);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ZONES_R82__ = { ProcessChunk, Discover, PreloadRetailZoneAssets };
-window.__STORE_RETAIL_ZONES_BUILD__ = "V0.27.2";
+window.__STORE_RETAIL_ZONES_BUILD__ = "V0.35.16-PIPELINE";
