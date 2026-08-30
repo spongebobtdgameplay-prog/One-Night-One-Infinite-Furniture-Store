@@ -71,7 +71,7 @@ document.body.appendChild(Overlay);
 const PRIORITY_DISTANCE = 48;
 const NOTICE_DISTANCE = 2.75;
 const NOTICE_MAX_MS = 2200;
-const STRICT_AHEAD = 4;
+const STRICT_AHEAD = 6;
 const STRICT_BEHIND = 2;
 
 let HazeGroup = null;
@@ -82,6 +82,7 @@ let NoticeIndex = Number.NaN;
 let NoticeStartedAt = -Infinity;
 const PriorityFlights = new Map();
 const HazeMaterials = [];
+const AmbientMaterials = [];
 
 function FindChunk(Index) {
   const Active = Game.ActiveChunks.get(Index);
@@ -187,6 +188,63 @@ function EnsureHaze() {
     HazeGroup.add(Plane);
   }
 
+  const LightRows = [
+    { Z: -6.5, Y: 3.18, Width: 4.8, Opacity: 0.34 },
+    { Z: -11.0, Y: 3.12, Width: 4.0, Opacity: 0.25 },
+    { Z: -16.5, Y: 3.08, Width: 3.2, Opacity: 0.18 }
+  ];
+
+  for (let RowIndex = 0; RowIndex < LightRows.length; RowIndex += 1) {
+    const Row = LightRows[RowIndex];
+
+    for (const X of [-10.2, 0, 10.2]) {
+      const Material = new THREE.MeshBasicMaterial({
+        color: 0xffe1ad,
+        transparent: true,
+        opacity: Row.Opacity,
+        depthWrite: false,
+        depthTest: true,
+        toneMapped: false
+      });
+      Material.userData.StreamBaseOpacityR102 = Row.Opacity;
+      Material.userData.StreamPulseOffsetR102 =
+        RowIndex * 0.71 + Math.abs(X) * 0.037;
+      AmbientMaterials.push(Material);
+
+      const Glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(Row.Width, 0.055),
+        Material
+      );
+      Glow.name = "StreamAmbientLightR102";
+      Glow.position.set(X, Row.Y, Row.Z);
+      Glow.userData.StreamAmbientR101 = true;
+      Glow.userData.DecorationNoCollision = true;
+      Glow.frustumCulled = true;
+      HazeGroup.add(Glow);
+    }
+  }
+
+  const HorizonMaterial = new THREE.MeshBasicMaterial({
+    color: 0x8f866d,
+    transparent: true,
+    opacity: 0.09,
+    depthWrite: false,
+    depthTest: true,
+    toneMapped: false
+  });
+  HorizonMaterial.userData.StreamBaseOpacityR102 = 0.09;
+  AmbientMaterials.push(HorizonMaterial);
+
+  const Horizon = new THREE.Mesh(
+    new THREE.PlaneGeometry(31.5, 0.78),
+    HorizonMaterial
+  );
+  Horizon.name = "StreamAmbientHorizonR102";
+  Horizon.position.set(0, 1.0, -12.5);
+  Horizon.userData.StreamAmbientR101 = true;
+  Horizon.userData.DecorationNoCollision = true;
+  HazeGroup.add(Horizon);
+
   HazeGroup.visible = false;
   Game.Scene.add(HazeGroup);
   return HazeGroup;
@@ -212,6 +270,14 @@ function SetHazeStrength(DistanceToEdge) {
   for (const Material of HazeMaterials) {
     const Base = Number(Material.userData.StreamBaseOpacityR101) || 0.3;
     Material.opacity = Base * Strength;
+  }
+
+  const Time = performance.now() * 0.001;
+  for (const Material of AmbientMaterials) {
+    const Base = Number(Material.userData.StreamBaseOpacityR102) || 0.1;
+    const Offset = Number(Material.userData.StreamPulseOffsetR102) || 0;
+    const Pulse = 0.94 + Math.sin(Time * 0.72 + Offset) * 0.06;
+    Material.opacity = Base * Strength * Pulse;
   }
 }
 
@@ -381,4 +447,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   IsTraversalReady,
   IsAlreadyVisible
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.21-DISTANT-HAZE";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.22-DISTANT-AMBIENT";
