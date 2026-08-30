@@ -98,16 +98,21 @@ function ApplyRenderer() {
   ApplySafeViewport(CurrentGame.Renderer);
 }
 
-function ApplyTextureBudget() {
+function ApplyTextureBudgetToRoot(Root) {
   const CurrentGame = Game();
-  if (!CurrentGame?.Scene || !CurrentGame?.Renderer) return;
-  const Stamp = `${Settings.Graphics}:${CurrentGame.Scene.children.length}`;
-  if (Stamp === PerfState.TextureStamp) return;
-  PerfState.TextureStamp = Stamp;
-  const Max = Math.min(QualityProfile().Anisotropy, CurrentGame.Renderer.capabilities.getMaxAnisotropy());
-  CurrentGame.Scene.traverse(Object => {
+  if (!Root?.traverse || !CurrentGame?.Renderer) return;
+
+  const Max = Math.min(
+    QualityProfile().Anisotropy,
+    CurrentGame.Renderer.capabilities.getMaxAnisotropy()
+  );
+
+  Root.traverse(Object => {
     if (!Object.isMesh) return;
-    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
+    const Materials = Array.isArray(Object.material)
+      ? Object.material
+      : [Object.material];
+
     for (const Material of Materials) {
       if (!Material) continue;
       for (const Key of ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap"]) {
@@ -118,6 +123,23 @@ function ApplyTextureBudget() {
       }
     }
   });
+}
+
+function ApplyTextureBudgetToChunk(Chunk) {
+  if (!Chunk || Chunk.Cancelled) return;
+  ApplyTextureBudgetToRoot(Chunk.Group);
+  for (const Object of Chunk.ExternalObjects || []) {
+    ApplyTextureBudgetToRoot(Object);
+  }
+}
+
+function ApplyTextureBudget() {
+  const CurrentGame = Game();
+  if (!CurrentGame?.Scene || !CurrentGame?.Renderer) return;
+  const Stamp = Settings.Graphics;
+  if (Stamp === PerfState.TextureStamp) return;
+  PerfState.TextureStamp = Stamp;
+  ApplyTextureBudgetToRoot(CurrentGame.Scene);
 }
 
 function CullPointLights() {
@@ -389,9 +411,10 @@ BuildSettings();
 BuildMenu();
 addEventListener("resize", ApplyPerformance);
 addEventListener("store-settings-change", () => { PerfState.TextureStamp = ""; PerfState.Quality = ""; UpdateAmbient(); ApplyPerformance(); });
-setInterval(ApplyPerformance, 650);
+setInterval(ApplyPerformance, 950);
 setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
 window.__STORE_APPLY_PERFORMANCE__ = ApplyPerformance;
-window.__STORE_PERFORMANCE_BUILD__ = "V0.35.25-STRUCTURAL-BATCH";
-window.__STORE_SETTINGS_BUILD__ = "V0.35.25-STRUCTURAL-BATCH";
+window.__STORE_APPLY_TEXTURE_BUDGET_TO_CHUNK__ = ApplyTextureBudgetToChunk;
+window.__STORE_PERFORMANCE_BUILD__ = "V0.35.26-EVENT-TEXTURES";
+window.__STORE_SETTINGS_BUILD__ = "V0.35.26-EVENT-TEXTURES";
