@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
 const Game = window.__STORE_GAME__;
-if (!Game?.Camera || !Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes || !Game?.ChunkIndexForZ) {
+if (!Game?.Camera || !Game?.Scene || !Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.ChunkIndexForZ) {
   throw new Error("Game must load before stream loading cover.");
 }
 
@@ -34,6 +34,7 @@ document.body.appendChild(Overlay);
 
 let Visible = false;
 let Barrier = null;
+let BarrierChunk = null;
 
 function FindChunk(Index) {
   const Active = Game.ActiveChunks.get(Index);
@@ -44,25 +45,36 @@ function FindChunk(Index) {
 
 function RemoveBarrier() {
   if (!Barrier) return;
-  const Index = Game.CollisionBoxes.indexOf(Barrier);
-  if (Index >= 0) Game.CollisionBoxes.splice(Index, 1);
+  BarrierChunk?.ExternalObjects && (BarrierChunk.ExternalObjects = BarrierChunk.ExternalObjects.filter(Object => Object !== Barrier));
+  Barrier.parent?.remove(Barrier);
+  Barrier.geometry?.dispose?.();
+  if (Array.isArray(Barrier.material)) {
+    for (const Material of Barrier.material) Material?.dispose?.();
+  } else Barrier.material?.dispose?.();
   Barrier = null;
+  BarrierChunk = null;
 }
 
 function InstallBarrier(CurrentChunk) {
-  if (!CurrentChunk || Barrier?.ChunkId === CurrentChunk.Id) return;
+  if (!CurrentChunk) return;
+  if (Barrier && BarrierChunk === CurrentChunk) return;
+
   RemoveBarrier();
   const Z = CurrentChunk.BottomZ + 0.02;
-  const Box = new THREE.Box3(new THREE.Vector3(-16.7, 0, Z - 0.08), new THREE.Vector3(16.7, 3.3, Z + 0.08));
-  Barrier = {
-    Box,
-    OriginalBox: Box.clone(),
-    ChunkId: CurrentChunk.Id,
-    Type: "StreamLoadingGateR83",
-    Active: true,
-    StreamLoadingR83: true
-  };
-  Game.CollisionBoxes.push(Barrier);
+  const Material = new THREE.MeshBasicMaterial({ color: 0x171914, side: THREE.DoubleSide });
+  Barrier = new THREE.Mesh(new THREE.BoxGeometry(33.4, 3.4, 0.14), Material);
+  Barrier.name = "StreamLoadingGateR83";
+  Barrier.position.set(0, 1.70, Z);
+  Barrier.userData.ChunkId = CurrentChunk.Id;
+  Barrier.userData.StreamLoadingR83 = true;
+  Barrier.userData.RayCollisionSolidR35 = true;
+  Barrier.frustumCulled = false;
+  BarrierChunk = CurrentChunk;
+
+  Game.Scene.add(Barrier);
+  if (!Array.isArray(CurrentChunk.ExternalObjects)) CurrentChunk.ExternalObjects = [];
+  if (!CurrentChunk.ExternalObjects.includes(Barrier)) CurrentChunk.ExternalObjects.push(Barrier);
+  Barrier.updateWorldMatrix(true, true);
 }
 
 function Show(CurrentChunk) {
@@ -111,7 +123,7 @@ function Tick() {
   }
 
   const DistanceToForwardEdge = Math.max(0, Game.Camera.position.z - Current.BottomZ);
-  const NextReady = Boolean(Next?.Active || Next?.Group?.userData?.PresentationReadyR83);
+  const NextReady = Boolean(Next?.Group?.userData?.PresentationReadyR83);
   if (DistanceToForwardEdge <= 6.5 && !NextReady) Show(Current);
   else Hide();
   requestAnimationFrame(Tick);
@@ -121,4 +133,4 @@ requestAnimationFrame(Tick);
 addEventListener("pagehide", RemoveBarrier, { once: true });
 
 window.__STORE_STREAM_LOADING_R83__ = { Show, Hide };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.22.0-R83";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.4-RAY-GATE";
