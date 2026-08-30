@@ -62,6 +62,13 @@ const CHUNKS_BEHIND = 2;
 const PREFETCH_CHUNKS = 4;
 const STREAM_PROMOTION_DISTANCE = 42;
 const STREAM_KEEP_BEHIND = 2;
+const VIEW_KEEP_DISTANCE = 108;
+const VIEW_KEEP_HOLD_MS = 2200;
+const PREPARED_BACK_CACHE = 5;
+const PREPARED_FORWARD_EXTRA = 2;
+const OBJECT_STREAM_INTERVAL_MS = 45;
+const OBJECT_STREAM_NEAR_DISTANCE = 38;
+const OBJECT_STREAM_FAR_DISTANCE = 88;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
@@ -85,6 +92,13 @@ let LastObjectiveText = "";
 let SeedResetFlight = null;
 let LastChunkMaintenanceAt = -Infinity;
 let LastMaintainedChunkIndex = Number.NaN;
+let LastObjectStreamAt = -Infinity;
+const StreamProjectionView = new THREE.Matrix4();
+const StreamFrustum = new THREE.Frustum();
+const StreamChunkBounds = new THREE.Box3();
+const StreamCameraForward = new THREE.Vector3();
+const StreamObjectPosition = new THREE.Vector3();
+const StreamToObject = new THREE.Vector3();
 const StreamWarmScene = new THREE.Scene();
 const StreamWarmTextures = new WeakSet();
 const StreamWarmAmbient = new THREE.AmbientLight(0xffffff, 0.75);
@@ -1225,12 +1239,185 @@ function TryActivateIndex(Index) {
   return Prepared?.Ready ? ActivateChunk(Prepared) : false;
 }
 
+function UpdateStreamFrustum() {
+  Camera.updateMatrixWorld(true);
+  StreamProjectionView.multiplyMatrices(
+    Camera.projectionMatrix,
+    Camera.matrixWorldInverse
+  );
+  StreamFrustum.setFromProjectionMatrix(StreamProjectionView);
+  Camera.getWorldDirection(StreamCameraForward);
+  StreamCameraForward.y = 0;
+  if (StreamCameraForward.lengthSq() <= 0.000001) {
+    StreamCameraForward.set(0, 0, -1);
+  } else {
+    StreamCameraForward.normalize();
+  }
+}
+
+function ChunkDistance(Chunk) {
+  if (!Chunk) return Infinity;
+  return Math.abs((Number(Chunk.CenterZ) || 0) - Camera.position.z);
+}
+
+function ChunkIntersectsView(Chunk) {
+  if (!Chunk?.Group || Chunk.Cancelled) return false;
+  StreamChunkBounds.min.set(
+    -STORE_HALF_WIDTH - 1.2,
+    -0.5,
+    Chunk.BottomZ - 0.6
+  );
+  StreamChunkBounds.max.set(
+    STORE_HALF_WIDTH + 1.2,
+    CEILING_HEIGHT + 0.8,
+    Chunk.TopZ + 0.6
+  );
+  return StreamFrustum.intersectsBox(StreamChunkBounds);
+}
+
+function MarkViewedChunks(Now) {
+  UpdateStreamFrustum();
+  for (const Chunk of ActiveChunks.values()) {
+    if (!Chunk?.Group || Chunk.Cancelled) continue;
+    if (ChunkDistance(Chunk) > VIEW_KEEP_DISTANCE) continue;
+    if (!ChunkIntersectsView(Chunk)) continue;
+    Chunk.StreamViewedAt = Now;
+  }
+}
+
+function IsChunkViewProtected(Chunk, Now) {
+  if (!Chunk?.Group || Chunk.Cancelled) return false;
+  if (
+    ChunkDistance(Chunk) <= VIEW_KEEP_DISTANCE &&
+    ChunkIntersectsView(Chunk)
+  ) {
+    Chunk.StreamViewedAt = Now;
+    return true;
+  }
+  const LastViewedAt = Number(Chunk.StreamViewedAt) || -Infinity;
+  return Now - LastViewedAt <= VIEW_KEEP_HOLD_MS;
+}
+
+function IsStructuralStreamObject(Object) {
+  if (!Object) return true;
+  if (Object.isLight) return true;
+  if (Object.userData?.WalkableCarpetR87) return true;
+  if (Object.userData?.StreamLoadingR83) return true;
+
+  const Name = String(Object.name || "");
+  return /^(Floor|Ceiling|WallLeft|WallRight|Baseboard|ShowroomPartition|PartitionCap|PartitionBase|RearStoreClosureR80|RearStoreWallR80|RearStoreBaseboardR80)/i.test(Name);
+}
+
+function StreamableRoots(Chunk) {
+  const Children = Chunk?.Group?.children || [];
+  const Stamp = Children.length;
+  if (
+    Array.isArray(Chunk.StreamableRootsR101) &&
+    Chunk.StreamableRootsStampR101 === Stamp
+  ) {
+    return Chunk.StreamableRootsR101;
+  }
+
+  const Roots = [];
+  for (const Object of Children) {
+    if (IsStructuralStreamObject(Object)) continue;
+    Roots.push(Object);
+  }
+
+  Chunk.StreamableRootsR101 = Roots;
+  Chunk.StreamableRootsStampR101 = Stamp;
+  return Roots;
+}
+
+function SetObjectStreamCulled(Object, Culled) {
+  if (!Object) return;
+  const Next = Boolean(Culled);
+  const Current = Boolean(Object.userData?.ObjectStreamCulledR101);
+  if (Current === Next) return;
+
+  Object.userData.ObjectStreamCulledR101 = Next;
+  if (Next) {
+    Object.userData.ObjectStreamWasVisibleR101 = Object.visible !== false;
+    Object.visible = false;
+  } else if (Object.userData.ObjectStreamWasVisibleR101 !== false) {
+    Object.visible = true;
+  }
+}
+
+function UpdateObjectStreaming(Now = performance.now(), Force = false) {
+  if (!Force && Now - LastObjectStreamAt < OBJECT_STREAM_INTERVAL_MS) return;
+  LastObjectStreamAt = Now;
+  UpdateStreamFrustum();
+
+  for (const Chunk of ActiveChunks.values()) {
+    if (!Chunk?.Group || Chunk.Cancelled || Chunk.Group.parent !== Scene) continue;
+
+    for (const Object of StreamableRoots(Chunk)) {
+      if (!Object?.parent) continue;
+
+      let WorldPosition = Object.userData?.ObjectStreamWorldR101;
+      if (!WorldPosition?.isVector3) {
+        WorldPosition = new THREE.Vector3();
+        Object.getWorldPosition(WorldPosition);
+        Object.userData.ObjectStreamWorldR101 = WorldPosition;
+      }
+
+      StreamToObject.copy(WorldPosition).sub(Camera.position);
+      StreamToObject.y = 0;
+      const DistanceSq = StreamToObject.lengthSq();
+
+      if (DistanceSq <= OBJECT_STREAM_NEAR_DISTANCE * OBJECT_STREAM_NEAR_DISTANCE) {
+        SetObjectStreamCulled(Object, false);
+        continue;
+      }
+
+      const Distance = Math.sqrt(Math.max(0.000001, DistanceSq));
+      const Dot = (
+        StreamToObject.x * StreamCameraForward.x +
+        StreamToObject.z * StreamCameraForward.z
+      ) / Distance;
+
+      const Culled = Boolean(Object.userData?.ObjectStreamCulledR101);
+      if (Culled) {
+        if (
+          Dot > -0.18 ||
+          Distance <= OBJECT_STREAM_NEAR_DISTANCE + 8
+        ) {
+          SetObjectStreamCulled(Object, false);
+        }
+        continue;
+      }
+
+      const DeepBehind =
+        Distance > OBJECT_STREAM_NEAR_DISTANCE + 8 &&
+        Dot < -0.42;
+      const FarOutsidePreView =
+        Distance > OBJECT_STREAM_FAR_DISTANCE &&
+        Dot < 0.30;
+
+      if (DeepBehind || FarOutsidePreView) {
+        SetObjectStreamCulled(Object, true);
+      }
+    }
+  }
+}
+
+function RestoreChunkStreamObjects(Chunk) {
+  for (const Object of StreamableRoots(Chunk)) {
+    if (Object?.userData?.ObjectStreamCulledR101) {
+      SetObjectStreamCulled(Object, false);
+    }
+  }
+}
+
 function UpdateChunkVisibility() {
   for (const Chunk of ActiveChunks.values()) {
     if (!Chunk?.Group) continue;
     if (!Chunk.Group.visible) Chunk.Group.visible = true;
     for (const Object of Chunk.ExternalObjects || []) {
-      if (Object && !Object.visible) Object.visible = true;
+      if (Object && !Object.userData?.StreamAmbientR101 && !Object.visible) {
+        Object.visible = true;
+      }
     }
   }
 }
@@ -1238,6 +1425,10 @@ function UpdateChunkVisibility() {
 function EnsureChunksAroundPlayer() {
   const CurrentIndex = Math.max(0, ChunkIndexForZ(Camera.position.z));
   const Now = performance.now();
+
+  MarkViewedChunks(Now);
+  UpdateObjectStreaming(Now);
+
   if (CurrentIndex === LastMaintainedChunkIndex && Now - LastChunkMaintenanceAt < 120) {
     UpdateChunkVisibility();
     return;
@@ -1252,7 +1443,6 @@ function EnsureChunksAroundPlayer() {
   const PrefetchMax = MaxIndex + PREFETCH_CHUNKS;
   const WantedActive = new Set();
 
-  // Keep the current aisle and a very small render window only.
   for (let Index = MinIndex; Index <= MaxIndex; Index += 1) {
     WantedActive.add(Index);
     if (!TryActivateIndex(Index)) {
@@ -1262,8 +1452,6 @@ function EnsureChunksAroundPlayer() {
     }
   }
 
-  // Only prefetch forward. The store is forward-infinite; generating behind
-  // the player wastes the exact CPU/memory needed by the next showroom.
   RequestChunk(PrefetchMax).catch(() => {});
 
   const DistanceToBottom = Math.max(
@@ -1277,26 +1465,51 @@ function EnsureChunksAroundPlayer() {
     WantedActive.add(PrefetchMax);
   }
 
-  // Old aisles are not kept as giant hidden object trees. Keep at most one
-  // immediate aisle behind; everything older is released and can regenerate
-  // deterministically if the player returns.
+  const PreparedViewMin = Math.max(0, CurrentIndex - PREPARED_BACK_CACHE);
+  const PreparedViewMax = PrefetchMax + PREPARED_FORWARD_EXTRA;
+  for (const Chunk of [...PreparedChunks.values()]) {
+    if (
+      !Chunk?.Ready ||
+      Chunk.Cancelled ||
+      Chunk.Index < PreparedViewMin ||
+      Chunk.Index > PreparedViewMax ||
+      ChunkDistance(Chunk) > VIEW_KEEP_DISTANCE
+    ) continue;
+
+    if (ChunkIntersectsView(Chunk) && TryActivateIndex(Chunk.Index)) {
+      Chunk.StreamViewedAt = Now;
+      WantedActive.add(Chunk.Index);
+    }
+  }
+
   for (const Index of [...ActiveChunks.keys()]) {
     if (WantedActive.has(Index)) continue;
+    const Chunk = ActiveChunks.get(Index);
+    if (IsChunkViewProtected(Chunk, Now)) {
+      WantedActive.add(Index);
+      continue;
+    }
+
     const KeepPrepared =
-      Index >= CurrentIndex - STREAM_KEEP_BEHIND &&
-      Index <= PrefetchMax &&
-      Index >= 0;
-    DeactivateChunk(Index, KeepPrepared && Index >= CurrentIndex);
+      Index >= Math.max(0, CurrentIndex - PREPARED_BACK_CACHE) &&
+      Index <= PrefetchMax + PREPARED_FORWARD_EXTRA;
+
+    if (Chunk) RestoreChunkStreamObjects(Chunk);
+    DeactivateChunk(Index, KeepPrepared);
   }
 
   for (const Index of [...PreparedChunks.keys()]) {
-    const Keep =
-      Index >= Math.max(0, CurrentIndex - STREAM_KEEP_BEHIND) &&
-      Index <= PrefetchMax;
-    if (!Keep) DropPreparedChunk(Index);
+    const Chunk = PreparedChunks.get(Index);
+    const LastViewedAt = Number(Chunk?.StreamViewedAt) || -Infinity;
+    const KeepByRange =
+      Index >= Math.max(0, CurrentIndex - PREPARED_BACK_CACHE) &&
+      Index <= PrefetchMax + PREPARED_FORWARD_EXTRA;
+    const KeepByRecentView = Now - LastViewedAt <= VIEW_KEEP_HOLD_MS * 2;
+    if (!KeepByRange && !KeepByRecentView) DropPreparedChunk(Index);
   }
 
   UpdateChunkVisibility();
+  UpdateObjectStreaming(Now, true);
 
   if (AisleCounter) {
     AisleCounter.textContent = CurrentIndex >= 0
@@ -1643,8 +1856,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.20";
-window.__STORE_VERSION__ = "0.35.20";
+window.__STORE_GAME_BUILD__ = "V0.35.21";
+window.__STORE_VERSION__ = "0.35.21";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1658,6 +1871,8 @@ window.__STORE_GAME__ = {
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
   PrepareChunk,
+  TryActivateIndex,
+  UpdateObjectStreaming,
   WarmChunkGpu,
   SetStoreSeconds,
   SetCompletedTaskCount,
@@ -1666,6 +1881,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.20"
+  Version: "0.35.21"
 };
 Animate();
