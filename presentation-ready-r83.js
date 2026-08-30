@@ -328,17 +328,6 @@ await PrimeBootWorld();
 window.__STORE_REQUIRE_PRESENTATION_READY__ = false;
 window.__STORE_REQUIRE_TRAVERSAL_READY__ = true;
 
-const PreviousPreparedGet = Game.PreparedChunks.get.bind(Game.PreparedChunks);
-Game.PreparedChunks.get = function(Index) {
-  const Chunk = PreviousPreparedGet(Index);
-  if (!Chunk || Chunk.Cancelled || Chunk.Active) return Chunk;
-  if (
-    Chunk.Ready &&
-    !Chunk.Group?.userData?.TraversalReadyR83 &&
-    !Chunk.Group?.userData?.PresentationReadyR83
-  ) return null;
-  return Chunk;
-};
 
 function DistanceFromPlayer(Chunk) {
   const CenterZ = Number.isFinite(Chunk?.CenterZ)
