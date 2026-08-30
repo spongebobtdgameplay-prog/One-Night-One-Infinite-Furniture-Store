@@ -519,6 +519,9 @@ const RayWorld = {
   BasisA: new THREE.Vector3(),
   BasisB: new THREE.Vector3(),
   CandidateDirection: new THREE.Vector3(),
+  CornerPoint: new THREE.Vector3(),
+  CornerSeparation: new THREE.Vector3(),
+  CornerBest: new THREE.Vector3(),
   RootCaches: new Map(),
   RootBounds: new WeakMap()
 };
@@ -817,9 +820,72 @@ function SweepVisibleCapsuleHorizontal(Start, Delta, Radius, Options = {}) {
   };
 }
 
+function StabilizeRaycastCapsuleCorner(Position, Radius, Options = {}) {
+  const EyeHeight = Math.max(1.2, Number(Options.EyeHeight) || 1.68);
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.255, 0.16, 0.38);
+  const Result = Position.clone();
+  const Fractions = [0.12, 0.34, 0.58, 0.82];
+  let Shifted = false;
+
+  for (let Pass = 0; Pass < 3; Pass += 1) {
+    let BestDepth = 0;
+    RayWorld.CornerBest.set(0, 0, 0);
+
+    for (const Fraction of Fractions) {
+      RayWorld.CornerPoint.set(
+        Result.x,
+        Result.y - EyeHeight + EyeHeight * Fraction,
+        Result.z
+      );
+
+      const Probe = ProbeVisibleGeometrySeparation(
+        RayWorld.CornerPoint,
+        SafeRadius,
+        RayWorld.CornerSeparation,
+        {
+          Scene: Options.Scene,
+          Skin: Math.max(0.010, Number(Options.Skin) || 0.010)
+        }
+      );
+
+      const Depth = Number(Probe?.Depth) || 0;
+      if (!Probe?.Hit || Depth <= BestDepth) continue;
+      BestDepth = Depth;
+      RayWorld.CornerBest.copy(Probe.Separation);
+    }
+
+    if (BestDepth <= 0.0005 || RayWorld.CornerBest.lengthSq() <= 0.000001) break;
+
+    const Push = Math.min(RayWorld.CornerBest.length(), 0.070);
+    RayWorld.CornerBest.setLength(Push);
+    Result.add(RayWorld.CornerBest);
+    Shifted = true;
+  }
+
+  return { Position: Result, Shifted };
+}
+
 function ResolveRaycastHorizontalMove(Start, Delta, Radius, Options = {}) {
   const First = SweepVisibleCapsuleHorizontal(Start, Delta, Radius, Options);
-  if (!First.Hit || Options.AllowSlide === false) return First;
+  if (!First.Hit) return First;
+
+  const Finish = Result => {
+    const Stabilized = StabilizeRaycastCapsuleCorner(Result.Position, Radius, Options);
+    if (!Stabilized.Shifted) return Result;
+
+    const Position = Stabilized.Position;
+    const Resolved = Position.clone().sub(Start);
+    Resolved.y = 0;
+
+    return {
+      ...Result,
+      Position,
+      Resolved,
+      CornerStabilized: true
+    };
+  };
+
+  if (Options.AllowSlide === false) return Finish(First);
 
   const Desired = RayWorld.CandidateDirection.copy(Delta);
   Desired.y = 0;
@@ -829,7 +895,7 @@ function ResolveRaycastHorizontalMove(Start, Delta, Radius, Options = {}) {
 
   const DesiredLength = Desired.length();
   const TangentRatio = DesiredLength > 0.000001 ? Remaining.length() / DesiredLength : 0;
-  if (TangentRatio < 0.08 || Remaining.lengthSq() <= 0.000001) return First;
+  if (TangentRatio < 0.08 || Remaining.lengthSq() <= 0.000001) return Finish(First);
 
   const Friction = THREE.MathUtils.lerp(0.76, 0.94, THREE.MathUtils.clamp(TangentRatio, 0, 1));
   Remaining.multiplyScalar(Friction);
@@ -839,7 +905,7 @@ function ResolveRaycastHorizontalMove(Start, Delta, Radius, Options = {}) {
   const Resolved = Position.clone().sub(Start);
   Resolved.y = 0;
 
-  return {
+  return Finish({
     Position,
     Resolved,
     Hit: true,
@@ -849,7 +915,7 @@ function ResolveRaycastHorizontalMove(Start, Delta, Radius, Options = {}) {
     HitPoint: First.HitPoint,
     Sliding: Slide.Resolved.lengthSq() > 0.000001,
     SlideVector: Slide.Resolved.clone()
-  };
+  });
 }
 
 function ResolveRaycastCapsuleSegment(Start, End, Radius, Result = new THREE.Vector3(), Options = {}) {
@@ -1008,12 +1074,13 @@ const CollisionUtility = {
   RaycastVisibleSegment,
   SweepVisibleCapsuleHorizontal,
   ResolveRaycastHorizontalMove,
+  StabilizeRaycastCapsuleCorner,
   ResolveRaycastCapsuleSegment,
   ProbeVisibleGeometrySeparation
 };
 
 window.__STORE_COLLISION_UTILITY__ = CollisionUtility;
-window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.0-RAY";
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.3-CORNER";
 
 export default CollisionUtility;
 export {
@@ -1041,6 +1108,7 @@ export {
   RaycastVisibleSegment,
   SweepVisibleCapsuleHorizontal,
   ResolveRaycastHorizontalMove,
+  StabilizeRaycastCapsuleCorner,
   ResolveRaycastCapsuleSegment,
   ProbeVisibleGeometrySeparation
 };
