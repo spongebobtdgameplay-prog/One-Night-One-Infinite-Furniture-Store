@@ -5,7 +5,6 @@ const Finalizing = new WeakSet();
 const Stability = new WeakMap();
 const PendingFinalization = new WeakMap();
 const PolishPending = new WeakSet();
-let FinalizationTail = Promise.resolve();
 let DiscoverFlight = null;
 const FurnitureNames = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
@@ -268,20 +267,7 @@ async function FinalizeChunkNow(Chunk) {
       await RunContentPasses(Chunk);
     }
 
-    let Ready = TraversalReady(Chunk);
-
-    // Hard anti-deadlock fallback: if all planned layout objects exist after two
-    // content passes, open traversal even if one optional module forgot a flag.
-    if (
-      !Ready &&
-      Chunk.Ready &&
-      LayoutOccupancyReady(Chunk) &&
-      PartitionsFinished(Chunk) &&
-      RearFinished(Chunk)
-    ) {
-      Chunk.Group.userData.TraversalDegradedR83 = true;
-      Ready = true;
-    }
+    const Ready = TraversalReady(Chunk);
 
     if (!Ready) {
       Chunk.Group.userData.TraversalRetryAfter = performance.now() + 360;
@@ -319,13 +305,11 @@ export function FinalizeChunk(Chunk) {
   const Existing = PendingFinalization.get(Chunk);
   if (Existing) return Existing;
 
-  const Job = FinalizationTail
-    .catch(() => {})
+  const Job = Promise.resolve()
     .then(() => FinalizeChunkNow(Chunk))
     .finally(() => PendingFinalization.delete(Chunk));
 
   PendingFinalization.set(Chunk, Job);
-  FinalizationTail = Job.catch(() => {});
   return Job;
 }
 
@@ -391,4 +375,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.16-GPU-PIPELINE";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.18-STRICT-CONCURRENT";
