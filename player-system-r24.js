@@ -192,7 +192,8 @@ function ApplyInputMode() {
   const Controls = State.Controls || window.__STORE_POINTER_CONTROLS__ || null;
   if (Controls) {
     CaptureControls(Controls);
-    Controls.isLocked = HudActive();
+    Controls.enabled = true;
+    Controls.isLocked = State.ThirdPerson ? HudActive() : Boolean(document.pointerLockElement);
     Controls.pointerSpeed = State.ThirdPerson ? (State.OrbitHeld ? 1 : 0) : 1;
   }
 
@@ -982,6 +983,7 @@ addEventListener("mousedown", Event => {
     State.OrbitHeld = true;
     if (Controls) {
       CaptureControls(Controls);
+      Controls.enabled = true;
       Controls.isLocked = true;
       Controls.pointerSpeed = 1;
     }
@@ -1034,4 +1036,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.0-RAY";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.1-CAMERA";
