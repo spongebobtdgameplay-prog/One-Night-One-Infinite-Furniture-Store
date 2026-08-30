@@ -405,4 +405,4 @@ await Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key)));
 Discover();
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.18-RESTORED-SHELVES";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.24-FRUSTUM";
