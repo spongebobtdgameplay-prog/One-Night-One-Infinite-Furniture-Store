@@ -1319,6 +1319,12 @@ function ActivateChunk(Chunk) {
 function ReleaseChunkReferences(Chunk) {
   if (!Chunk) return;
 
+  Chunk.Group?.traverse?.(Object => {
+    if (Object?.isInstancedMesh && Object.userData?.RenderBatchR104) {
+      Object.dispose?.();
+    }
+  });
+
   // Geometry/material resources are shared with ModelCache, so do not dispose
   // them here. Remove scene/object references so old aisles can be collected.
   Chunk.Group?.clear?.();
