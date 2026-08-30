@@ -261,4 +261,4 @@ THREE.AnimationMixer.prototype.update = function UpdateAnimationFromMotionAndVie
 };
 
 window.__STORE_ANIMATION_MOTION_AUTHORITY__ = MixerStates;
-window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.13-EDGE-WALK";
+window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.14-LATCHED-EDGE";
