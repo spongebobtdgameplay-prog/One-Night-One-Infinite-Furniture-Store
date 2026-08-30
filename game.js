@@ -66,7 +66,7 @@ const VIEW_KEEP_DISTANCE = 185;
 const VIEW_KEEP_HOLD_MS = 2200;
 const PREPARED_BACK_CACHE = 5;
 const PREPARED_FORWARD_EXTRA = 2;
-const OBJECT_STREAM_INTERVAL_MS = 90;
+const OBJECT_STREAM_INTERVAL_MS = 120;
 const OBJECT_STREAM_NEAR_DISTANCE = 38;
 const OBJECT_STREAM_FAR_DISTANCE = 88;
 const PRICE_TAG_STREAM_DISTANCE = 28;
@@ -94,6 +94,9 @@ let SeedResetFlight = null;
 let LastChunkMaintenanceAt = -Infinity;
 let LastMaintainedChunkIndex = Number.NaN;
 let LastObjectStreamAt = -Infinity;
+let HasObjectStreamCameraState = false;
+const LastObjectStreamCameraPosition = new THREE.Vector3();
+const LastObjectStreamCameraForward = new THREE.Vector3();
 const StreamProjectionView = new THREE.Matrix4();
 const StreamFrustum = new THREE.Frustum();
 const StreamChunkBounds = new THREE.Box3();
@@ -789,7 +792,8 @@ async function OptimizeChunkStaticRender(Chunk) {
   const ChunkInverse = new THREE.Matrix4().copy(Chunk.Group.matrixWorld).invert();
   const Groups = new Map();
 
-  for (const Root of Roots) {
+  for (let RootIndex = 0; RootIndex < Roots.length; RootIndex += 1) {
+    const Root = Roots[RootIndex];
     Root.updateWorldMatrix(true, true);
     Root.traverse(Mesh => {
       if (!CanBatchStaticMesh(Mesh) || Mesh.visible === false) return;
@@ -805,13 +809,17 @@ async function OptimizeChunkStaticRender(Chunk) {
       }
       Group.Meshes.push(Mesh);
     });
+
+    if (RootIndex > 0 && RootIndex % 4 === 0) await RenderBatchYield();
   }
 
   let BatchIndex = 0;
   let SourceMeshCount = 0;
   const LocalMatrix = new THREE.Matrix4();
 
+  let GroupIndex = 0;
   for (const Group of Groups.values()) {
+    GroupIndex += 1;
     if (Group.Meshes.length < 2) continue;
 
     const Batch = new THREE.InstancedMesh(
@@ -844,9 +852,14 @@ async function OptimizeChunkStaticRender(Chunk) {
     Batch.updateMatrix();
     Batch.matrixAutoUpdate = false;
     Chunk.Group.add(Batch);
+
+    if (GroupIndex % 4 === 0) await RenderBatchYield();
   }
 
-  for (const Root of Roots) FreezeStaticRoot(Root);
+  for (let RootIndex = 0; RootIndex < Roots.length; RootIndex += 1) {
+    FreezeStaticRoot(Roots[RootIndex]);
+    if (RootIndex > 0 && RootIndex % 8 === 0) await RenderBatchYield();
+  }
 
   Chunk.Group.userData.StaticRenderBatchedR104 = true;
   Chunk.Group.userData.StaticRenderBatchCountR104 = BatchIndex;
@@ -1474,6 +1487,25 @@ function IsStructuralStreamObject(Object) {
   return /^(Floor|Ceiling|WallLeft|WallRight|Baseboard|ShowroomPartition|PartitionCap|PartitionBase|RearStoreClosureR80|RearStoreWallR80|RearStoreBaseboardR80)/i.test(Name);
 }
 
+function IsPersistentCollisionRenderRoot(Object, Chunk) {
+  if (!Object) return true;
+  if (Chunk?.Models?.includes?.(Object)) return true;
+
+  const Data = Object.userData || {};
+  if (
+    Data.RetailImportedR79 ||
+    Data.RetailSellableR84 ||
+    Data.ForceSolidCollisionR30 ||
+    Data.CardboardBoxStableR90 ||
+    Data.RenderBatchR104 ||
+    Data.SolidCollisionR83 ||
+    Data.RayCollisionSolidR35
+  ) return true;
+
+  const Name = String(Object.name || "");
+  return /^(RetailArmchairR79|RetailLivingShelfR79|RetailBedroomCabinetR79|RetailBedroomChairR79|RetailStorageShelfR79|RetailStorageCabinetR79|RetailDisplayCabinetR79|RetailCoffeeTableR84|RetailSideTableR84|RetailDiningTableR84|RetailBoxShelfR84|RetailCardboardBoxR84|WarehouseBoxes|ShoppingCartR82|ShoppingBasketR82|BagShelfR82)/i.test(Name);
+}
+
 function StreamableRoots(Chunk) {
   const Children = Chunk?.Group?.children || [];
   const Stamp = Children.length;
@@ -1487,6 +1519,7 @@ function StreamableRoots(Chunk) {
   const Roots = [];
   for (const Object of Children) {
     if (IsStructuralStreamObject(Object)) continue;
+    if (IsPersistentCollisionRenderRoot(Object, Chunk)) continue;
     Roots.push(Object);
   }
 
@@ -1544,8 +1577,22 @@ function ObjectIntersectsView(Object) {
 
 function UpdateObjectStreaming(Now = performance.now(), Force = false) {
   if (!Force && Now - LastObjectStreamAt < OBJECT_STREAM_INTERVAL_MS) return;
-  LastObjectStreamAt = Now;
+
   UpdateStreamFrustum();
+
+  if (!Force && HasObjectStreamCameraState) {
+    const PositionMoved = LastObjectStreamCameraPosition.distanceToSquared(Camera.position);
+    const DirectionChanged = LastObjectStreamCameraForward.dot(StreamCameraForward);
+    if (PositionMoved < 0.18 && DirectionChanged > 0.994) {
+      LastObjectStreamAt = Now;
+      return;
+    }
+  }
+
+  LastObjectStreamAt = Now;
+  HasObjectStreamCameraState = true;
+  LastObjectStreamCameraPosition.copy(Camera.position);
+  LastObjectStreamCameraForward.copy(StreamCameraForward);
 
   for (const Chunk of ActiveChunks.values()) {
     if (!Chunk?.Group || Chunk.Cancelled || Chunk.Group.parent !== Scene) continue;
@@ -2067,8 +2114,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.25";
-window.__STORE_VERSION__ = "0.35.25";
+window.__STORE_GAME_BUILD__ = "V0.35.26";
+window.__STORE_VERSION__ = "0.35.26";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2093,6 +2140,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.25"
+  Version: "0.35.26"
 };
 Animate();
