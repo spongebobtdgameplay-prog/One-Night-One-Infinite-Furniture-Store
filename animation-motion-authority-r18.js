@@ -72,14 +72,23 @@ function UpdateMeasuredMotion(Mixer, Delta) {
   const Alpha = 1 - Math.exp(-SafeDelta * SpeedResponse);
   State.SmoothedSpeed = THREE.MathUtils.lerp(State.SmoothedSpeed, RawSpeed, Alpha);
 
-  const Contact = window.__STORE_MOVEMENT_CONTACT__;
-  State.ContactDriven = Boolean(
-    Contact?.Strength > 0.01 &&
-    performance.now() - Contact.LastHit <= ContactFreshMs
+  const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
+  const ContactAge = performance.now() - Number(Contact?.LastHit ?? -Infinity);
+  const FreshContact = Boolean(
+    ContactAge >= 0 &&
+    ContactAge <= ContactFreshMs &&
+    Number(Contact?.Strength) > 0.05
+  );
+  const HardBlocked = Boolean(
+    FreshContact &&
+    Number(Contact?.IntentInward) > 0.48 &&
+    State.SmoothedSpeed < 0.38
   );
 
-  if (State.ContactDriven) {
-    State.Moving = true;
+  State.ContactDriven = HardBlocked;
+
+  if (HardBlocked) {
+    State.Moving = false;
   } else if (State.Moving) {
     if (State.SmoothedSpeed < MoveExitSpeed) State.Moving = false;
   } else if (State.SmoothedSpeed > MoveEnterSpeed) {
@@ -125,4 +134,4 @@ THREE.AnimationMixer.prototype.update = function UpdateAnimationFromMotionAndVie
 };
 
 window.__STORE_ANIMATION_MOTION_AUTHORITY__ = MixerStates;
-window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.12.20";
+window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.6-BRACE";
