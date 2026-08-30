@@ -277,4 +277,4 @@ function Discover() {
 Discover();
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.16-PIPELINE";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.24-FRUSTUM";
