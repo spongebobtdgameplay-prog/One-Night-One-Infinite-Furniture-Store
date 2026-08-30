@@ -891,6 +891,16 @@ function PrepareChunk(Index) {
 
 function ActivateChunk(Chunk) {
   if (!Chunk || Chunk.Cancelled || !Chunk.Ready || Chunk.Active) return false;
+
+  const TraversalGateEnabled =
+    window.__STORE_REQUIRE_TRAVERSAL_READY__ === true;
+  const TraversalReady = Boolean(
+    Chunk.Group?.userData?.TraversalReadyR83 ||
+    Chunk.Group?.userData?.PresentationReadyR83
+  );
+
+  if (TraversalGateEnabled && !TraversalReady) return false;
+
   PreparedChunks.delete(Chunk.Index);
   Chunk.Active = true;
   Scene.add(Chunk.Group);
