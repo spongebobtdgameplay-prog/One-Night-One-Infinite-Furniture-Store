@@ -57,10 +57,10 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 3;
+const CHUNKS_AHEAD = 2;
 const CHUNKS_BEHIND = 2;
-const PREFETCH_CHUNKS = 3;
-const STREAM_PROMOTION_DISTANCE = 45;
+const PREFETCH_CHUNKS = 4;
+const STREAM_PROMOTION_DISTANCE = 42;
 const STREAM_KEEP_BEHIND = 2;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
@@ -1574,6 +1574,7 @@ if (BootStatus) BootStatus.textContent = "Preloading furniture models...";
 await PreloadBaseFurniture();
 await PrepareInitialWorld();
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
+window.__STORE_APPLY_PERFORMANCE__?.();
 if (BootStatus) BootStatus.textContent = `Store ready — buffered endless aisles • seed ${WorldSeed}.`;
 
 function Animate() {
