@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260830-v031-kitchen";
+import { CreateChunkLayout } from "./store-layout.js?v=20260830-v032-transition";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -57,10 +57,10 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 2;
+const CHUNKS_AHEAD = 3;
 const CHUNKS_BEHIND = 2;
-const PREFETCH_CHUNKS = 2;
-const STREAM_PROMOTION_DISTANCE = 30;
+const PREFETCH_CHUNKS = 3;
+const STREAM_PROMOTION_DISTANCE = 45;
 const STREAM_KEEP_BEHIND = 2;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
@@ -303,6 +303,7 @@ const MaterialPalettes = {
   Window_Large1: [Pbr(DarkSteelTexture, 0x7f898c, 0.46, 0.65)]
 };
 
+const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
 const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
 const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
 
@@ -314,8 +315,8 @@ const ModelDefinitions = {
   Bed_King: { Url: "Models/Bedroom/GLB/Bed_King.glb", Axis: "z", Target: 2.08 },
   Bed_Single: { Url: "Models/Bedroom/GLB/Bed_Single.glb", Axis: "z", Target: 2.02 },
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
-  Shelf_Large: { Url: "Models/Storage/GLB/Shelf_Large.glb", Axis: "y", Target: 2.08 },
-  Bookshelf: { Url: "Models/Storage/GLB/Bookshelf.glb", Axis: "y", Target: 2.02 },
+  Shelf_Large: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.08, PreserveMaterials: true },
+  Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
   Kitchen_Cabinet1: { Url: ReplicaCabinetUrl, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: `${KayKitRestaurantBase}oven.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
@@ -1300,8 +1301,9 @@ async function PrepareInitialWorld() {
     const Chunk = await PrepareChunk(Order[Position]);
     if (Chunk) ActivateChunk(Chunk);
   }
-  RequestChunk(3).catch(() => {});
-  RequestChunk(4).catch(() => {});
+  for (let Index = 3; Index <= 6; Index += 1) {
+    RequestChunk(Index).catch(() => {});
+  }
 }
 
 function NormalizeWorldSeed(Value) {
@@ -1621,8 +1623,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.17";
-window.__STORE_VERSION__ = "0.35.17";
+window.__STORE_GAME_BUILD__ = "V0.35.18";
+window.__STORE_VERSION__ = "0.35.18";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1644,6 +1646,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.17"
+  Version: "0.35.18"
 };
 Animate();
