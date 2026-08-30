@@ -149,6 +149,39 @@ function RaycastGroundHeight(Position, StartY = null) {
   return Height;
 }
 
+function ResolveRaisedFootLedge(Position, Radius = 0.105, GroundHeight = 0) {
+  if (!Position?.isVector3) return Position;
+
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.105, 0.070, 0.14);
+  const SafeGround = Math.max(0, Number(GroundHeight) || 0);
+  const Skin = 0.007;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    const Top = Bounds.max.y;
+    if (SafeGround < Top - 0.018) continue;
+
+    const NearX = Position.x >= Bounds.min.x - SafeRadius &&
+      Position.x <= Bounds.max.x + SafeRadius;
+    const NearZ = Position.z >= Bounds.min.z - SafeRadius &&
+      Position.z <= Bounds.max.z + SafeRadius;
+    if (!NearX || !NearZ) continue;
+
+    const MinX = Bounds.min.x + SafeRadius + Skin;
+    const MaxX = Bounds.max.x - SafeRadius - Skin;
+    const MinZ = Bounds.min.z + SafeRadius + Skin;
+    const MaxZ = Bounds.max.z - SafeRadius - Skin;
+
+    if (MinX <= MaxX) Position.x = THREE.MathUtils.clamp(Position.x, MinX, MaxX);
+    if (MinZ <= MaxZ) Position.z = THREE.MathUtils.clamp(Position.z, MinZ, MaxZ);
+  }
+
+  return Position;
+}
+
+
 function ResolveLowerFootLedge(Position, Radius = 0.075, GroundHeight = 0) {
   if (!Position?.isVector3) return Position;
 
@@ -265,8 +298,9 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetStepState,
   NearRug,
   RaycastGroundHeight,
+  ResolveRaisedFootLedge,
   ResolveLowerFootLedge,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.10-LEDGE";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.12-FOOT-LOCK";
