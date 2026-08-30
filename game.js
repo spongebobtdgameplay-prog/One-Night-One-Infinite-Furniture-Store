@@ -961,6 +961,7 @@ async function SetWorldSeed(Value) {
       if (window.__STORE_GAME__) window.__STORE_GAME__.WorldSeed = WorldSeed;
 
       Camera.position.set(0, PlayerEyeHeight, 8);
+      ProceduralPhysics.ResetVerticalState?.();
       await PrepareInitialWorld();
       ResetTaskProgress();
       window.__STORE_VISUAL_REDESIGN_R73__?.Discover?.();
@@ -1224,8 +1225,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.1";
-window.__STORE_VERSION__ = "0.35.1";
+window.__STORE_GAME_BUILD__ = "V0.35.2";
+window.__STORE_VERSION__ = "0.35.2";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1246,6 +1247,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.1"
+  Version: "0.35.2"
 };
 Animate();
