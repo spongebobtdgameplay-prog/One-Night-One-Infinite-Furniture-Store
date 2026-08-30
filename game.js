@@ -1643,8 +1643,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.19";
-window.__STORE_VERSION__ = "0.35.19";
+window.__STORE_GAME_BUILD__ = "V0.35.20";
+window.__STORE_VERSION__ = "0.35.20";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1666,6 +1666,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.19"
+  Version: "0.35.20"
 };
 Animate();
