@@ -15,7 +15,6 @@ const MaxSweepSteps = 56;
 const BinarySteps = 18;
 
 const WalkableSurfaces = new Map();
-const SolidContacts = new Map();
 
 const Scratch = {
   Forward: new THREE.Vector3(),
@@ -120,79 +119,6 @@ function RefreshWalkableSurfaces() {
     }
     Record.Bounds.copy(Bounds);
   }
-}
-
-function ContactSignature(Object) {
-  Object.updateWorldMatrix(true, true);
-  const E = Object.matrixWorld.elements;
-  return `${E[0].toFixed(3)}:${E[2].toFixed(3)}:${E[5].toFixed(3)}:${E[8].toFixed(3)}:${E[10].toFixed(3)}:${E[12].toFixed(3)}:${E[13].toFixed(3)}:${E[14].toFixed(3)}:${Object.children.length}:${Object.visible ? 1 : 0}`;
-}
-
-function RegisterSolidContactObject(Object, ChunkId = "") {
-  if (!Object?.isObject3D || !Object.parent || !Object.visible) return 0;
-  const Signature = ContactSignature(Object);
-  const Existing = SolidContacts.get(Object);
-  if (Existing?.Signature === Signature) return Existing.Entries.length;
-
-  const Entries = [];
-  Object.traverse(Item => {
-    if (Entries.length >= 72 || !Item?.isMesh || !Item.visible || !Item.geometry) return;
-    if (/Text|Label|Glow|Rug|Carpet/i.test(String(Item.name || ""))) return;
-    const Box = new THREE.Box3().setFromObject(Item);
-    if (Box.isEmpty()) return;
-    const Size = Box.getSize(new THREE.Vector3());
-    if (Size.x < 0.018 || Size.y < 0.018 || Size.z < 0.018) return;
-    Entries.push({
-      Box,
-      OriginalBox: Box.clone(),
-      Type: "ProceduralBodyContact",
-      ProceduralBodyContact: true,
-      SourceObject: Object,
-      SourceMesh: Item,
-      ChunkId
-    });
-  });
-
-  SolidContacts.set(Object, { Object, ChunkId, Signature, Entries });
-  return Entries.length;
-}
-
-function UnregisterSolidContactObject(Object) {
-  SolidContacts.delete(Object);
-}
-
-function BoundsNear(Bounds, Center, Range) {
-  if (!Center || !FiniteBounds(Bounds)) return true;
-  const X = THREE.MathUtils.clamp(Center.x, Bounds.min.x, Bounds.max.x);
-  const Z = THREE.MathUtils.clamp(Center.z, Bounds.min.z, Bounds.max.z);
-  const DX = Center.x - X;
-  const DZ = Center.z - Z;
-  return DX * DX + DZ * DZ <= Range * Range;
-}
-
-function GetBodyContactEntries(WorldEntries, Center = null, Range = 2.6) {
-  const Result = [];
-  const SafeRange = Math.max(0.8, Number(Range) || 2.6);
-
-  for (const Entry of WorldEntries || []) {
-    if (!Entry || !IsStructure(Entry)) continue;
-    const Bounds = EntryBounds(Entry);
-    if (!FiniteBounds(Bounds) || !BoundsNear(Bounds, Center, SafeRange)) continue;
-    Result.push(Entry);
-  }
-
-  for (const [Object, Record] of SolidContacts) {
-    if (!Object?.parent || !Object.visible) {
-      SolidContacts.delete(Object);
-      continue;
-    }
-    for (const Entry of Record.Entries) {
-      if (!BoundsNear(Entry.Box, Center, SafeRange)) continue;
-      Result.push(Entry);
-    }
-  }
-
-  return Result;
 }
 
 function PointOverBounds(Position, Bounds, Inset = 0) {
@@ -423,11 +349,7 @@ const ProceduralPhysics = {
   UnregisterChunk,
   RefreshWalkableSurface,
   RefreshWalkableSurfaces,
-  RegisterSolidContactObject,
-  UnregisterSolidContactObject,
-  GetBodyContactEntries,
   GetRegisteredSurfaceCount: () => WalkableSurfaces.size,
-  GetRegisteredSolidContactCount: () => SolidContacts.size,
   GetSettings
 };
 
