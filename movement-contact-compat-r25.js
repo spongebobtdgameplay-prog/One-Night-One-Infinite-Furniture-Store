@@ -47,8 +47,10 @@ const CoreBodyProxyDefinitions = Object.freeze([
   { Bone: "Neck",       RadiusScale: 0.60, MinimumRadius: 0.145, Part: "neck" },
   { Bone: "Shoulder.L", RadiusScale: 0.62, MinimumRadius: 0.150, Part: "shoulder-left" },
   { Bone: "Shoulder.R", RadiusScale: 0.62, MinimumRadius: 0.150, Part: "shoulder-right" },
-  { Bone: "UpperLeg.L", RadiusScale: 0.70, MinimumRadius: 0.168, Part: "upper-leg-left" },
-  { Bone: "UpperLeg.R", RadiusScale: 0.70, MinimumRadius: 0.168, Part: "upper-leg-right" }
+  { Bone: "UpperLeg.L", RadiusScale: 0.72, MinimumRadius: 0.174, Part: "upper-leg-left" },
+  { Bone: "UpperLeg.R", RadiusScale: 0.72, MinimumRadius: 0.174, Part: "upper-leg-right" },
+  { Bone: "LowerLeg.L", RadiusScale: 0.60, MinimumRadius: 0.152, Part: "lower-leg-left" },
+  { Bone: "LowerLeg.R", RadiusScale: 0.60, MinimumRadius: 0.152, Part: "lower-leg-right" }
 ]);
 
 const CoreBodyProxySamples = CoreBodyProxyDefinitions.map(Definition => ({
@@ -633,6 +635,72 @@ function FindCoreBodyManifold(Position, StartPosition, Radius, Records) {
   };
 }
 
+function ClampUnrequestedTangentialDrift(Start, RequestedEnd, Position, ContactHit, Radius, Records) {
+  if (!ContactHit?.Normal?.isVector3) return false;
+
+  Scratch.ConstraintNormal.copy(ContactHit.Normal);
+  Scratch.ConstraintNormal.y = 0;
+  if (Scratch.ConstraintNormal.lengthSq() <= 0.000001) return false;
+  Scratch.ConstraintNormal.normalize();
+
+  Scratch.Delta.copy(RequestedEnd).sub(Start);
+  Scratch.Delta.y = 0;
+  const RequestedLength = Scratch.Delta.length();
+  if (RequestedLength <= 0.000001) return false;
+
+  Scratch.RequestedDirection.copy(Scratch.Delta).divideScalar(RequestedLength);
+  const InwardIntent = Math.max(
+    0,
+    -Scratch.RequestedDirection.dot(Scratch.ConstraintNormal)
+  );
+
+  Scratch.TriA.set(
+    -Scratch.ConstraintNormal.z,
+    0,
+    Scratch.ConstraintNormal.x
+  );
+  const RequestedTangent = Scratch.Delta.dot(Scratch.TriA);
+  const RequestedTangentRatio = Math.abs(RequestedTangent) / RequestedLength;
+
+  Scratch.TriB.copy(Position).sub(Start);
+  Scratch.TriB.y = 0;
+  const ActualTangent = Scratch.TriB.dot(Scratch.TriA);
+
+  let MinimumTangent = Math.min(0, RequestedTangent) - 0.0035;
+  let MaximumTangent = Math.max(0, RequestedTangent) + 0.0035;
+
+  // When input is almost straight into the object, collision is not allowed
+  // to turn that into skating along an edge/rail.
+  if (InwardIntent > 0.78 && RequestedTangentRatio < 0.22) {
+    MinimumTangent = -0.0025;
+    MaximumTangent = 0.0025;
+  }
+
+  const ClampedTangent = THREE.MathUtils.clamp(
+    ActualTangent,
+    MinimumTangent,
+    MaximumTangent
+  );
+  if (Math.abs(ClampedTangent - ActualTangent) <= 0.00025) return false;
+
+  Scratch.Candidate.copy(Position).addScaledVector(
+    Scratch.TriA,
+    ClampedTangent - ActualTangent
+  );
+  Scratch.Candidate.y = Position.y;
+
+  const Remaining = FindCoreBodyManifold(
+    Scratch.Candidate,
+    Start,
+    Radius,
+    Records
+  );
+
+  if (Remaining.Hit) return false;
+  Position.copy(Scratch.Candidate);
+  return true;
+}
+
 function SolveForceConstraint(Start, ProposedEnd, RequestedEnd, Radius, Records) {
   Scratch.ForceStart.copy(Start);
   Scratch.ConstraintTarget.copy(ProposedEnd);
@@ -781,6 +849,18 @@ function SolveForceConstraint(Start, ProposedEnd, RequestedEnd, Radius, Records)
   }
 
   const ContactHit = AnyHit || Boolean(IntentContact);
+
+  if (ContactHit && Primary) {
+    ClampUnrequestedTangentialDrift(
+      Start,
+      RequestedEnd,
+      Scratch.ConstraintTarget,
+      Primary,
+      Radius,
+      Records
+    );
+  }
+
   if (!Failed) {
     LastVerifiedPosition.copy(Scratch.ConstraintTarget);
     HasLastVerifiedPosition = true;
@@ -1072,4 +1152,4 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
   }
 };
 
-window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.8-LOW-DRAG-MANIFOLD";
+window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.9-NO-SKATE";
