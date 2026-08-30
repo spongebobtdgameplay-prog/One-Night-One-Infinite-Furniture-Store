@@ -323,6 +323,119 @@ function ResolveLowerFootLedge(Position, Radius = 0.075, GroundHeight = 0) {
 }
 
 
+function IsFootCurbSafe(Position, Radius = 0.125, Clearance = 0.055) {
+  if (!Position?.isVector3) return true;
+
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.125, 0.06, 0.18);
+  const SafeClearance = THREE.MathUtils.clamp(Number(Clearance) || 0.055, 0.025, 0.12);
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    const Top = Bounds.max.y;
+    if (Position.y >= Top + SafeClearance) continue;
+
+    const ExpandedMinX = Bounds.min.x - SafeRadius;
+    const ExpandedMaxX = Bounds.max.x + SafeRadius;
+    const ExpandedMinZ = Bounds.min.z - SafeRadius;
+    const ExpandedMaxZ = Bounds.max.z + SafeRadius;
+
+    if (
+      Position.x < ExpandedMinX ||
+      Position.x > ExpandedMaxX ||
+      Position.z < ExpandedMinZ ||
+      Position.z > ExpandedMaxZ
+    ) continue;
+
+    const ContractedMinX = Bounds.min.x + SafeRadius;
+    const ContractedMaxX = Bounds.max.x - SafeRadius;
+    const ContractedMinZ = Bounds.min.z + SafeRadius;
+    const ContractedMaxZ = Bounds.max.z - SafeRadius;
+
+    const FullyOnTop =
+      ContractedMinX <= ContractedMaxX &&
+      ContractedMinZ <= ContractedMaxZ &&
+      Position.x >= ContractedMinX &&
+      Position.x <= ContractedMaxX &&
+      Position.z >= ContractedMinZ &&
+      Position.z <= ContractedMaxZ;
+
+    const FullyOutside =
+      Position.x <= Bounds.min.x - SafeRadius ||
+      Position.x >= Bounds.max.x + SafeRadius ||
+      Position.z <= Bounds.min.z - SafeRadius ||
+      Position.z >= Bounds.max.z + SafeRadius;
+
+    if (!FullyOnTop && !FullyOutside) return false;
+  }
+
+  return true;
+}
+
+function ResolveFootRollback(Target, PreviousSafe, Radius = 0.125, Clearance = 0.055) {
+  if (!Target?.isVector3) return { Safe: true, RolledBack: false };
+
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.125, 0.06, 0.18);
+  const SafeClearance = THREE.MathUtils.clamp(Number(Clearance) || 0.055, 0.025, 0.12);
+
+  if (!PreviousSafe?.isVector3) {
+    return {
+      Safe: IsFootCurbSafe(Target, SafeRadius, SafeClearance),
+      RolledBack: false
+    };
+  }
+
+  const Distance = PreviousSafe.distanceTo(Target);
+  if (Distance > 0.85 || !IsFootCurbSafe(PreviousSafe, SafeRadius, SafeClearance)) {
+    PreviousSafe.copy(Target);
+    return {
+      Safe: IsFootCurbSafe(Target, SafeRadius, SafeClearance),
+      RolledBack: false
+    };
+  }
+
+  const Steps = THREE.MathUtils.clamp(
+    Math.ceil(Distance / Math.max(0.018, SafeRadius * 0.22)),
+    4,
+    28
+  );
+
+  let LastSafeT = 0;
+  const Probe = new THREE.Vector3();
+
+  for (let Index = 1; Index <= Steps; Index += 1) {
+    const T = Index / Steps;
+    Probe.lerpVectors(PreviousSafe, Target, T);
+
+    if (IsFootCurbSafe(Probe, SafeRadius, SafeClearance)) {
+      LastSafeT = T;
+      continue;
+    }
+
+    let Low = LastSafeT;
+    let High = T;
+
+    for (let Iteration = 0; Iteration < 10; Iteration += 1) {
+      const Mid = (Low + High) * 0.5;
+      Probe.lerpVectors(PreviousSafe, Target, Mid);
+      if (IsFootCurbSafe(Probe, SafeRadius, SafeClearance)) Low = Mid;
+      else High = Mid;
+    }
+
+    Target.lerpVectors(PreviousSafe, Target, Math.max(0, Low - 0.002));
+    return {
+      Safe: true,
+      RolledBack: true
+    };
+  }
+
+  return {
+    Safe: true,
+    RolledBack: false
+  };
+}
+
 function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0, Direction = null) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return false;
@@ -405,7 +518,9 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   RaycastGroundHeight,
   ResolveRaisedFootLedge,
   ResolveLowerFootLedge,
+  IsFootCurbSafe,
+  ResolveFootRollback,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.18-CURB-CLEARANCE";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.19-DYNAMIC-FOOT-ROLLBACK";
