@@ -9,8 +9,8 @@ if (!Game?.Scene || !Player || !Collision) {
   throw new Error("Game, player, and ray collision utility must load before final contact pass.");
 }
 
-const FINAL_CONTACT_SKIN = 0.024;
-const FINAL_POSE_SKIN = 0.017;
+const FINAL_CONTACT_SKIN = 0.029;
+const FINAL_POSE_SKIN = 0.021;
 
 const ForceCapsules = [
   { A: "Neck", B: "Head", Radius: 0.155, EndExtension: 0.09 },
@@ -29,13 +29,13 @@ const ForceCapsules = [
   { A: "UpperArm.R", B: "LowerArm.R", Radius: 0.138 },
   { A: "LowerArm.R", B: "Wrist.R", Radius: 0.128, EndExtension: 0.18 },
 
-  { A: "Hips", B: "UpperLeg.L", Radius: 0.190 },
-  { A: "UpperLeg.L", B: "LowerLeg.L", Radius: 0.158 },
-  { A: "LowerLeg.L", B: "Foot.L", Radius: 0.150, EndExtension: 0.26 },
+  { A: "Hips", B: "UpperLeg.L", Radius: 0.196 },
+  { A: "UpperLeg.L", B: "LowerLeg.L", Radius: 0.170 },
+  { A: "LowerLeg.L", B: "Foot.L", Radius: 0.160, EndExtension: 0.29 },
 
-  { A: "Hips", B: "UpperLeg.R", Radius: 0.190 },
-  { A: "UpperLeg.R", B: "LowerLeg.R", Radius: 0.158 },
-  { A: "LowerLeg.R", B: "Foot.R", Radius: 0.150, EndExtension: 0.26 }
+  { A: "Hips", B: "UpperLeg.R", Radius: 0.196 },
+  { A: "UpperLeg.R", B: "LowerLeg.R", Radius: 0.170 },
+  { A: "LowerLeg.R", B: "Foot.R", Radius: 0.160, EndExtension: 0.29 }
 ];
 
 const CoreForceCapsules = ForceCapsules.filter(Capsule => {
@@ -49,7 +49,9 @@ const CoreForceCapsules = ForceCapsules.filter(Capsule => {
     "Chest>Shoulder.L",
     "Chest>Shoulder.R",
     "Hips>UpperLeg.L",
-    "Hips>UpperLeg.R"
+    "UpperLeg.L>LowerLeg.L",
+    "Hips>UpperLeg.R",
+    "UpperLeg.R>LowerLeg.R"
   ]).has(Key);
 });
 
@@ -61,10 +63,10 @@ const PoseSegments = [
   { Joint: "Shoulder.R", Child: "UpperArm.R", Radius: 0.130 },
   { Joint: "UpperArm.R", Child: "LowerArm.R", Radius: 0.138 },
   { Joint: "LowerArm.R", Child: "Wrist.R", Radius: 0.130, EndExtension: 0.18 },
-  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.156 },
-  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.150, EndExtension: 0.26 },
-  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.156 },
-  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.150, EndExtension: 0.26 }
+  { Joint: "UpperLeg.L", Child: "LowerLeg.L", Radius: 0.168 },
+  { Joint: "LowerLeg.L", Child: "Foot.L", Radius: 0.160, EndExtension: 0.29 },
+  { Joint: "UpperLeg.R", Child: "LowerLeg.R", Radius: 0.168 },
+  { Joint: "LowerLeg.R", Child: "Foot.R", Radius: 0.160, EndExtension: 0.29 }
 ];
 
 const Scratch = {
@@ -444,4 +446,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.7-CORE-FORCE";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.9-SHELF-LEGS";
