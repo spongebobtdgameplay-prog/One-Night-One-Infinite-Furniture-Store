@@ -29,15 +29,17 @@ function RequestFirstPersonLock() {
   const Target = LockTarget();
   if (!Target?.requestPointerLock || !document.hasFocus()) return false;
 
+  // Browsers require pointer lock to be requested during the short-lived
+  // user-activation window. Never retry later from a Promise callback.
+  if (navigator.userActivation && !navigator.userActivation.isActive) return false;
+
   try {
-    const Result = Target.requestPointerLock({ unadjustedMovement: true });
-    if (Result?.catch) Result.catch(() => {
-      try { Target.requestPointerLock(); } catch {}
-    });
+    const Result = Target.requestPointerLock();
+    Result?.catch?.(() => {});
+    return true;
   } catch {
-    try { Target.requestPointerLock(); } catch {}
+    return false;
   }
-  return true;
 }
 
 function SyncPointerState() {
@@ -96,4 +98,4 @@ window.__STORE_POINTER_LOCK_RUNTIME__ = {
   SyncPointerState,
   IsFirstPerson
 };
-window.__STORE_POINTER_LOCK_RUNTIME_BUILD__ = "V0.35.1-CAMERA";
+window.__STORE_POINTER_LOCK_RUNTIME_BUILD__ = "V0.35.3-POINTER";
