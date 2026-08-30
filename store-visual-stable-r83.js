@@ -180,10 +180,9 @@ function Discover() {
   UpdateDepartmentVisibility();
 }
 
+// Initial discovery only. New chunks are processed by presentation-ready.
 Discover();
-const Interval = setInterval(Discover, 1400);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.27.0";
+window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk, UpdateDepartmentVisibility };
+window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk, UpdateDepartmentVisibility };
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.35.16-PIPELINE";
