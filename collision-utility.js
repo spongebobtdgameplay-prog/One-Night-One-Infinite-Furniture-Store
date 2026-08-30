@@ -567,7 +567,13 @@ function MeshHasVisibleMaterial(Object) {
 }
 
 function IsVisibleRayCollisionMesh(Object, Mode = "movement") {
-  if (!Object?.isMesh || !Object.visible || !Object.geometry || HasRayIgnoreAncestor(Object, Mode)) return false;
+  const BatchedSource = Object?.userData?.RenderBatchedSourceR104 === true;
+  if (
+    !Object?.isMesh ||
+    (!Object.visible && !BatchedSource) ||
+    !Object.geometry ||
+    HasRayIgnoreAncestor(Object, Mode)
+  ) return false;
   if (!MeshHasVisibleMaterial(Object)) return false;
 
   const Name = String(Object.name || "");
