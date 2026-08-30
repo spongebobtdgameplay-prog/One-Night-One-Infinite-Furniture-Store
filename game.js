@@ -57,12 +57,12 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 2;
+const CHUNKS_AHEAD = 4;
 const CHUNKS_BEHIND = 2;
-const PREFETCH_CHUNKS = 4;
+const PREFETCH_CHUNKS = 3;
 const STREAM_PROMOTION_DISTANCE = 42;
 const STREAM_KEEP_BEHIND = 2;
-const VIEW_KEEP_DISTANCE = 145;
+const VIEW_KEEP_DISTANCE = 185;
 const VIEW_KEEP_HOLD_MS = 2200;
 const PREPARED_BACK_CACHE = 5;
 const PREPARED_FORWARD_EXTRA = 2;
@@ -1519,9 +1519,7 @@ function EnsureChunksAroundPlayer() {
 
 
 async function PrepareInitialWorld() {
-  // Build only what gameplay can actually see/use at boot. Older code built
-  // three negative chunks that forward-generation immediately deleted.
-  const Order = [0, 1, 2];
+  const Order = [0, 1, 2, 3, 4];
   for (let Position = 0; Position < Order.length; Position += 1) {
     if (BootStatus) {
       BootStatus.textContent =
@@ -1530,7 +1528,7 @@ async function PrepareInitialWorld() {
     const Chunk = await PrepareChunk(Order[Position]);
     if (Chunk) ActivateChunk(Chunk);
   }
-  for (let Index = 3; Index <= 6; Index += 1) {
+  for (let Index = 5; Index <= 8; Index += 1) {
     RequestChunk(Index).catch(() => {});
   }
 }
@@ -1824,8 +1822,13 @@ addEventListener("blur", () => KeyState.clear());
 addEventListener("resize", () => {
   Camera.aspect = innerWidth / innerHeight;
   Camera.updateProjectionMatrix();
-  Renderer.setPixelRatio(Math.min(devicePixelRatio, 1.15));
-  Renderer.setSize(innerWidth, innerHeight, false);
+
+  if (window.__STORE_APPLY_PERFORMANCE__) {
+    window.__STORE_APPLY_PERFORMANCE__();
+  } else {
+    Renderer.setPixelRatio(Math.min(devicePixelRatio, 1));
+    Renderer.setSize(innerWidth, innerHeight, false);
+  }
 });
 addEventListener("error", Event => ShowError(Event.message || "Unknown runtime error."));
 addEventListener("unhandledrejection", Event => {
@@ -1855,8 +1858,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.21";
-window.__STORE_VERSION__ = "0.35.21";
+window.__STORE_GAME_BUILD__ = "V0.35.22";
+window.__STORE_VERSION__ = "0.35.22";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1880,6 +1883,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.21"
+  Version: "0.35.22"
 };
 Animate();
