@@ -156,6 +156,17 @@ const State = {
   SafeFootRight: new THREE.Vector3(),
   SafeFootLeftReady: false,
   SafeFootRightReady: false,
+  FootHull: {
+    HalfLength: 0.155,
+    HalfWidth: 0.082,
+    SoleOffset: 0.058,
+    ForwardX: 0,
+    ForwardZ: 1,
+    RightX: 1,
+    RightZ: 0,
+    Measured: false,
+    Samples: 0
+  },
   SavedRenderPivotPosition: new THREE.Vector3(),
   ContactReaction: 0,
   ContactFront: 0,
@@ -182,6 +193,9 @@ const State = {
   TempHip: new THREE.Vector3(),
   TempKnee: new THREE.Vector3(),
   TempFoot: new THREE.Vector3(),
+  TempFootVertex: new THREE.Vector3(),
+  TempFootBonePosition: new THREE.Vector3(),
+  TempFootMeasureDelta: new THREE.Vector3(),
   TempCurbActual: new THREE.Vector3(),
   TempCurbCorrected: new THREE.Vector3(),
   TempCurbDelta: new THREE.Vector3(),
@@ -422,6 +436,133 @@ function NormalizeWheelDelta(Event) {
   return THREE.MathUtils.clamp(Delta, -120, 120);
 }
 
+function UpdateFootHullOrientation() {
+  const Yaw = State.Pivot?.rotation?.y || 0;
+  State.FootHull.ForwardX = Math.sin(Yaw);
+  State.FootHull.ForwardZ = Math.cos(Yaw);
+  State.FootHull.RightX = Math.cos(Yaw);
+  State.FootHull.RightZ = -Math.sin(Yaw);
+  return State.FootHull;
+}
+
+function MeasureFootHullFromRig() {
+  if (!State.Pivot) return;
+
+  State.Pivot.updateMatrixWorld(true);
+
+  const Hull = UpdateFootHullOrientation();
+  const ForwardX = Hull.ForwardX;
+  const ForwardZ = Hull.ForwardZ;
+  const RightX = Hull.RightX;
+  const RightZ = Hull.RightZ;
+
+  let MaxForward = 0;
+  let MaxSide = 0;
+  let MaxBelow = 0;
+  let Samples = 0;
+
+  for (const FootName of ["FootL", "FootR"]) {
+    const FootBone = State.Bones.get(FootName);
+    if (!FootBone) continue;
+
+    FootBone.getWorldPosition(State.TempFootBonePosition);
+
+    for (const Mesh of State.BodyMeshes) {
+      if (!Mesh?.isSkinnedMesh || !Mesh.skeleton || !Mesh.geometry) continue;
+
+      const Position = Mesh.geometry.attributes?.position;
+      const SkinIndex = Mesh.geometry.attributes?.skinIndex;
+      const SkinWeight = Mesh.geometry.attributes?.skinWeight;
+      if (!Position || !SkinIndex || !SkinWeight) continue;
+
+      const BoneIndex = Mesh.skeleton.bones.indexOf(FootBone);
+      if (BoneIndex < 0) continue;
+
+      Mesh.updateWorldMatrix(true, false);
+
+      for (let VertexIndex = 0; VertexIndex < Position.count; VertexIndex += 1) {
+        const Indices = [
+          SkinIndex.getX(VertexIndex),
+          SkinIndex.getY(VertexIndex),
+          SkinIndex.getZ(VertexIndex),
+          SkinIndex.getW(VertexIndex)
+        ];
+        const Weights = [
+          SkinWeight.getX(VertexIndex),
+          SkinWeight.getY(VertexIndex),
+          SkinWeight.getZ(VertexIndex),
+          SkinWeight.getW(VertexIndex)
+        ];
+
+        let FootWeight = 0;
+        for (let Influence = 0; Influence < 4; Influence += 1) {
+          if (Math.round(Indices[Influence]) === BoneIndex) {
+            FootWeight += Number(Weights[Influence]) || 0;
+          }
+        }
+
+        if (FootWeight < 0.08) continue;
+
+        State.TempFootVertex.fromBufferAttribute(Position, VertexIndex);
+
+        if (typeof Mesh.applyBoneTransform === "function") {
+          Mesh.applyBoneTransform(VertexIndex, State.TempFootVertex);
+        } else if (typeof Mesh.boneTransform === "function") {
+          Mesh.boneTransform(VertexIndex, State.TempFootVertex);
+        } else {
+          continue;
+        }
+
+        State.TempFootVertex.applyMatrix4(Mesh.matrixWorld);
+        State.TempFootMeasureDelta
+          .copy(State.TempFootVertex)
+          .sub(State.TempFootBonePosition);
+
+        const Forward = Math.abs(
+          State.TempFootMeasureDelta.x * ForwardX +
+          State.TempFootMeasureDelta.z * ForwardZ
+        );
+        const Side = Math.abs(
+          State.TempFootMeasureDelta.x * RightX +
+          State.TempFootMeasureDelta.z * RightZ
+        );
+        const Below = Math.max(0, -State.TempFootMeasureDelta.y);
+
+        if (Forward > 0.42 || Side > 0.28 || Below > 0.20) continue;
+
+        MaxForward = Math.max(MaxForward, Forward);
+        MaxSide = Math.max(MaxSide, Side);
+        MaxBelow = Math.max(MaxBelow, Below);
+        Samples += 1;
+      }
+    }
+  }
+
+  if (Samples < 8) {
+    Hull.Measured = false;
+    Hull.Samples = Samples;
+    return;
+  }
+
+  Hull.HalfLength = THREE.MathUtils.clamp(
+    MaxForward + 0.014,
+    0.145,
+    0.230
+  );
+  Hull.HalfWidth = THREE.MathUtils.clamp(
+    MaxSide + 0.012,
+    0.070,
+    0.135
+  );
+  Hull.SoleOffset = THREE.MathUtils.clamp(
+    MaxBelow + 0.008,
+    0.045,
+    0.115
+  );
+  Hull.Measured = true;
+  Hull.Samples = Samples;
+}
+
 function RefreshRig() {
   if (!State.Scene) return false;
   const Pivot = State.Scene.getObjectByName("PlayerCharacterPivot") || null;
@@ -474,6 +615,7 @@ function RefreshRig() {
   }
 
   State.Head = State.Bones.get("Head") || null;
+  MeasureFootHullFromRig();
   return true;
 }
 
@@ -1464,23 +1606,48 @@ function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0) {
   const IsLeft = Side < 0;
   const Safe = IsLeft ? State.SafeFootLeft : State.SafeFootRight;
   const ReadyKey = IsLeft ? "SafeFootLeftReady" : "SafeFootRightReady";
-  const IsSafe = Position =>
-    SurfaceStep.IsFootCurbSafe?.(
+  const Hull = UpdateFootHullOrientation();
+
+  const IsSafe = Position => {
+    if (typeof SurfaceStep.IsFootHullSafe === "function") {
+      return SurfaceStep.IsFootHullSafe(
+        Position,
+        Hull,
+        FOOT_CURB_CLEARANCE
+      ) !== false;
+    }
+
+    return SurfaceStep.IsFootCurbSafe?.(
       Position,
       LEDGE_FOOT_RADIUS,
       FOOT_CURB_CLEARANCE
     ) !== false;
+  };
+
+  const Project = (Position, Reference) => {
+    if (typeof SurfaceStep.ResolveFootHullConstraint === "function") {
+      SurfaceStep.ResolveFootHullConstraint(
+        Position,
+        Reference,
+        Hull,
+        FOOT_CURB_CLEARANCE
+      );
+      return;
+    }
+
+    SurfaceStep.ResolveFootCurbConstraint?.(
+      Position,
+      Reference,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    );
+  };
 
   if (!State[ReadyKey]) {
     State.TempCurbCorrected.copy(Target);
 
     if (!IsSafe(State.TempCurbCorrected)) {
-      SurfaceStep.ResolveFootCurbConstraint?.(
-        State.TempCurbCorrected,
-        null,
-        LEDGE_FOOT_RADIUS,
-        FOOT_CURB_CLEARANCE
-      );
+      Project(State.TempCurbCorrected, null);
     }
 
     if (!IsSafe(State.TempCurbCorrected)) {
@@ -1498,32 +1665,31 @@ function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0) {
         );
       }
 
-      SurfaceStep.ResolveFootCurbConstraint?.(
-        State.TempCurbCorrected,
-        null,
-        LEDGE_FOOT_RADIUS,
-        FOOT_CURB_CLEARANCE
-      );
+      Project(State.TempCurbCorrected, null);
     }
 
     Safe.copy(State.TempCurbCorrected);
     State[ReadyKey] = true;
   }
 
-  SurfaceStep.ResolveFootRollback?.(
-    Target,
-    Safe,
-    LEDGE_FOOT_RADIUS,
-    FOOT_CURB_CLEARANCE
-  );
-
-  if (!IsSafe(Target)) {
-    SurfaceStep.ResolveFootCurbConstraint?.(
+  if (typeof SurfaceStep.ResolveFootHullSweep === "function") {
+    SurfaceStep.ResolveFootHullSweep(
+      Target,
+      Safe,
+      Hull,
+      FOOT_CURB_CLEARANCE
+    );
+  } else {
+    SurfaceStep.ResolveFootRollback?.(
       Target,
       Safe,
       LEDGE_FOOT_RADIUS,
       FOOT_CURB_CLEARANCE
     );
+  }
+
+  if (!IsSafe(Target)) {
+    Project(Target, Safe);
   }
 
   if (IsSafe(Target)) {
@@ -1544,35 +1710,60 @@ function EnforceSolvedFootCurb(Support, SurfaceStep) {
   const Safe = Support.Side < 0
     ? State.SafeFootLeft
     : State.SafeFootRight;
+  const Hull = UpdateFootHullOrientation();
 
-  for (let Pass = 0; Pass < 2; Pass += 1) {
+  const IsSafe = Position => {
+    if (typeof SurfaceStep.IsFootHullSafe === "function") {
+      return SurfaceStep.IsFootHullSafe(
+        Position,
+        Hull,
+        FOOT_CURB_CLEARANCE
+      ) !== false;
+    }
+
+    return SurfaceStep.IsFootCurbSafe?.(
+      Position,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    ) !== false;
+  };
+
+  const Project = (Position, Reference) => {
+    if (typeof SurfaceStep.ResolveFootHullConstraint === "function") {
+      SurfaceStep.ResolveFootHullConstraint(
+        Position,
+        Reference,
+        Hull,
+        FOOT_CURB_CLEARANCE
+      );
+      return;
+    }
+
+    SurfaceStep.ResolveFootCurbConstraint?.(
+      Position,
+      Reference,
+      LEDGE_FOOT_RADIUS,
+      FOOT_CURB_CLEARANCE
+    );
+  };
+
+  for (let Pass = 0; Pass < 3; Pass += 1) {
     State.Pivot.updateMatrixWorld(true);
     FootBone.getWorldPosition(State.TempCurbActual);
 
-    if (
-      SurfaceStep.IsFootCurbSafe?.(
-        State.TempCurbActual,
-        LEDGE_FOOT_RADIUS,
-        FOOT_CURB_CLEARANCE
-      ) !== false
-    ) {
+    if (IsSafe(State.TempCurbActual)) {
       Safe.copy(State.TempCurbActual);
       return;
     }
 
     State.TempCurbCorrected.copy(State.TempCurbActual);
-    SurfaceStep.ResolveFootCurbConstraint?.(
-      State.TempCurbCorrected,
-      Safe,
-      LEDGE_FOOT_RADIUS,
-      FOOT_CURB_CLEARANCE
-    );
+    Project(State.TempCurbCorrected, Safe);
 
     State.TempCurbDelta
       .copy(State.TempCurbCorrected)
       .sub(State.TempCurbActual);
 
-    if (State.TempCurbDelta.lengthSq() <= 0.00000025) {
+    if (State.TempCurbDelta.lengthSq() <= 0.00000010) {
       Support.Target.copy(Safe);
     } else {
       Support.Target.add(State.TempCurbDelta);
@@ -1597,14 +1788,9 @@ function EnforceSolvedFootCurb(Support, SurfaceStep) {
   State.Pivot.updateMatrixWorld(true);
   FootBone.getWorldPosition(State.TempCurbActual);
 
-  if (
-    SurfaceStep.IsFootCurbSafe?.(
-      State.TempCurbActual,
-      LEDGE_FOOT_RADIUS,
-      FOOT_CURB_CLEARANCE
-    ) === false
-  ) {
+  if (!IsSafe(State.TempCurbActual)) {
     Support.Target.copy(Safe);
+
     SolveTwoBoneLeg(
       Support.Upper,
       Support.Lower,
@@ -2494,4 +2680,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.29-ZERO-CLIP-FEET";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.30-MESH-DERIVED-FOOT-HULL";
