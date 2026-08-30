@@ -416,6 +416,30 @@ function ResolveFootCurbConstraint(Target, Reference = null, Radius = 0.145, Cle
       SafeClearance
     )) continue;
 
+    const MinX = Bounds.min.x + Gap;
+    const MaxX = Bounds.max.x - Gap;
+    const MinZ = Bounds.min.z + Gap;
+    const MaxZ = Bounds.max.z - Gap;
+    const CanStandOnTop =
+      MinX <= MaxX &&
+      MinZ <= MaxZ &&
+      Target.y - FOOT_CURB_SOLE_OFFSET >= Bounds.max.y - 0.003;
+    const TargetInsideRug =
+      Target.x >= Bounds.min.x &&
+      Target.x <= Bounds.max.x &&
+      Target.z >= Bounds.min.z &&
+      Target.z <= Bounds.max.z;
+
+    if (CanStandOnTop && TargetInsideRug) {
+      Target.x = THREE.MathUtils.clamp(Target.x, MinX, MaxX);
+      Target.z = THREE.MathUtils.clamp(Target.z, MinZ, MaxZ);
+      Target.y = Math.max(
+        Target.y,
+        Bounds.max.y + FOOT_CURB_SOLE_OFFSET
+      );
+      continue;
+    }
+
     const Outside = [
       { Axis: "x", Value: Bounds.min.x - Gap, Distance: Math.abs(Target.x - (Bounds.min.x - Gap)), Side: "minX" },
       { Axis: "x", Value: Bounds.max.x + Gap, Distance: Math.abs(Target.x - (Bounds.max.x + Gap)), Side: "maxX" },
@@ -449,15 +473,6 @@ function ResolveFootCurbConstraint(Target, Reference = null, Radius = 0.145, Cle
       SafeRadius,
       SafeClearance
     )) {
-      const MinX = Bounds.min.x + Gap;
-      const MaxX = Bounds.max.x - Gap;
-      const MinZ = Bounds.min.z + Gap;
-      const MaxZ = Bounds.max.z - Gap;
-      const CanStandOnTop =
-        MinX <= MaxX &&
-        MinZ <= MaxZ &&
-        Target.y - FOOT_CURB_SOLE_OFFSET >= Bounds.max.y - 0.003;
-
       if (CanStandOnTop) {
         Target.x = THREE.MathUtils.clamp(Target.x, MinX, MaxX);
         Target.z = THREE.MathUtils.clamp(Target.z, MinZ, MaxZ);
