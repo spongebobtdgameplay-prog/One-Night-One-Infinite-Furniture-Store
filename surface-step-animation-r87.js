@@ -333,8 +333,7 @@ function IsFootCurbSafe(Position, Radius = 0.125, Clearance = 0.055) {
     const Bounds = Record.Bounds;
     if (!FiniteBounds(Bounds)) continue;
 
-    const Top = Bounds.max.y;
-    if (Position.y >= Top + SafeClearance) continue;
+    void SafeClearance;
 
     const ExpandedMinX = Bounds.min.x - SafeRadius;
     const ExpandedMaxX = Bounds.max.x + SafeRadius;
