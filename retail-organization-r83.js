@@ -36,9 +36,8 @@ function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
 }
 
+// Initial discovery only. Runtime organization is presentation-owned.
 Discover();
-const Interval = setInterval(Discover, 1100);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_RETAIL_ORGANIZATION_R83__ = { ProcessChunk, Discover };
-window.__STORE_RETAIL_ORGANIZATION_BUILD__ = "V0.27.0";
+window.__STORE_RETAIL_ORGANIZATION_BUILD__ = "V0.35.16-PIPELINE";
