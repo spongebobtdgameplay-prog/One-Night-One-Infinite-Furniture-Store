@@ -102,10 +102,17 @@ function LayoutOccupancyReady(Chunk) {
 
   for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
     for (const Entry of Chunk.Layout?.[GroupName] || []) {
+      // Optional density/merchandising is allowed to fail or be rejected by
+      // placement validation. It must never deadlock the streaming frontier.
+      if (Entry?.Required === false) continue;
       if (!Placed.has(Entry.Slot)) return false;
     }
   }
-  if (Chunk.Layout?.Task && !Placed.has(Chunk.Layout.Task.Slot)) return false;
+  if (
+    Chunk.Layout?.Task &&
+    Chunk.Layout.Task.Required !== false &&
+    !Placed.has(Chunk.Layout.Task.Slot)
+  ) return false;
 
   return true;
 }
