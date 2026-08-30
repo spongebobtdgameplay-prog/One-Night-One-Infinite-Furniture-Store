@@ -168,8 +168,20 @@ async function PlacePlannedZoneAsset(Chunk, Entry, Index) {
   return Object;
 }
 
+function PlacementYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => Resolve(), { timeout: 700 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
+}
+
 async function AddPlannedZoneHeaders(Chunk) {
-  for (const HeaderPlan of Chunk.Layout?.ZoneHeaders || []) {
+  const Headers = Chunk.Layout?.ZoneHeaders || [];
+  for (let HeaderIndex = 0; HeaderIndex < Headers.length; HeaderIndex += 1) {
+    const HeaderPlan = Headers[HeaderIndex];
     if ((Chunk.Group?.children || []).some(Object => Object?.userData?.LayoutSlot === HeaderPlan.Slot)) continue;
     try {
       const Header = await MakeZoneHeader(HeaderPlan.Text);
@@ -190,6 +202,8 @@ async function AddPlannedZoneHeaders(Chunk) {
     } catch (Error) {
       console.warn(`Planned retail-zone header unavailable for ${HeaderPlan.Slot}`, Error);
     }
+
+    if (HeaderIndex < Headers.length - 1) await PlacementYield();
   }
 }
 
@@ -199,14 +213,18 @@ export async function ProcessChunk(Chunk) {
   Processing.add(Chunk);
   try {
     let Index = 0;
-    for (const Entry of Chunk.Layout?.Zones || []) {
+    const PlannedZones = Chunk.Layout?.Zones || [];
+    for (const Entry of PlannedZones) {
       try {
         await PlacePlannedZoneAsset(Chunk, Entry, Index);
       } catch (Error) {
         console.warn(`Planned retail-zone asset unavailable for ${Entry.Slot}`, Error);
       }
       Index += 1;
+      if (Index < PlannedZones.length) await PlacementYield();
     }
+
+    await PlacementYield();
     await AddPlannedZoneHeaders(Chunk);
     const PlacedSlots = new Set((Chunk.Group?.children || []).map(Object => String(Object?.userData?.LayoutSlot || "")).filter(Boolean));
     const ZonesReady = (Chunk.Layout?.Zones || []).every(Entry => PlacedSlots.has(Entry.Slot));
