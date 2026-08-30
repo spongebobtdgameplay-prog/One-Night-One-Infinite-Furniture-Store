@@ -53,7 +53,12 @@ const LEDGE_LOCK_MAX_DRIFT = 0.20;
 const LEDGE_PELVIS_MAX = 0.045;
 const LEDGE_PELVIS_XZ_MAX = 0.032;
 const EDGE_TRANSITION_RANGE = 0.31;
-const EDGE_TRANSITION_HOLD_MS = 620;
+const EDGE_TRANSITION_HOLD_MS = 900;
+const EDGE_RELEASE_DISTANCE = 0.235;
+const EDGE_RELEASE_FRAMES = 4;
+const EDGE_LEAD_SWITCH_DISTANCE = -0.060;
+const EDGE_TRAIL_SWITCH_DISTANCE = 0.090;
+const EDGE_TANGENT_RELEASE_PADDING = 0.38;
 const EDGE_FOOT_NORMAL_OFFSET = 0.122;
 const EDGE_FOOT_TANGENT_OFFSET = 0.095;
 const FOOT_PROBE_TOE = 0.115;
@@ -122,6 +127,14 @@ const State = {
     EdgeX: 0,
     EdgeZ: 0,
     Height: 0,
+    SignedDistance: 0,
+    TravelProgress: 0,
+    ResolvedFrames: 0,
+    Phase: "Source",
+    BoundsMinX: 0,
+    BoundsMaxX: 0,
+    BoundsMinZ: 0,
+    BoundsMaxZ: 0,
     StartedAt: -Infinity,
     LastSeenAt: -Infinity
   },
@@ -841,6 +854,8 @@ function ResetEdgeTransition() {
   State.EdgeTransition.Active = false;
   State.EdgeTransition.RugId = "";
   State.EdgeTransition.LastSeenAt = -Infinity;
+  State.EdgeTransition.ResolvedFrames = 0;
+  State.EdgeTransition.Phase = "Source";
   State.LocomotionSurfaceState = "FlatGround";
   State.LedgePelvisOffsetX = 0;
   State.LedgePelvisOffsetZ = 0;
@@ -852,6 +867,45 @@ function ResetEdgeTransition() {
   };
 }
 
+function StoredEdgeSignedDistance(Transition, Position) {
+  return (
+    (Position.x - Transition.EdgeX) * Transition.NormalX +
+    (Position.z - Transition.EdgeZ) * Transition.NormalZ
+  );
+}
+
+function StoredEdgeTangentOutsideDistance(Transition, Position) {
+  if (Math.abs(Transition.NormalX) > 0.5) {
+    if (Position.z < Transition.BoundsMinZ) {
+      return Transition.BoundsMinZ - Position.z;
+    }
+    if (Position.z > Transition.BoundsMaxZ) {
+      return Position.z - Transition.BoundsMaxZ;
+    }
+    return 0;
+  }
+
+  if (Position.x < Transition.BoundsMinX) {
+    return Transition.BoundsMinX - Position.x;
+  }
+  if (Position.x > Transition.BoundsMaxX) {
+    return Position.x - Transition.BoundsMaxX;
+  }
+  return 0;
+}
+
+function EdgeTravelProgress(Transition, SignedDistance) {
+  return Transition.Entering
+    ? -SignedDistance
+    : SignedDistance;
+}
+
+function EdgePhaseForProgress(Progress) {
+  if (Progress < EDGE_LEAD_SWITCH_DISTANCE) return "Source";
+  if (Progress < EDGE_TRAIL_SWITCH_DISTANCE) return "LeadCrossed";
+  return "Destination";
+}
+
 function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
   const Query = SurfaceStep?.GetNearestLedgeState;
   if (typeof Query !== "function" || !State.Pivot) {
@@ -859,47 +913,36 @@ function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
     return null;
   }
 
-  const Ledge = Query(
+  const Existing = State.EdgeTransition;
+  const Now = performance.now();
+
+  let Ledge = Query(
     State.Pivot.position,
     Travel,
-    EDGE_TRANSITION_RANGE
-  );
-  const Now = performance.now();
-  const Existing = State.EdgeTransition;
-
-  const CrossingIntent = Boolean(
-    Ledge &&
-    (
-      Math.abs(Number(Ledge.MotionDot) || 0) > 0.10 ||
-      Step?.Active === true
-    )
+    Existing.Active
+      ? Math.max(EDGE_TRANSITION_RANGE, EDGE_RELEASE_DISTANCE + 0.10)
+      : EDGE_TRANSITION_RANGE
   );
 
-  const ContinueExisting = Boolean(
-    Existing.Active &&
-    Ledge &&
-    Existing.RugId === Ledge.RugId &&
-    Now - Existing.LastSeenAt < EDGE_TRANSITION_HOLD_MS
-  );
+  if (!Existing.Active) {
+    const CrossingIntent = Boolean(
+      Ledge &&
+      (
+        Math.abs(Number(Ledge.MotionDot) || 0) > 0.10 ||
+        Step?.Active === true
+      )
+    );
 
-  if (!Ledge || (!CrossingIntent && !ContinueExisting)) {
-    if (
-      Existing.Active &&
-      Now - Existing.LastSeenAt < 120 &&
-      Math.abs(Number(Existing.NormalX) || 0) +
-        Math.abs(Number(Existing.NormalZ) || 0) > 0
-    ) {
-      return Existing;
+    if (!Ledge || !CrossingIntent) {
+      ResetEdgeTransition();
+      return null;
     }
 
-    ResetEdgeTransition();
-    return null;
-  }
-
-  if (!Existing.Active || Existing.RugId !== Ledge.RugId) {
     Existing.Active = true;
     Existing.RugId = Ledge.RugId;
     Existing.StartedAt = Now;
+    Existing.LastSeenAt = Now;
+    Existing.ResolvedFrames = 0;
     Existing.LeadSide = Step?.Side === -1
       ? -1
       : Step?.Side === 1
@@ -909,23 +952,114 @@ function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
     if (Ledge.Entering) Existing.Entering = true;
     else if (Ledge.Exiting) Existing.Entering = false;
     else Existing.Entering = Step?.Entering !== false;
-  } else {
-    if (Ledge.Entering) Existing.Entering = true;
-    if (Ledge.Exiting) Existing.Entering = false;
   }
 
-  Existing.LastSeenAt = Now;
-  Existing.NormalX = Number(Ledge.NormalX) || 0;
-  Existing.NormalZ = Number(Ledge.NormalZ) || 0;
-  Existing.TangentX = Number(Ledge.TangentX) || 0;
-  Existing.TangentZ = Number(Ledge.TangentZ) || 0;
-  Existing.EdgeX = Number(Ledge.EdgeX) || 0;
-  Existing.EdgeZ = Number(Ledge.EdgeZ) || 0;
-  Existing.Height = Math.max(0, Number(Ledge.Height) || 0);
+  // Once latched, do not jump to a different edge just because the nearest
+  // query changes. Refresh only from the same rug and same edge direction.
+  if (
+    Ledge &&
+    Ledge.RugId === Existing.RugId &&
+    (
+      !Existing.Active ||
+      Existing.NormalX === 0 && Existing.NormalZ === 0 ||
+      Ledge.NormalX * Existing.NormalX +
+        Ledge.NormalZ * Existing.NormalZ > 0.92
+    )
+  ) {
+    Existing.LastSeenAt = Now;
+    Existing.NormalX = Number(Ledge.NormalX) || 0;
+    Existing.NormalZ = Number(Ledge.NormalZ) || 0;
+    Existing.TangentX = Number(Ledge.TangentX) || 0;
+    Existing.TangentZ = Number(Ledge.TangentZ) || 0;
+    Existing.EdgeX = Number(Ledge.EdgeX) || 0;
+    Existing.EdgeZ = Number(Ledge.EdgeZ) || 0;
+    Existing.Height = Math.max(0, Number(Ledge.Height) || 0);
+
+    const Bounds = Ledge.Bounds;
+    if (Bounds) {
+      Existing.BoundsMinX = Number(Bounds.min?.x) || Existing.BoundsMinX;
+      Existing.BoundsMaxX = Number(Bounds.max?.x) || Existing.BoundsMaxX;
+      Existing.BoundsMinZ = Number(Bounds.min?.z) || Existing.BoundsMinZ;
+      Existing.BoundsMaxZ = Number(Bounds.max?.z) || Existing.BoundsMaxZ;
+    }
+  }
+
+  // If the first latched frame did not refresh the geometry yet, seed it now.
+  if (
+    Ledge &&
+    Existing.RugId === Ledge.RugId &&
+    Math.abs(Existing.NormalX) + Math.abs(Existing.NormalZ) < 0.5
+  ) {
+    Existing.NormalX = Number(Ledge.NormalX) || 0;
+    Existing.NormalZ = Number(Ledge.NormalZ) || 0;
+    Existing.TangentX = Number(Ledge.TangentX) || 0;
+    Existing.TangentZ = Number(Ledge.TangentZ) || 0;
+    Existing.EdgeX = Number(Ledge.EdgeX) || 0;
+    Existing.EdgeZ = Number(Ledge.EdgeZ) || 0;
+    Existing.Height = Math.max(0, Number(Ledge.Height) || 0);
+    const Bounds = Ledge.Bounds;
+    if (Bounds) {
+      Existing.BoundsMinX = Number(Bounds.min?.x) || 0;
+      Existing.BoundsMaxX = Number(Bounds.max?.x) || 0;
+      Existing.BoundsMinZ = Number(Bounds.min?.z) || 0;
+      Existing.BoundsMaxZ = Number(Bounds.max?.z) || 0;
+    }
+  }
+
+  const SignedDistance = StoredEdgeSignedDistance(
+    Existing,
+    State.Pivot.position
+  );
+  const Progress = EdgeTravelProgress(
+    Existing,
+    SignedDistance
+  );
+
+  Existing.SignedDistance = SignedDistance;
+  Existing.TravelProgress = Progress;
+  Existing.Phase = EdgePhaseForProgress(Progress);
+
+  const TangentOutside = StoredEdgeTangentOutsideDistance(
+    Existing,
+    State.Pivot.position
+  );
+
+  // Release only after the body has clearly reached either stable side for
+  // several consecutive frames. One bad query/frame cannot end the state.
+  const FarDestination = Progress >= EDGE_RELEASE_DISTANCE;
+  const FarSource = Progress <= -EDGE_RELEASE_DISTANCE;
+  const SameLevelResolved = FarDestination || FarSource;
+  const TangentStillRelevant =
+    TangentOutside <= EDGE_TANGENT_RELEASE_PADDING;
+
+  if (SameLevelResolved || !TangentStillRelevant) {
+    Existing.ResolvedFrames += 1;
+  } else {
+    Existing.ResolvedFrames = 0;
+  }
+
+  if (
+    Existing.ResolvedFrames >= EDGE_RELEASE_FRAMES &&
+    Now - Existing.StartedAt > 90
+  ) {
+    ResetEdgeTransition();
+    return null;
+  }
+
+  // Emergency stale cleanup only when the player has actually left the entire
+  // edge segment. Never use a missing nearest-edge query alone as an exit.
+  if (
+    Now - Existing.LastSeenAt > EDGE_TRANSITION_HOLD_MS &&
+    TangentOutside > EDGE_TANGENT_RELEASE_PADDING
+  ) {
+    ResetEdgeTransition();
+    return null;
+  }
 
   State.LocomotionSurfaceState = "EdgeTransition";
   return Existing;
 }
+
 
 function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
   if (!Transition?.Active || !State.Pivot) return null;
@@ -941,7 +1075,19 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
   FootBone.getWorldPosition(State.TempLegTarget);
 
   const Lead = Side === Transition.LeadSide;
-  const WantsTop = Transition.Entering ? Lead : !Lead;
+  const DestinationTop = Transition.Entering;
+  const SourceTop = !Transition.Entering;
+
+  let UsesDestination = false;
+  if (Transition.Phase === "LeadCrossed") {
+    UsesDestination = Lead;
+  } else if (Transition.Phase === "Destination") {
+    UsesDestination = true;
+  }
+
+  const WantsTop = UsesDestination
+    ? DestinationTop
+    : SourceTop;
   const SupportHeight = WantsTop ? Transition.Height : 0;
 
   // Map character left/right onto the ledge tangent so the generated stance
@@ -1023,7 +1169,9 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
     SupportWeight: 1,
     Arc: 0,
     GeometryDriven: true,
-    WantsTop
+    WantsTop,
+    UsesDestination,
+    TransitionPhase: Transition.Phase
   };
 }
 
@@ -1150,6 +1298,10 @@ function ApplyGeometryEdgeTransition(SurfaceStep, Step, Delta, Travel) {
     RugId: Transition.RugId,
     Entering: Transition.Entering,
     LeadSide: Transition.LeadSide,
+    Phase: Transition.Phase,
+    TravelProgress: Transition.TravelProgress,
+    SignedDistance: Transition.SignedDistance,
+    ResolvedFrames: Transition.ResolvedFrames,
     UpdatedAt: performance.now()
   };
 
@@ -2113,4 +2265,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.13-EDGE-STATE";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.14-LATCHED-EDGE";
