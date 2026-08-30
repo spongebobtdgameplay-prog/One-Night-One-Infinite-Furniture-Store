@@ -68,10 +68,12 @@ Style.textContent = `
 document.head.appendChild(Style);
 document.body.appendChild(Overlay);
 
-const PRIORITY_DISTANCE = 18;
-const GATE_DISTANCE = 4.0;
-const NOTICE_DISTANCE = 1.85;
+const PRIORITY_DISTANCE = 42;
+const GATE_DISTANCE = 7.0;
+const NOTICE_DISTANCE = 2.75;
 const NOTICE_MAX_MS = 2200;
+const STRICT_AHEAD = 4;
+const STRICT_BEHIND = 2;
 
 let Barrier = null;
 let BarrierChunk = null;
@@ -79,8 +81,7 @@ let GateActive = false;
 let OverlayVisible = false;
 let NoticeIndex = Number.NaN;
 let NoticeStartedAt = -Infinity;
-let PriorityIndex = Number.NaN;
-let PriorityFlight = null;
+const PriorityFlights = new Map();
 
 function FindChunk(Index) {
   const Active = Game.ActiveChunks.get(Index);
@@ -187,33 +188,43 @@ function SetGateActive(Value, CurrentChunk = null) {
   window.__STORE_STREAM_LOADING__ = Next;
 }
 
-function PrioritizeNext(Index) {
-  if (!Number.isInteger(Index)) return;
-  if (PriorityFlight && PriorityIndex === Index) return;
+function PrioritizeIndex(Index) {
+  if (!Number.isInteger(Index) || Index < 0) return null;
 
   const Existing = FindChunk(Index);
-  if (IsTraversalReady(Existing)) return;
-
-  PriorityIndex = Index;
+  if (IsTraversalReady(Existing)) return Promise.resolve(true);
+  if (PriorityFlights.has(Index)) return PriorityFlights.get(Index);
 
   const Source = Existing
     ? Promise.resolve(Existing)
     : Promise.resolve(Game.PrepareChunk?.(Index));
 
-  PriorityFlight = Source
+  const Flight = Source
     .then(Chunk => {
       if (!Chunk || Chunk.Cancelled) return false;
       const Presentation = window.__STORE_PRESENTATION_READY_R83__;
       return Presentation?.FinalizeChunk?.(Chunk) ?? false;
     })
     .catch(Error => {
-      console.warn(`Priority stream preparation failed for chunk ${Index}`, Error);
+      console.warn(`Strict stream preparation failed for chunk ${Index}`, Error);
       return false;
     })
     .finally(() => {
-      PriorityFlight = null;
-      PriorityIndex = Number.NaN;
+      PriorityFlights.delete(Index);
     });
+
+  PriorityFlights.set(Index, Flight);
+  return Flight;
+}
+
+function EnsureStrictBuffer(CurrentIndex) {
+  const Minimum = Math.max(0, CurrentIndex - STRICT_BEHIND);
+  const Maximum = CurrentIndex + STRICT_AHEAD;
+
+  for (let Index = Minimum; Index <= Maximum; Index += 1) {
+    const Chunk = FindChunk(Index);
+    if (!IsTraversalReady(Chunk)) PrioritizeIndex(Index);
+  }
 }
 
 function Show(CurrentChunk) {
@@ -240,6 +251,8 @@ function Tick() {
     return;
   }
 
+  EnsureStrictBuffer(CurrentIndex);
+
   const NextIndex = CurrentIndex + 1;
   const Next = FindChunk(NextIndex);
   const NextReady = IsTraversalReady(Next);
@@ -250,7 +263,7 @@ function Tick() {
   );
 
   if (!NextReady && DistanceToForwardEdge <= PRIORITY_DISTANCE) {
-    PrioritizeNext(NextIndex);
+    PrioritizeIndex(NextIndex);
   }
 
   if (NextReady) {
@@ -293,7 +306,9 @@ addEventListener("pagehide", () => {
 window.__STORE_STREAM_LOADING_R83__ = {
   Show,
   Hide,
-  PrioritizeNext,
+  PrioritizeNext: PrioritizeIndex,
+  PrioritizeIndex,
+  EnsureStrictBuffer,
   IsTraversalReady
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.16-FRONTIER";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.17-STRICT-BUFFER";
