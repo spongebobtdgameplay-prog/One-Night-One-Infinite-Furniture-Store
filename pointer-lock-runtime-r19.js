@@ -46,11 +46,11 @@ function SyncPointerState() {
   const Active = HudActive();
 
   if (Control) {
+    Control.enabled = true;
+
     if (FirstPerson) {
-      Control.enabled = true;
       Control.isLocked = Boolean(document.pointerLockElement);
     } else {
-      Control.enabled = false;
       Control.isLocked = Active;
     }
   }
@@ -96,4 +96,4 @@ window.__STORE_POINTER_LOCK_RUNTIME__ = {
   SyncPointerState,
   IsFirstPerson
 };
-window.__STORE_POINTER_LOCK_RUNTIME_BUILD__ = "V0.12.18";
+window.__STORE_POINTER_LOCK_RUNTIME_BUILD__ = "V0.35.1-CAMERA";
