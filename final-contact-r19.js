@@ -38,6 +38,22 @@ const ForceCapsules = [
   { A: "LowerLeg.R", B: "Foot.R", Radius: 0.150, EndExtension: 0.26 }
 ];
 
+const CoreForceCapsules = ForceCapsules.filter(Capsule => {
+  const Key = `${Capsule.A}>${Capsule.B}`;
+  return new Set([
+    "Neck>Head",
+    "Chest>Neck",
+    "Torso>Chest",
+    "Abdomen>Torso",
+    "Hips>Abdomen",
+    "Chest>Shoulder.L",
+    "Chest>Shoulder.R",
+    "Hips>UpperLeg.L",
+    "Hips>UpperLeg.R"
+  ]).has(Key);
+});
+
+
 const PoseSegments = [
   { Joint: "Shoulder.L", Child: "UpperArm.L", Radius: 0.130 },
   { Joint: "UpperArm.L", Child: "LowerArm.L", Radius: 0.138 },
@@ -161,7 +177,7 @@ function ForceWholeRigOut(Pivot, Records) {
     Scratch.BestSeparation.set(0, 0, 0);
     Pivot.updateMatrixWorld(true);
 
-    for (const Capsule of ForceCapsules) {
+    for (const Capsule of CoreForceCapsules) {
       const BoneA = Pivot.getObjectByName(Capsule.A);
       const BoneB = Pivot.getObjectByName(Capsule.B);
       if (!BoneA?.isBone || !BoneB?.isBone) continue;
@@ -428,4 +444,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.6-TRIANGLE-BODY";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.7-CORE-FORCE";
