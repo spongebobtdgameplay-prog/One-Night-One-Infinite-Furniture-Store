@@ -98,6 +98,7 @@ const StreamFrustum = new THREE.Frustum();
 const StreamChunkBounds = new THREE.Box3();
 const StreamCameraForward = new THREE.Vector3();
 const StreamObjectPosition = new THREE.Vector3();
+const StreamObjectSize = new THREE.Vector3();
 const StreamToObject = new THREE.Vector3();
 const StreamWarmScene = new THREE.Scene();
 const StreamWarmTextures = new WeakSet();
@@ -1344,6 +1345,38 @@ function SetObjectStreamCulled(Object, Culled) {
   }
 }
 
+function ObjectStreamBounds(Object) {
+  let Bounds = Object.userData?.ObjectStreamBoundsR103;
+  if (Bounds?.isBox3) return Bounds;
+
+  Object.updateWorldMatrix(true, true);
+  Bounds = new THREE.Box3().setFromObject(Object);
+
+  if (Bounds.isEmpty()) {
+    Object.getWorldPosition(StreamObjectPosition);
+    Bounds.setFromCenterAndSize(
+      StreamObjectPosition,
+      StreamObjectSize.set(1.2, 1.2, 1.2)
+    );
+  } else {
+    Bounds.getSize(StreamObjectSize);
+    const Padding = THREE.MathUtils.clamp(
+      StreamObjectSize.length() * 0.08,
+      0.65,
+      2.4
+    );
+    Bounds.expandByScalar(Padding);
+  }
+
+  Object.userData.ObjectStreamBoundsR103 = Bounds;
+  return Bounds;
+}
+
+function ObjectIntersectsView(Object) {
+  const Bounds = ObjectStreamBounds(Object);
+  return Bounds?.isBox3 ? StreamFrustum.intersectsBox(Bounds) : false;
+}
+
 function UpdateObjectStreaming(Now = performance.now(), Force = false) {
   if (!Force && Now - LastObjectStreamAt < OBJECT_STREAM_INTERVAL_MS) return;
   LastObjectStreamAt = Now;
@@ -1356,16 +1389,18 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
     for (const Object of StreamableRoots(Chunk)) {
       if (!Object?.parent) continue;
 
-      StreamObjectPosition.copy(Object.position);
-      if (Object.parent !== Chunk.Group || Chunk.Group.position.lengthSq() > 0.000001) {
-        Object.getWorldPosition(StreamObjectPosition);
-      }
+      const Bounds = ObjectStreamBounds(Object);
+      Bounds.getCenter(StreamObjectPosition);
 
       StreamToObject.copy(StreamObjectPosition).sub(Camera.position);
       StreamToObject.y = 0;
       const DistanceSq = StreamToObject.lengthSq();
+      const VisibleNow = StreamFrustum.intersectsBox(Bounds);
 
-      if (DistanceSq <= OBJECT_STREAM_NEAR_DISTANCE * OBJECT_STREAM_NEAR_DISTANCE) {
+      if (
+        VisibleNow ||
+        DistanceSq <= OBJECT_STREAM_NEAR_DISTANCE * OBJECT_STREAM_NEAR_DISTANCE
+      ) {
         SetObjectStreamCulled(Object, false);
         continue;
       }
@@ -1378,23 +1413,22 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
 
       const Culled = Boolean(Object.userData?.ObjectStreamCulledR101);
       if (Culled) {
-        if (
-          Dot > -0.18 ||
-          Distance <= OBJECT_STREAM_NEAR_DISTANCE + 8
-        ) {
-          SetObjectStreamCulled(Object, false);
-        }
+        const PreView =
+          Dot > -0.28 ||
+          Distance <= OBJECT_STREAM_NEAR_DISTANCE + 12;
+
+        if (PreView) SetObjectStreamCulled(Object, false);
         continue;
       }
 
       const DeepBehind =
-        Distance > OBJECT_STREAM_NEAR_DISTANCE + 8 &&
-        Dot < -0.42;
-      const FarOutsidePreView =
+        Distance > OBJECT_STREAM_NEAR_DISTANCE + 12 &&
+        Dot < -0.48;
+      const FarOutsideView =
         Distance > OBJECT_STREAM_FAR_DISTANCE &&
-        Dot < 0.30;
+        Dot < 0.06;
 
-      if (DeepBehind || FarOutsidePreView) {
+      if (DeepBehind || FarOutsideView) {
         SetObjectStreamCulled(Object, true);
       }
     }
@@ -1858,8 +1892,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.22";
-window.__STORE_VERSION__ = "0.35.22";
+window.__STORE_GAME_BUILD__ = "V0.35.23";
+window.__STORE_VERSION__ = "0.35.23";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1883,6 +1917,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.22"
+  Version: "0.35.23"
 };
 Animate();
