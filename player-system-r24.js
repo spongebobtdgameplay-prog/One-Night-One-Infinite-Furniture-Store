@@ -46,7 +46,11 @@ const FIRST_PERSON_BODY_FOLLOW_IDLE = THREE.MathUtils.degToRad(34);
 const FIRST_PERSON_BODY_FOLLOW_MOVING = THREE.MathUtils.degToRad(28);
 const FIRST_PERSON_BODY_FOLLOW_IDLE_RATE = 10.0;
 const FIRST_PERSON_BODY_FOLLOW_MOVING_RATE = 14.0;
-const FOOT_SOLE_SKIN = 0.024;
+const FOOT_SOLE_SKIN = 0.006;
+const LEDGE_FOOT_RADIUS = 0.105;
+const LEDGE_LOCK_MAX_AGE = 360;
+const LEDGE_LOCK_MAX_DRIFT = 0.20;
+const LEDGE_PELVIS_MAX = 0.035;
 const FOOT_PROBE_TOE = 0.115;
 const FOOT_PROBE_HEEL = 0.075;
 const FOOT_PROBE_SIDE = 0.058;
@@ -96,6 +100,21 @@ const State = {
   LastSprintAt: -Infinity,
   FootGroundLeft: 0,
   FootGroundRight: 0,
+  LedgePelvisOffset: 0,
+  LedgeSplitActive: false,
+  LedgeLockLeft: {
+    Active: false,
+    StartedAt: -Infinity,
+    Position: new THREE.Vector3()
+  },
+  LedgeLockRight: {
+    Active: false,
+    StartedAt: -Infinity,
+    Position: new THREE.Vector3()
+  },
+  LedgeTargetLeft: new THREE.Vector3(),
+  LedgeTargetRight: new THREE.Vector3(),
+  SavedRenderPivotPosition: new THREE.Vector3(),
   ContactReaction: 0,
   ContactFront: 0,
   ContactBack: 0,
@@ -791,6 +810,111 @@ function FootprintGroundProfile(SurfaceStep, Position, Travel, StartY) {
   };
 }
 
+function ResetLedgeFootLocks() {
+  State.LedgeLockLeft.Active = false;
+  State.LedgeLockRight.Active = false;
+  State.LedgeSplitActive = false;
+}
+
+function LedgeLockForSide(Side) {
+  return Side < 0 ? State.LedgeLockLeft : State.LedgeLockRight;
+}
+
+function ApplyLedgeFootLock(Support, SurfaceStep, SplitStance, Delta) {
+  if (!Support?.Target?.isVector3) return;
+
+  const Lock = LedgeLockForSide(Support.Side);
+  const Now = performance.now();
+  const InStance = Number(Support.Arc) < 0.38;
+
+  if (!SplitStance || !InStance) {
+    Lock.Active = false;
+    return;
+  }
+
+  if (!Lock.Active) {
+    Lock.Active = true;
+    Lock.StartedAt = Now;
+    Lock.Position.copy(Support.Target);
+  }
+
+  const Age = Now - Lock.StartedAt;
+  const Drift = Math.hypot(
+    Lock.Position.x - Support.Target.x,
+    Lock.Position.z - Support.Target.z
+  );
+
+  if (Age > LEDGE_LOCK_MAX_AGE || Drift > LEDGE_LOCK_MAX_DRIFT) {
+    Lock.StartedAt = Now;
+    Lock.Position.copy(Support.Target);
+  }
+
+  // Keep vertical support live while X/Z stay planted in world space.
+  Lock.Position.y = Support.Target.y;
+
+  if (Support.CenterGroundHeight > 0.008) {
+    SurfaceStep.ResolveRaisedFootLedge?.(
+      Lock.Position,
+      LEDGE_FOOT_RADIUS,
+      Support.CenterGroundHeight
+    );
+  } else {
+    SurfaceStep.ResolveLowerFootLedge?.(
+      Lock.Position,
+      LEDGE_FOOT_RADIUS,
+      Support.CenterGroundHeight
+    );
+  }
+
+  const Blend = ExpAlpha(Delta, 34);
+  Support.Target.x = THREE.MathUtils.lerp(
+    Support.Target.x,
+    Lock.Position.x,
+    Blend
+  );
+  Support.Target.z = THREE.MathUtils.lerp(
+    Support.Target.z,
+    Lock.Position.z,
+    Blend
+  );
+}
+
+function ApplySplitStancePelvis(LeftSupport, RightSupport, Delta) {
+  const LeftHeight = Number(LeftSupport?.CenterGroundHeight);
+  const RightHeight = Number(RightSupport?.CenterGroundHeight);
+
+  const SplitStance = Number.isFinite(LeftHeight) &&
+    Number.isFinite(RightHeight) &&
+    Math.abs(LeftHeight - RightHeight) > 0.022;
+
+  State.LedgeSplitActive = SplitStance;
+
+  let TargetOffset = 0;
+  if (SplitStance && State.Pivot) {
+    const RootFloor = Math.max(0, Number(State.Pivot.position.y) || 0);
+    const BalancedSupport = (LeftHeight + RightHeight) * 0.5;
+    TargetOffset = THREE.MathUtils.clamp(
+      BalancedSupport - RootFloor,
+      -LEDGE_PELVIS_MAX,
+      LEDGE_PELVIS_MAX
+    );
+  }
+
+  State.LedgePelvisOffset = THREE.MathUtils.lerp(
+    State.LedgePelvisOffset,
+    TargetOffset,
+    ExpAlpha(Delta, SplitStance ? 18 : 11)
+  );
+
+  if (State.Pivot && Math.abs(State.LedgePelvisOffset) > 0.0002) {
+    State.Pivot.position.y += State.LedgePelvisOffset;
+    State.Pivot.updateMatrixWorld(true);
+  }
+
+  if (!SplitStance) ResetLedgeFootLocks();
+  return SplitStance;
+}
+
 function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
   const IsLeft = Side < 0;
   const Upper = IsLeft ? "UpperLegL" : "UpperLegR";
@@ -876,16 +1000,23 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     State.TempLegTarget.y += State.FootGroundRight + EffectiveLift;
   }
 
-  // When the sole center has moved to the lower floor, keep the shoe outside
-  // the rug's vertical ledge face instead of allowing the ankle/foot mesh to
-  // cross through it during the descent.
-  if (CenterGroundHeight < 0.008) {
+  // A planted shoe may not straddle the vertical face of the rug.
+  if (CenterGroundHeight > 0.008) {
+    SurfaceStep.ResolveRaisedFootLedge?.(
+      State.TempLegTarget,
+      LEDGE_FOOT_RADIUS,
+      CenterGroundHeight
+    );
+  } else {
     SurfaceStep.ResolveLowerFootLedge?.(
       State.TempLegTarget,
-      0.074,
+      LEDGE_FOOT_RADIUS,
       CenterGroundHeight
     );
   }
+
+  const StoredTarget = IsLeft ? State.LedgeTargetLeft : State.LedgeTargetRight;
+  StoredTarget.copy(State.TempLegTarget);
 
   SolveTwoBoneLeg(Upper, Lower, Foot, State.TempLegTarget, Side);
 
@@ -895,6 +1026,11 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
   }
 
   return {
+    Side,
+    Upper,
+    Lower,
+    Foot,
+    Target: StoredTarget,
     GroundHeight,
     CenterGroundHeight,
     SupportFraction: GroundProfile.SupportFraction,
@@ -929,6 +1065,41 @@ function ApplyCarpetStepOverlay(Delta) {
   const RightSupport = GroundAndPlaceFoot(1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
 
   if (LeftSupport && RightSupport) {
+    const SplitStance = ApplySplitStancePelvis(
+      LeftSupport,
+      RightSupport,
+      Delta
+    );
+
+    ApplyLedgeFootLock(
+      LeftSupport,
+      SurfaceStep,
+      SplitStance,
+      Delta
+    );
+    ApplyLedgeFootLock(
+      RightSupport,
+      SurfaceStep,
+      SplitStance,
+      Delta
+    );
+
+    // Re-solve after pelvis compensation and world-space stance locking.
+    SolveTwoBoneLeg(
+      LeftSupport.Upper,
+      LeftSupport.Lower,
+      LeftSupport.Foot,
+      LeftSupport.Target,
+      LeftSupport.Side
+    );
+    SolveTwoBoneLeg(
+      RightSupport.Upper,
+      RightSupport.Lower,
+      RightSupport.Foot,
+      RightSupport.Target,
+      RightSupport.Side
+    );
+
     const LeftWeight = Math.max(0.05, Number(LeftSupport.SupportWeight) || 0);
     const RightWeight = Math.max(0.05, Number(RightSupport.SupportWeight) || 0);
     const TotalWeight = LeftWeight + RightWeight;
@@ -1444,12 +1615,18 @@ function Render(Renderer, Scene, Camera) {
   ApplyInputMode();
 
   SaveAnimatedPose();
+  if (State.Pivot) State.SavedRenderPivotPosition.copy(State.Pivot.position);
+
   try {
     ApplyProceduralOverlay(Delta);
     if (State.ThirdPerson) RenderThirdPerson(Renderer, Scene, Camera);
     else RenderFirstPerson(Renderer, Scene, Camera);
   } finally {
     RestoreAnimatedPose();
+    if (State.Pivot) {
+      State.Pivot.position.copy(State.SavedRenderPivotPosition);
+      State.Pivot.updateMatrixWorld(true);
+    }
   }
 }
 
@@ -1581,4 +1758,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.11-RESOLVED-WALK";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.12-FOOT-LOCK";
