@@ -448,9 +448,34 @@ function AddDenseDepartmentSlots(Layout, Theme) {
     );
   } else if (Theme === "WAREHOUSE" || Theme === "STORAGE") {
     let NumberIndex = 0;
+
+    // Outer inner-row.
     for (const X of [-6.35, 6.35]) {
       for (const Z of [-6.20, 0, 6.20]) {
-        Extra.push(Slot(`Density.Warehouse.InnerShelf.${NumberIndex}`, "Shelf_Large", X, Z, X < 0 ? 0 : Math.PI, { StockStyle: "Books" }));
+        Extra.push(Slot(
+          `Density.Warehouse.InnerShelf.${NumberIndex}`,
+          "Shelf_Large",
+          X,
+          Z,
+          X < 0 ? 0 : Math.PI,
+          { StockStyle: "Books" }
+        ));
+        NumberIndex += 1;
+      }
+    }
+
+    // Second organized shelf line closes the huge dead floor without invading
+    // the protected center walking lane. Stagger Z so rows read like real aisles.
+    for (const X of [-4.30, 4.30]) {
+      for (const Z of [-8.60, -2.90, 2.90, 8.60]) {
+        Extra.push(Slot(
+          `Density.Warehouse.CenterShelf.${NumberIndex}`,
+          "Shelf_Large",
+          X,
+          Z,
+          X < 0 ? 0 : Math.PI,
+          { StockStyle: "Books" }
+        ));
         NumberIndex += 1;
       }
     }
@@ -740,4 +765,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.30.0";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.15-DENSITY";
