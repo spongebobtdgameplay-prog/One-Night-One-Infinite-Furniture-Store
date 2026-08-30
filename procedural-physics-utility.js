@@ -16,6 +16,9 @@ const BinarySteps = 18;
 
 const WalkableSurfaces = new Map();
 
+let VerticalStateInitialized = false;
+let AuthoritativeFloorY = 0;
+
 const Scratch = {
   Forward: new THREE.Vector3(),
   Right: new THREE.Vector3(),
@@ -230,7 +233,8 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
       Skin: 0.010,
       EyeHeight,
       AllowSlide: true,
-      RangePadding: 1.8
+      RangePadding: 1.8,
+      HeightFractions: [0.07, 0.17, 0.28, 0.40, 0.52, 0.68, 0.86]
     }
   );
 }
@@ -268,7 +272,17 @@ function RecordContact(Result, Desired) {
 
 function SettleHeight(Camera, Delta, Entries) {
   void Entries;
-  const CurrentFeetY = Camera.position.y - EyeHeight;
+
+  if (!VerticalStateInitialized) {
+    AuthoritativeFloorY = THREE.MathUtils.clamp(
+      Number(Camera.position.y) - EyeHeight,
+      0,
+      MaxStepHeight
+    );
+    VerticalStateInitialized = true;
+  }
+
+  const CurrentFeetY = AuthoritativeFloorY;
   let TargetFloor = SurfaceHeight(Camera.position, null, CurrentFeetY);
 
   const FootSupport = window.__STORE_FOOT_SUPPORT__ || null;
@@ -282,16 +296,18 @@ function SettleHeight(Camera, Delta, Entries) {
     TargetFloor = THREE.MathUtils.clamp(Number(FootSupport.Height), 0, MaxStepHeight);
   }
 
-  const TargetEyeY = EyeHeight + TargetFloor;
-  const Speed = TargetEyeY > Camera.position.y ? StepUpSpeed : StepDownSpeed;
+  const Speed = TargetFloor > AuthoritativeFloorY ? StepUpSpeed : StepDownSpeed;
   const MaxDelta = Math.max(0.0001, Math.min(Number(Delta) || 0.016, 0.05) * Speed);
-  Camera.position.y = MoveToward(Camera.position.y, TargetEyeY, MaxDelta);
-  return TargetFloor;
+  AuthoritativeFloorY = MoveToward(AuthoritativeFloorY, TargetFloor, MaxDelta);
+
+  Camera.position.y = EyeHeight + AuthoritativeFloorY;
+  return AuthoritativeFloorY;
 }
 
 function MoveCharacter(Camera, ForwardAmount, RightAmount, Distance, Delta, Entries, Radius = DefaultRadius) {
   if (!Camera?.position || !Number.isFinite(Distance) || Distance < 0) return null;
 
+  if (VerticalStateInitialized) Camera.position.y = EyeHeight + AuthoritativeFloorY;
   CameraBasis(Camera);
   Scratch.Desired.set(0, 0, 0)
     .addScaledVector(Scratch.Forward, Number(ForwardAmount) || 0)
@@ -350,8 +366,13 @@ const ProceduralPhysics = {
   RefreshWalkableSurface,
   RefreshWalkableSurfaces,
   GetRegisteredSurfaceCount: () => WalkableSurfaces.size,
+  ResetVerticalState() {
+    VerticalStateInitialized = false;
+    AuthoritativeFloorY = 0;
+  },
+  GetPhysicalFloorY: () => AuthoritativeFloorY,
   GetSettings
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.0-RAY";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.2-HEIGHT";
