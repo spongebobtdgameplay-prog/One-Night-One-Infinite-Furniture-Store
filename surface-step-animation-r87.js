@@ -26,7 +26,7 @@ const StepDirection = new THREE.Vector3(0, 0, -1);
 const STEP_DURATION = 430;
 const STEP_COOLDOWN = 120;
 const MIN_TRIGGER_SPEED = 0.08;
-const EDGE_PADDING = 0.22;
+const EDGE_PADDING = 0.035;
 
 function FiniteBounds(Bounds) {
   return Boolean(
