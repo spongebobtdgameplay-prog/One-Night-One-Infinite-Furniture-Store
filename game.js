@@ -315,9 +315,12 @@ const ModelDefinitions = {
   Bathroom_Sink: {
     Url: "Models/Kitchen/GLB/Kitchen_Sink.glb",
     Axis: "y",
-    Target: 0.32,
+    Target: 0.30,
     RemoveNodes: ["Kitchen"],
-    FloorOffset: 0.72
+    SupportModel: "Kitchen_Cabinet1",
+    SupportHeight: 0.76,
+    SupportWidth: 0.96,
+    SupportDepth: 0.56
   },
   Bathroom_Bathtub: { Url: "Models/Bathroom/GLB/Bathroom_Bathtub.glb", Axis: "z", Target: 1.82 },
   Bathroom_Toilet: { Url: "Models/Bathroom/GLB/Bathroom_Toilet.glb", Axis: "y", Target: 0.82 },
@@ -547,16 +550,78 @@ function PrepareModel(Name, Model) {
   Model.updateMatrixWorld(true);
 }
 
+function NormalizeSupportModel(Model, Width, Height, Depth) {
+  Model.updateMatrixWorld(true);
+  const Bounds = new THREE.Box3().setFromObject(Model);
+  const Size = Bounds.getSize(new THREE.Vector3());
+
+  Model.scale.x *= Width / Math.max(Size.x, 0.001);
+  Model.scale.y *= Height / Math.max(Size.y, 0.001);
+  Model.scale.z *= Depth / Math.max(Size.z, 0.001);
+  Model.updateMatrixWorld(true);
+
+  const Grounded = new THREE.Box3().setFromObject(Model);
+  const Center = Grounded.getCenter(new THREE.Vector3());
+  Model.position.x -= Center.x;
+  Model.position.z -= Center.z;
+  Model.position.y -= Grounded.min.y;
+  Model.updateMatrixWorld(true);
+}
+
+function ComposeSupportedFixture(Name, Fixture, SupportTemplate) {
+  const Definition = ModelDefinitions[Name];
+  if (!Definition?.SupportModel || !SupportTemplate) return Fixture;
+
+  const Group = new THREE.Group();
+  Group.name = `${Name}Fixture`;
+
+  const Support = SupportTemplate.clone(true);
+  NormalizeSupportModel(
+    Support,
+    Number(Definition.SupportWidth) || 0.96,
+    Number(Definition.SupportHeight) || 0.76,
+    Number(Definition.SupportDepth) || 0.56
+  );
+
+  Fixture.updateMatrixWorld(true);
+  const FixtureBounds = new THREE.Box3().setFromObject(Fixture);
+  const SupportBounds = new THREE.Box3().setFromObject(Support);
+
+  Fixture.position.y += SupportBounds.max.y - FixtureBounds.min.y - 0.012;
+  Fixture.updateMatrixWorld(true);
+
+  Group.add(Support);
+  Group.add(Fixture);
+  Group.updateMatrixWorld(true);
+
+  const Combined = new THREE.Box3().setFromObject(Group);
+  const Center = Combined.getCenter(new THREE.Vector3());
+  Group.position.x -= Center.x;
+  Group.position.z -= Center.z;
+  Group.position.y -= Combined.min.y;
+  Group.updateMatrixWorld(true);
+
+  Group.userData.GroundedFixtureR358 = true;
+  return Group;
+}
+
 async function GetModelTemplate(Name) {
   const Definition = ModelDefinitions[Name];
   if (!Definition) throw new Error(`Unknown model ${Name}`);
+
   if (!ModelCache.has(Name)) {
-    ModelCache.set(Name, Loader.loadAsync(Definition.Url).then(Gltf => {
-      const Template = Gltf.scene;
-      PrepareModel(Name, Template);
-      return Template;
-    }));
+    ModelCache.set(Name, (async () => {
+      const Gltf = await Loader.loadAsync(Definition.Url);
+      const Fixture = Gltf.scene;
+      PrepareModel(Name, Fixture);
+
+      if (!Definition.SupportModel) return Fixture;
+
+      const SupportTemplate = await GetModelTemplate(Definition.SupportModel);
+      return ComposeSupportedFixture(Name, Fixture, SupportTemplate);
+    })());
   }
+
   return ModelCache.get(Name);
 }
 
@@ -1237,8 +1302,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.7";
-window.__STORE_VERSION__ = "0.35.7";
+window.__STORE_GAME_BUILD__ = "V0.35.8";
+window.__STORE_VERSION__ = "0.35.8";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1259,6 +1324,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.7"
+  Version: "0.35.8"
 };
 Animate();
