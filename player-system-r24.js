@@ -13,6 +13,8 @@ const StaminaWrap = document.getElementById("StaminaWrap");
 
 if (!BasePlayer || !Canvas) throw new Error("Base player and canvas must load before procedural player system.");
 
+window.__STORE_PLAYER_TRANSFORM_AUTHORITY__ = "R24";
+
 const WALK_SPEED = 3.45;
 const SPRINT_SPEED = 5.35;
 const STAMINA_MAX = 100;
@@ -1119,4 +1121,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.1-CAMERA-ORBIT";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.2-FACING-HEIGHT";
