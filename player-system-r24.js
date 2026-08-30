@@ -984,8 +984,8 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
   // natural ankle height above the root is retained.
   const NaturalFootHeight = THREE.MathUtils.clamp(
     State.TempLegTarget.y - State.Pivot.position.y,
-    0.035,
-    0.16
+    0.045,
+    0.105
   );
   State.TempLegTarget.y =
     SupportHeight +
