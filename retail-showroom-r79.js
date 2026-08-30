@@ -9,8 +9,6 @@ if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Game?.CollisionBoxes) {
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitSource = "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0";
-const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
-const IndustrialShelfSource = "https://github.com/danielrosehill/storage-box-3d-models";
 const Loader = new GLTFLoader();
 const Templates = new Map();
 const RunningChunks = new WeakSet();
@@ -19,11 +17,11 @@ const LightChunks = new WeakSet();
 const DecoratedChunks = new WeakSet();
 
 const AssetFiles = Object.freeze({
-  ShelfLargeDecorated: IndustrialShelfUrl,
-  ShelfLargeOpen: IndustrialShelfUrl,
-  ShelfSmallDecorated: IndustrialShelfUrl,
+  ShelfLargeDecorated: "shelf_B_large_decorated.gltf",
+  ShelfLargeOpen: "shelf_B_large.gltf",
+  ShelfSmallDecorated: "shelf_B_small_decorated.gltf",
   CabinetMedium: "cabinet_medium.gltf",
-  CabinetSmallDecorated: IndustrialShelfUrl,
+  CabinetSmallDecorated: "cabinet_small_decorated.gltf",
   ArmchairPillows: "armchair_pillows.gltf"
 });
 
@@ -71,10 +69,9 @@ async function LoadTemplate(Key) {
   const File = AssetFiles[Key];
   if (!File) throw new Error(`Unknown retail asset ${Key}`);
   if (!Templates.has(Key)) {
-    const External = /^https?:\/\//i.test(File);
-    const Url = External ? File : `${KayKitBase}${File}`;
-    const Source = External ? IndustrialShelfSource : KayKitSource;
-    const License = External ? "CC-BY-4.0" : "CC0-1.0";
+    const Url = `${KayKitBase}${File}`;
+    const Source = KayKitSource;
+    const License = "CC0-1.0";
 
     Templates.set(Key, Loader.loadAsync(Url).then(Gltf => {
       const Root = Gltf.scene;
@@ -403,4 +400,4 @@ await Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key)));
 Discover();
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.16-PIPELINE";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.17-NO-BLOCK-SHELVES";
