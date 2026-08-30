@@ -16,8 +16,8 @@ Overlay.id = "StreamLoadingCoverR83";
 Overlay.setAttribute("aria-hidden", "true");
 Overlay.innerHTML = `
   <div class="StreamLoadingInnerR83">
-    <strong>BUFFERING NEXT AISLE</strong>
-    <span>Preparing nearby furniture...</span>
+    <strong>DISTANT AISLE FORMING</strong>
+    <span>The showroom is hidden in the haze...</span>
     <i></i>
   </div>
 `;
@@ -43,9 +43,9 @@ Style.textContent = `
   align-items:center;
   gap:6px;
   padding:10px 14px 9px;
-  border:1px solid rgba(211,181,120,.28);
-  background:rgba(17,19,16,.90);
-  box-shadow:0 12px 28px rgba(0,0,0,.28);
+  border:1px solid rgba(211,181,120,.22);
+  background:rgba(17,19,16,.84);
+  box-shadow:0 12px 28px rgba(0,0,0,.24);
   font-family:Arial,sans-serif;
   letter-spacing:.09em;
   text-align:center
@@ -56,9 +56,9 @@ Style.textContent = `
   width:118px;
   height:2px;
   margin-top:3px;
-  background:linear-gradient(90deg,transparent,#d3b578,transparent);
+  background:linear-gradient(90deg,transparent,#9e9b84,transparent);
   background-size:70% 100%;
-  animation:StreamLoadR83 .85s linear infinite
+  animation:StreamLoadR83 .95s linear infinite
 }
 @keyframes StreamLoadR83{
   from{background-position:-160px 0}
@@ -68,20 +68,20 @@ Style.textContent = `
 document.head.appendChild(Style);
 document.body.appendChild(Overlay);
 
-const PRIORITY_DISTANCE = 42;
-const GATE_DISTANCE = 7.0;
+const PRIORITY_DISTANCE = 48;
 const NOTICE_DISTANCE = 2.75;
 const NOTICE_MAX_MS = 2200;
 const STRICT_AHEAD = 4;
 const STRICT_BEHIND = 2;
 
-let Barrier = null;
-let BarrierChunk = null;
-let GateActive = false;
+let HazeGroup = null;
+let HazeChunk = null;
+let HazeActive = false;
 let OverlayVisible = false;
 let NoticeIndex = Number.NaN;
 let NoticeStartedAt = -Infinity;
 const PriorityFlights = new Map();
+const HazeMaterials = [];
 
 function FindChunk(Index) {
   const Active = Game.ActiveChunks.get(Index);
@@ -112,87 +112,130 @@ function IsAlreadyVisible(Chunk) {
   return Chunk.Group.parent === Game.Scene && Chunk.Group.visible !== false;
 }
 
-function RemoveBarrier() {
-  if (!Barrier) return;
+function CreateHazeTexture() {
+  const Canvas = document.createElement("canvas");
+  Canvas.width = 128;
+  Canvas.height = 64;
+  const Context = Canvas.getContext("2d");
+  const Image = Context.createImageData(Canvas.width, Canvas.height);
 
-  if (BarrierChunk?.ExternalObjects) {
-    BarrierChunk.ExternalObjects =
-      BarrierChunk.ExternalObjects.filter(Object => Object !== Barrier);
+  for (let Y = 0; Y < Canvas.height; Y += 1) {
+    for (let X = 0; X < Canvas.width; X += 1) {
+      const Index = (Y * Canvas.width + X) * 4;
+      const EdgeX = Math.min(1, Math.min(X, Canvas.width - 1 - X) / 11);
+      const EdgeY = Math.min(1, Math.min(Y, Canvas.height - 1 - Y) / 7);
+      const Edge = 0.52 + 0.48 * Math.min(EdgeX, EdgeY);
+      const Noise =
+        Math.sin(X * 0.91 + Y * 1.37) * 0.045 +
+        Math.sin(X * 0.17 - Y * 0.63) * 0.035;
+      const Alpha = THREE.MathUtils.clamp((0.78 + Noise) * Edge, 0.34, 0.88);
+
+      Image.data[Index] = 36;
+      Image.data[Index + 1] = 38;
+      Image.data[Index + 2] = 31;
+      Image.data[Index + 3] = Math.round(Alpha * 255);
+    }
   }
 
-  Barrier.parent?.remove(Barrier);
-  Barrier.geometry?.dispose?.();
-
-  if (Array.isArray(Barrier.material)) {
-    for (const Material of Barrier.material) Material?.dispose?.();
-  } else {
-    Barrier.material?.dispose?.();
-  }
-
-  Barrier = null;
-  BarrierChunk = null;
+  Context.putImageData(Image, 0, 0);
+  const Texture = new THREE.CanvasTexture(Canvas);
+  Texture.colorSpace = THREE.SRGBColorSpace;
+  Texture.minFilter = THREE.LinearFilter;
+  Texture.magFilter = THREE.LinearFilter;
+  Texture.generateMipmaps = false;
+  return Texture;
 }
 
-function InstallBarrier(CurrentChunk) {
+function EnsureHaze() {
+  if (HazeGroup) return HazeGroup;
+
+  const Texture = CreateHazeTexture();
+  HazeGroup = new THREE.Group();
+  HazeGroup.name = "StreamDistanceHazeR101";
+  HazeGroup.userData.StreamAmbientR101 = true;
+  HazeGroup.userData.DecorationNoCollision = true;
+
+  const Layers = [
+    { Z: 0.0, Opacity: 0.58, Scale: 1.00 },
+    { Z: -1.3, Opacity: 0.42, Scale: 1.02 },
+    { Z: -3.0, Opacity: 0.31, Scale: 1.04 },
+    { Z: -5.2, Opacity: 0.24, Scale: 1.07 }
+  ];
+
+  for (const Layer of Layers) {
+    const Material = new THREE.MeshBasicMaterial({
+      map: Texture,
+      color: 0xffffff,
+      transparent: true,
+      opacity: Layer.Opacity,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      toneMapped: false
+    });
+    Material.userData.StreamBaseOpacityR101 = Layer.Opacity;
+    HazeMaterials.push(Material);
+
+    const Plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(34.6 * Layer.Scale, 3.95 * Layer.Scale),
+      Material
+    );
+    Plane.position.set(0, 1.88, Layer.Z);
+    Plane.frustumCulled = true;
+    Plane.userData.StreamAmbientR101 = true;
+    Plane.userData.DecorationNoCollision = true;
+    HazeGroup.add(Plane);
+  }
+
+  HazeGroup.visible = false;
+  Game.Scene.add(HazeGroup);
+  return HazeGroup;
+}
+
+function PositionHaze(CurrentChunk) {
   if (!CurrentChunk) return;
-  if (Barrier && BarrierChunk === CurrentChunk) return;
+  const Group = EnsureHaze();
+  if (HazeChunk !== CurrentChunk) {
+    HazeChunk = CurrentChunk;
+    Group.position.set(0, 0, CurrentChunk.BottomZ - 0.35);
+    Group.updateWorldMatrix(true, true);
+  }
+}
 
-  RemoveBarrier();
-
-  const Material = new THREE.MeshBasicMaterial({
-    color: 0x2b2d27,
-    transparent: true,
-    opacity: 0.94,
-    side: THREE.DoubleSide
-  });
-
-  Barrier = new THREE.Mesh(
-    new THREE.BoxGeometry(33.4, 3.4, 0.14),
-    Material
+function SetHazeStrength(DistanceToEdge) {
+  const Strength = THREE.MathUtils.clamp(
+    0.82 + (30 - Math.min(30, DistanceToEdge)) * 0.004,
+    0.82,
+    0.94
   );
 
-  Barrier.name = "StreamLoadingGateR83";
-  Barrier.position.set(0, 1.70, CurrentChunk.BottomZ + 0.02);
-  Barrier.userData.ChunkId = CurrentChunk.Id;
-  Barrier.userData.StreamLoadingR83 = true;
-  Barrier.userData.RayCollisionSolidR35 = true;
-  Barrier.frustumCulled = false;
-
-  BarrierChunk = CurrentChunk;
-  Game.Scene.add(Barrier);
-
-  if (!Array.isArray(CurrentChunk.ExternalObjects)) {
-    CurrentChunk.ExternalObjects = [];
+  for (const Material of HazeMaterials) {
+    const Base = Number(Material.userData.StreamBaseOpacityR101) || 0.3;
+    Material.opacity = Base * Strength;
   }
-  if (!CurrentChunk.ExternalObjects.includes(Barrier)) {
-    CurrentChunk.ExternalObjects.push(Barrier);
+}
+
+function SetHazeActive(Value, CurrentChunk = null, DistanceToEdge = 30) {
+  const Next = Boolean(Value);
+  if (Next) {
+    PositionHaze(CurrentChunk);
+    SetHazeStrength(DistanceToEdge);
+    HazeGroup.visible = true;
+  } else if (HazeGroup) {
+    HazeGroup.visible = false;
   }
 
-  Barrier.updateWorldMatrix(true, true);
+  HazeActive = Next;
+  window.__STORE_STREAM_LOADING__ = Next;
 }
 
 function SetOverlayVisible(Value) {
   const Next = Boolean(Value);
   if (OverlayVisible === Next) return;
   OverlayVisible = Next;
-
   Overlay.style.opacity = Next ? "1" : "0";
   Overlay.style.visibility = Next ? "visible" : "hidden";
   Overlay.setAttribute("aria-hidden", Next ? "false" : "true");
-}
-
-function SetGateActive(Value, CurrentChunk = null) {
-  const Next = Boolean(Value);
-
-  if (Next) {
-    InstallBarrier(CurrentChunk);
-  } else {
-    RemoveBarrier();
-    SetOverlayVisible(false);
-  }
-
-  GateActive = Next;
-  window.__STORE_STREAM_LOADING__ = Next;
 }
 
 function PrioritizeIndex(Index) {
@@ -226,7 +269,6 @@ function PrioritizeIndex(Index) {
 
 function EnsureStrictBuffer(CurrentIndex) {
   const Order = [];
-
   for (let Offset = 1; Offset <= STRICT_AHEAD; Offset += 1) {
     Order.push(CurrentIndex + Offset);
   }
@@ -245,12 +287,18 @@ function EnsureStrictBuffer(CurrentIndex) {
 }
 
 function Show(CurrentChunk) {
-  SetGateActive(true, CurrentChunk);
+  if (!CurrentChunk) return;
+  const DistanceToEdge = Math.max(
+    0,
+    Game.Camera.position.z - CurrentChunk.BottomZ
+  );
+  SetHazeActive(true, CurrentChunk, DistanceToEdge);
   SetOverlayVisible(true);
 }
 
 function Hide() {
-  SetGateActive(false);
+  SetHazeActive(false);
+  SetOverlayVisible(false);
   NoticeIndex = Number.NaN;
   NoticeStartedAt = -Infinity;
 }
@@ -271,9 +319,9 @@ function Tick() {
   EnsureStrictBuffer(CurrentIndex);
 
   const NextIndex = CurrentIndex + 1;
-  const Next = FindChunk(NextIndex);
-  const NextReady = IsTraversalReady(Next);
-  const NextAlreadyVisible = IsAlreadyVisible(Next);
+  let Next = FindChunk(NextIndex);
+  let NextReady = IsTraversalReady(Next);
+  let NextVisible = IsAlreadyVisible(Next);
 
   const DistanceToForwardEdge = Math.max(
     0,
@@ -284,17 +332,22 @@ function Tick() {
     PrioritizeIndex(NextIndex);
   }
 
-  if (NextReady || NextAlreadyVisible) {
-    if (NextAlreadyVisible && !NextReady) PrioritizeIndex(NextIndex);
+  if (NextReady && !NextVisible) {
+    Game.TryActivateIndex?.(NextIndex);
+    Next = FindChunk(NextIndex);
+    NextVisible = IsAlreadyVisible(Next);
+  }
+
+  if (NextVisible) {
+    if (!NextReady) PrioritizeIndex(NextIndex);
     Hide();
     requestAnimationFrame(Tick);
     return;
   }
 
-  const ShouldGate = DistanceToForwardEdge <= GATE_DISTANCE;
-  SetGateActive(ShouldGate, Current);
+  SetHazeActive(true, Current, DistanceToForwardEdge);
 
-  if (ShouldGate && DistanceToForwardEdge <= NOTICE_DISTANCE) {
+  if (DistanceToForwardEdge <= NOTICE_DISTANCE) {
     if (NoticeIndex !== NextIndex) {
       NoticeIndex = NextIndex;
       NoticeStartedAt = performance.now();
@@ -304,21 +357,18 @@ function Tick() {
     SetOverlayVisible(NoticeAge <= NOTICE_MAX_MS);
   } else {
     SetOverlayVisible(false);
-
-    // Leaving the frontier lets the short notice show again next approach.
-    if (DistanceToForwardEdge > NOTICE_DISTANCE + 1.0) {
-      NoticeIndex = Number.NaN;
-      NoticeStartedAt = -Infinity;
-    }
+    NoticeIndex = Number.NaN;
+    NoticeStartedAt = -Infinity;
   }
 
   requestAnimationFrame(Tick);
 }
 
+EnsureHaze();
 requestAnimationFrame(Tick);
 
 addEventListener("pagehide", () => {
-  RemoveBarrier();
+  SetHazeActive(false);
   SetOverlayVisible(false);
 }, { once: true });
 
@@ -331,4 +381,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   IsTraversalReady,
   IsAlreadyVisible
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.20-NO-FALSE-WALL";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.21-DISTANT-HAZE";
