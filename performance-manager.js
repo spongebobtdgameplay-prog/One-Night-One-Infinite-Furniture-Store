@@ -40,9 +40,9 @@ function Game() {
 }
 
 function QualityProfile() {
-  if (Settings.Graphics === "performance") return { PixelRatio: 0.80, PointLights: 0, Anisotropy: 1 };
-  if (Settings.Graphics === "high") return { PixelRatio: 1.02, PointLights: 2, Anisotropy: 4 };
-  return { PixelRatio: 0.90, PointLights: 1, Anisotropy: 2 };
+  if (Settings.Graphics === "performance") return { PixelRatio: 0.88, PointLights: 2, Anisotropy: 1 };
+  if (Settings.Graphics === "high") return { PixelRatio: 1.10, PointLights: 4, Anisotropy: 4 };
+  return { PixelRatio: 0.96, PointLights: 3, Anisotropy: 2 };
 }
 
 const PerfState = {
@@ -50,9 +50,7 @@ const PerfState = {
   Height: 0,
   Ratio: -1,
   Quality: "",
-  TextureStamp: "",
-  DynamicScale: 1,
-  LastScaleChangeAt: -Infinity
+  TextureStamp: ""
 };
 
 function ApplyCamera() {
@@ -79,10 +77,7 @@ function ApplyRenderer() {
   const CurrentGame = Game();
   if (!CurrentGame?.Renderer) return;
   const Profile = QualityProfile();
-  const Ratio = Math.min(
-    devicePixelRatio || 1,
-    Profile.PixelRatio * PerfState.DynamicScale
-  );
+  const Ratio = Math.min(devicePixelRatio || 1, Profile.PixelRatio);
   if (
     PerfState.Width === innerWidth &&
     PerfState.Height === innerHeight &&
@@ -385,20 +380,6 @@ function FpsFrame(Now) {
     const Average = Sum / Samples.length;
     const Fps = 1000 / Average;
     FpsCounter.innerHTML = `FPS <strong>${Math.round(Fps)}</strong><span>${Average.toFixed(1)} ms</span>`;
-
-    if (Now - PerfState.LastScaleChangeAt > 1400) {
-      let NextScale = PerfState.DynamicScale;
-
-      if (Fps < 28) NextScale = Math.max(0.72, NextScale - 0.08);
-      else if (Fps < 36) NextScale = Math.max(0.78, NextScale - 0.04);
-      else if (Fps > 52) NextScale = Math.min(1, NextScale + 0.04);
-
-      if (Math.abs(NextScale - PerfState.DynamicScale) >= 0.015) {
-        PerfState.DynamicScale = NextScale;
-        PerfState.LastScaleChangeAt = Now;
-        ApplyRenderer();
-      }
-    }
   }
   FpsCounter.classList.toggle("R43Hidden", !Settings.ShowFps);
   requestAnimationFrame(FpsFrame);
@@ -412,5 +393,5 @@ setInterval(ApplyPerformance, 650);
 setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
 window.__STORE_APPLY_PERFORMANCE__ = ApplyPerformance;
-window.__STORE_PERFORMANCE_BUILD__ = "V0.35.24-ADAPTIVE-BUDGET";
-window.__STORE_SETTINGS_BUILD__ = "V0.35.24-ADAPTIVE-BUDGET";
+window.__STORE_PERFORMANCE_BUILD__ = "V0.35.25-STRUCTURAL-BATCH";
+window.__STORE_SETTINGS_BUILD__ = "V0.35.25-STRUCTURAL-BATCH";
