@@ -26,7 +26,7 @@ const StepDirection = new THREE.Vector3(0, 0, -1);
 const STEP_DURATION = 430;
 const STEP_COOLDOWN = 120;
 const MIN_TRIGGER_SPEED = 0.08;
-const EDGE_PADDING = 0.035;
+const EDGE_PADDING = 0.055;
 
 function FiniteBounds(Bounds) {
   return Boolean(
@@ -120,7 +120,7 @@ function NearRug(Position, Padding = 0.35) {
 function GetNearestLedgeState(Position, Direction = null, Range = 0.34) {
   if (!Position?.isVector3) return null;
 
-  const SafeRange = THREE.MathUtils.clamp(Number(Range) || 0.34, 0.16, 0.50);
+  const SafeRange = THREE.MathUtils.clamp(Number(Range) || 0.40, 0.16, 0.70);
   let Best = null;
 
   for (const Record of Rugs.values()) {
@@ -168,8 +168,8 @@ function GetNearestLedgeState(Position, Direction = null, Range = 0.34) {
 
     for (const Edge of Edges) {
       if (
-        Edge.AlongValue < Edge.AlongMin - 0.22 ||
-        Edge.AlongValue > Edge.AlongMax + 0.22
+        Edge.AlongValue < Edge.AlongMin - 0.30 ||
+        Edge.AlongValue > Edge.AlongMax + 0.30
       ) continue;
 
       const SignedDistance = Edge.Axis === "x"
@@ -256,9 +256,9 @@ function RaycastGroundHeight(Position, StartY = null) {
 function ResolveRaisedFootLedge(Position, Radius = 0.105, GroundHeight = 0) {
   if (!Position?.isVector3) return Position;
 
-  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.105, 0.070, 0.14);
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.125, 0.080, 0.16);
   const SafeGround = Math.max(0, Number(GroundHeight) || 0);
-  const Skin = 0.007;
+  const Skin = 0.012;
 
   for (const Record of Rugs.values()) {
     const Bounds = Record.Bounds;
@@ -289,9 +289,9 @@ function ResolveRaisedFootLedge(Position, Radius = 0.105, GroundHeight = 0) {
 function ResolveLowerFootLedge(Position, Radius = 0.075, GroundHeight = 0) {
   if (!Position?.isVector3) return Position;
 
-  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.075, 0.045, 0.11);
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.125, 0.060, 0.16);
   const SafeGround = Math.max(0, Number(GroundHeight) || 0);
-  const Skin = 0.008;
+  const Skin = 0.012;
 
   for (const Record of Rugs.values()) {
     const Bounds = Record.Bounds;
@@ -314,7 +314,7 @@ function ResolveLowerFootLedge(Position, Radius = 0.075, GroundHeight = 0) {
     ].sort((A, B) => A.Distance - B.Distance);
 
     const Best = Candidates[0];
-    if (!Best || Best.Distance > SafeRadius + 0.035) continue;
+    if (!Best || Best.Distance > SafeRadius + 0.055) continue;
 
     Position[Best.Axis] = Best.Value;
   }
@@ -408,4 +408,4 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.14-LATCH-QUERY";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.18-CURB-CLEARANCE";
