@@ -24,13 +24,14 @@ The player is an imported rigged mesh. The game does not construct the humanoid 
 The original in-game plant/cactus assets remain unchanged. KayKit decorations are added around the authored furniture instead of replacing the original plants. Imported decorations are visual-only and do not create gameplay collision boxes.
 
 
-## Industrial steel shelving
+## Kitchen fixtures
 
-- Asset: SB1 boltless shelving bay
-- Creator: Daniel Rosehill
-- Source: https://github.com/danielrosehill/storage-box-3d-models
-- License: CC BY 4.0
-- Usage here: store shelving and book-stock display surfaces, replacing the previous stylized shelf substitutions
+- Asset pack: KayKit Restaurant Bits 1.0
+- Original creator: Kay Lousberg / KayKit
+- Source: https://github.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0
+- License: CC0 1.0 Universal
+- Runtime format: glTF with the original KayKit sidecar buffers and atlas texture
+- Usage here: kitchen sink/counter units and ovens, replacing the older low-detail kitchen fixtures
 
 ## ReplicaCAD kitchen cabinet
 
