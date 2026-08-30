@@ -310,6 +310,24 @@ function RemoveExistingCoreEntry(Chunk, Model) {
 
 function InstallExactCollision(Chunk, Model) {
   const Signature = TargetSignature(Model);
+  const Existing = (Chunk.CollisionEntries || []).find(
+    Entry => Entry?.CoreFixR87 && Entry.CollisionObject === Model
+  );
+
+  if (
+    Existing &&
+    ProcessedCollision.get(Model) === Signature
+  ) {
+    Existing.Active = Boolean(Chunk.Active);
+    if (
+      Chunk.Active &&
+      !Game.CollisionBoxes.includes(Existing)
+    ) {
+      Game.CollisionBoxes.push(Existing);
+    }
+    return;
+  }
+
   RemoveExistingCoreEntry(Chunk, Model);
 
   const Geometry = BuildExactFootprint(Model);
@@ -498,4 +516,4 @@ ProcessAll();
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.17-EXACT-MESH";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.26-CACHED-EXACT";
