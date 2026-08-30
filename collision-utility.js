@@ -519,7 +519,8 @@ const RayWorld = {
   BasisA: new THREE.Vector3(),
   BasisB: new THREE.Vector3(),
   CandidateDirection: new THREE.Vector3(),
-  RootCaches: new Map()
+  RootCaches: new Map(),
+  RootBounds: new WeakMap()
 };
 
 function HasRayIgnoreAncestor(Object, Mode = "movement") {
@@ -581,6 +582,18 @@ function DistanceSquaredToBoundsXZ(Bounds, Center) {
   return DX * DX + DZ * DZ;
 }
 
+function RayRootBounds(Object) {
+  Object.updateWorldMatrix(true, true);
+  const E = Object.matrixWorld.elements;
+  const Signature = `${E[0].toFixed(3)}:${E[2].toFixed(3)}:${E[5].toFixed(3)}:${E[8].toFixed(3)}:${E[10].toFixed(3)}:${E[12].toFixed(3)}:${E[13].toFixed(3)}:${E[14].toFixed(3)}:${Object.children?.length || 0}:${Object.visible ? 1 : 0}`;
+  const Existing = RayWorld.RootBounds.get(Object);
+  if (Existing?.Signature === Signature) return Existing.Bounds;
+
+  const Bounds = new THREE.Box3().setFromObject(Object);
+  RayWorld.RootBounds.set(Object, { Signature, Bounds });
+  return Bounds;
+}
+
 function RaycastCandidateRoots(Scene, Center, Range = 4) {
   if (!Scene?.isScene || !Center?.isVector3) return [];
   const Game = window.__STORE_GAME__ || null;
@@ -590,7 +603,11 @@ function RaycastCandidateRoots(Scene, Center, Range = 4) {
     ? Game.ChunkIndexForZ(Center.z)
     : 0;
   const ActiveKey = Game?.ActiveChunks
-    ? [...Game.ActiveChunks.keys()].filter(Index => Math.abs(Index - ChunkIndex) <= 1).sort((A, B) => A - B).join(",")
+    ? [...Game.ActiveChunks.entries()]
+      .filter(([Index]) => Math.abs(Index - ChunkIndex) <= 1)
+      .sort((A, B) => A[0] - B[0])
+      .map(([Index, Chunk]) => `${Index}:${Chunk?.Group?.children?.length || 0}`)
+      .join(",")
     : "scene";
   const Key = `${ChunkIndex}:${Bucket}:${ActiveKey}`;
   const Now = performance.now();
@@ -609,9 +626,9 @@ function RaycastCandidateRoots(Scene, Center, Range = 4) {
     if (!Object?.isObject3D || !Object.visible) return;
     if (HasRayIgnoreAncestor(Object, "movement")) return;
 
-    RayWorld.Bounds.setFromObject(Object);
-    if (RayWorld.Bounds.isEmpty()) return;
-    if (DistanceSquaredToBoundsXZ(RayWorld.Bounds, Center) > RangeSquared) return;
+    const Bounds = RayRootBounds(Object);
+    if (!Bounds || Bounds.isEmpty()) return;
+    if (DistanceSquaredToBoundsXZ(Bounds, Center) > RangeSquared) return;
     Roots.push(Object);
   };
 
