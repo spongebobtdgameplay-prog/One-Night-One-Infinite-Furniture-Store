@@ -304,14 +304,16 @@ const MaterialPalettes = {
 };
 
 const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
+const KayKitFurnitureBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
+const KhronosSampleBase = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/";
 const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
 
 const ModelDefinitions = {
-  Couch_Large1: { Url: "Models/LivingRoom/GLB/Couch_Large1.glb", Axis: "x", Target: 2.45 },
-  Couch_L: { Url: "Models/LivingRoom/GLB/Couch_L.glb", Axis: "x", Target: 2.80 },
-  Chair_2: { Url: "Models/LivingRoom/GLB/Chair_2.glb", Axis: "y", Target: 1.00 },
-  Table_RoundLarge: { Url: "Models/LivingRoom/GLB/Table_RoundLarge.glb", Axis: "x", Target: 1.55 },
+  Couch_Large1: { Url: `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`, Axis: "x", Target: 2.45, PreserveMaterials: true },
+  Couch_L: { Url: `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`, Axis: "x", Target: 2.80, PreserveMaterials: true },
+  Chair_2: { Url: `${KhronosSampleBase}ChairDamaskPurplegold/glTF-Binary/ChairDamaskPurplegold.glb`, Axis: "y", Target: 1.00, PreserveMaterials: true },
+  Table_RoundLarge: { Url: `${KayKitFurnitureBase}table_medium.gltf`, Axis: "x", Target: 1.55, PreserveMaterials: true },
   Bed_King: { Url: "Models/Bedroom/GLB/Bed_King.glb", Axis: "z", Target: 2.08 },
   Bed_Single: { Url: "Models/Bedroom/GLB/Bed_Single.glb", Axis: "z", Target: 2.02 },
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
@@ -319,8 +321,8 @@ const ModelDefinitions = {
   Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
   Kitchen_Cabinet1: { Url: ReplicaCabinetUrl, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
-  Kitchen_Oven: { Url: `${KayKitRestaurantBase}oven.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
-  Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf`, Axis: "y", Target: 0.95, PreserveMaterials: true },
+  Kitchen_Oven: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
+  Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink_backsplash.gltf`, Axis: "y", Target: 0.95, PreserveMaterials: true },
   Bathroom_Sink: {
     Url: "Models/Kitchen/GLB/Kitchen_Sink.glb",
     Axis: "y",
@@ -554,6 +556,12 @@ function ApplyModelMaterials(Name, Model) {
 function PrepareModel(Name, Model) {
   const Definition = ModelDefinitions[Name];
 
+  const EmbeddedLights = [];
+  Model.traverse(Object => {
+    if (Object?.isLight && Object.parent) EmbeddedLights.push(Object);
+  });
+  for (const Light of EmbeddedLights) Light.parent?.remove(Light);
+
   if (Array.isArray(Definition.RemoveNodes) && Definition.RemoveNodes.length) {
     const Removed = [];
     Model.traverse(Object => {
@@ -656,6 +664,15 @@ async function GetModelTemplate(Name) {
   }
 
   return ModelCache.get(Name);
+}
+
+async function PreloadBaseFurniture() {
+  const Names = Object.keys(ModelDefinitions);
+  for (let Index = 0; Index < Names.length; Index += 4) {
+    const Batch = Names.slice(Index, Index + 4);
+    await Promise.allSettled(Batch.map(Name => GetModelTemplate(Name)));
+    await new Promise(Resolve => requestAnimationFrame(Resolve));
+  }
 }
 
 function AddModelCollision(Chunk, Entry) {
@@ -1553,6 +1570,8 @@ const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.40);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
+if (BootStatus) BootStatus.textContent = "Preloading furniture models...";
+await PreloadBaseFurniture();
 await PrepareInitialWorld();
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
 if (BootStatus) BootStatus.textContent = `Store ready — buffered endless aisles • seed ${WorldSeed}.`;
@@ -1623,8 +1642,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.18";
-window.__STORE_VERSION__ = "0.35.18";
+window.__STORE_GAME_BUILD__ = "V0.35.19";
+window.__STORE_VERSION__ = "0.35.19";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1646,6 +1665,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.18"
+  Version: "0.35.19"
 };
 Animate();
