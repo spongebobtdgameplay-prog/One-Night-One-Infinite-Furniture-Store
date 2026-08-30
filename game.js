@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03530-foothull1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03531-bodyforce1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -2113,8 +2113,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.30";
-window.__STORE_VERSION__ = "0.35.30";
+window.__STORE_GAME_BUILD__ = "V0.35.31";
+window.__STORE_VERSION__ = "0.35.31";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2139,6 +2139,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.30"
+  Version: "0.35.31"
 };
 Animate();
