@@ -265,20 +265,38 @@ function ApplyInputMode() {
 
 PointerLockControls.prototype.lock = function(...Args) {
   CaptureControls(this);
+
   if (State.ThirdPerson) {
-    this.isLocked = true;
-    this.pointerSpeed = State.OrbitHeld ? 1 : 0;
+    this.enabled = true;
+    this.isLocked = HudActive();
+    this.pointerSpeed = 0;
     ApplyInputMode();
-    return;
+    return true;
   }
 
-  this.isLocked = true;
-  this.pointerSpeed = 1;
+  this.enabled = true;
+  this.pointerSpeed = CameraSensitivity();
   ApplyInputMode();
-  if (!document.hasFocus()) return;
+
+  if (document.pointerLockElement) {
+    this.isLocked = true;
+    return true;
+  }
+
+  if (!document.hasFocus()) return false;
+  if (navigator.userActivation && !navigator.userActivation.isActive) return false;
+
+  const RuntimeRequest = window.__STORE_POINTER_LOCK_RUNTIME__?.RequestFirstPersonLock;
+  if (typeof RuntimeRequest === "function") return RuntimeRequest();
+
   try {
-    return OriginalLock.apply(this, Args);
-  } catch {}
+    const Target = this.domElement || document.body;
+    const Result = Target?.requestPointerLock?.();
+    Result?.catch?.(() => {});
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 PointerLockControls.prototype.unlock = function(...Args) {
@@ -1121,4 +1139,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.2-FACING-HEIGHT";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.3-CORNER";
