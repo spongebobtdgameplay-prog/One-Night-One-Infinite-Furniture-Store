@@ -188,8 +188,11 @@ async function RunContentPasses(Chunk) {
   await IdleYield();
 
   if (ShelfStock?.ProcessChunk) await ShelfStock.ProcessChunk(Chunk);
-  Finish?.ProcessChunk?.(Chunk);
+  await IdleYield();
+
+  await Finish?.ProcessChunk?.(Chunk);
   if (Chunk.Index === 0) await Finish?.EnsureRearClosure?.();
+  await IdleYield();
 
   RemoveTerminalBeacons(Chunk);
   CoreFix?.ProcessChunk?.(Chunk, true);
@@ -284,6 +287,10 @@ async function FinalizeChunkNow(Chunk) {
       Chunk.Group.userData.TraversalRetryAfter = performance.now() + 360;
       return false;
     }
+
+    // Warm materials/textures while the chunk is still detached from the live
+    // scene. This prevents the first visible frame from paying shader/upload cost.
+    await Game.WarmChunkGpu?.(Chunk);
 
     Chunk.Group.userData.TraversalReadyR83 = true;
     Chunk.Group.userData.TraversalReadyAt = performance.now();
@@ -384,4 +391,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.15-TRAVERSAL";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.16-GPU-PIPELINE";
