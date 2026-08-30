@@ -148,12 +148,16 @@ function IsStrictTriangleMesh(Object) {
   if (/Text|Label|Glow|Highlight|Selection|Outline|Crosshair/i.test(Name)) return false;
 
   let Current = Object;
+  let CollisionAuthorized = false;
+
   while (Current) {
     const Data = Current.userData || {};
     const CurrentName = String(Current.name || "");
 
     if (
       Data.IgnoreRayCollisionR35 === true ||
+      Data.DecorationNoCollision === true ||
+      Data.RenderBatchR104 === true ||
       Data.RemotePlayer === true ||
       CurrentName === "PlayerCharacterPivot" ||
       CurrentName.startsWith("RemotePlayer-") ||
@@ -161,8 +165,19 @@ function IsStrictTriangleMesh(Object) {
     ) return false;
 
     if (IsWalkableDecoration(Current)) return false;
+
+    if (
+      Data.RayCollisionSolidR35 === true ||
+      Data.PrecisePlayerStructure === true ||
+      /^(WallLeft|WallRight|ShowroomPartition|RearStoreWallR80|RearStoreClosureR80|StoreBoundary|Door)/i.test(CurrentName)
+    ) {
+      CollisionAuthorized = true;
+    }
+
     Current = Current.parent;
   }
+
+  if (!CollisionAuthorized) return false;
 
   const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
   if (Materials.length && Materials.every(Material => {
@@ -1225,3 +1240,5 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
 };
 
 window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.11-RESOLVED-MOTION";
+
+window.__STORE_MOVEMENT_CONTACT_BUILD__ = "V0.35.27-COLLISION-WHITELIST";
