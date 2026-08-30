@@ -62,20 +62,40 @@ function ApplyCamera() {
   CurrentGame.Camera.updateProjectionMatrix();
 }
 
+function ApplySafeViewport(Renderer) {
+  const Ratio = Math.max(0.01, Renderer.getPixelRatio?.() || 1);
+  const BufferWidth = Math.max(1, Number(Renderer.domElement?.width) || 1);
+  const BufferHeight = Math.max(1, Number(Renderer.domElement?.height) || 1);
+  const SafeWidth = Math.max(1, (BufferWidth - 1) / Ratio);
+  const SafeHeight = Math.max(1, (BufferHeight - 1) / Ratio);
+
+  Renderer.setScissorTest(false);
+  Renderer.setViewport(0, 0, SafeWidth, SafeHeight);
+}
+
 function ApplyRenderer() {
   const CurrentGame = Game();
   if (!CurrentGame?.Renderer) return;
   const Profile = QualityProfile();
   const Ratio = Math.min(devicePixelRatio || 1, Profile.PixelRatio);
-  if (PerfState.Width === innerWidth && PerfState.Height === innerHeight && Math.abs(PerfState.Ratio - Ratio) < 0.001 && PerfState.Quality === Settings.Graphics) return;
+  if (
+    PerfState.Width === innerWidth &&
+    PerfState.Height === innerHeight &&
+    Math.abs(PerfState.Ratio - Ratio) < 0.001 &&
+    PerfState.Quality === Settings.Graphics
+  ) {
+    ApplySafeViewport(CurrentGame.Renderer);
+    return;
+  }
+
   PerfState.Width = innerWidth;
   PerfState.Height = innerHeight;
   PerfState.Ratio = Ratio;
   PerfState.Quality = Settings.Graphics;
+
   CurrentGame.Renderer.setPixelRatio(Ratio);
   CurrentGame.Renderer.setSize(innerWidth, innerHeight, false);
-  CurrentGame.Renderer.setScissorTest(false);
-  CurrentGame.Renderer.setViewport(0, 0, innerWidth, innerHeight);
+  ApplySafeViewport(CurrentGame.Renderer);
 }
 
 function ApplyTextureBudget() {
@@ -372,5 +392,5 @@ setInterval(ApplyPerformance, 650);
 setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
 window.__STORE_APPLY_PERFORMANCE__ = ApplyPerformance;
-window.__STORE_PERFORMANCE_BUILD__ = "V0.35.19-LIGHT-BUDGET";
-window.__STORE_SETTINGS_BUILD__ = "V0.35.19-LIGHT-BUDGET";
+window.__STORE_PERFORMANCE_BUILD__ = "V0.35.22-SAFE-VIEWPORT";
+window.__STORE_SETTINGS_BUILD__ = "V0.35.22-SAFE-VIEWPORT";
