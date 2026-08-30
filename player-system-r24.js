@@ -839,16 +839,28 @@ function ApplyPhysicalContactReaction(Reaction) {
   const Back = State.ContactBack;
   const Side = State.ContactSide;
   const Intent = State.ContactIntent;
-  const Compression = Reaction * (0.48 + Intent * 0.52);
+  const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
+  const Pressure = THREE.MathUtils.clamp(
+    Number(Contact?.ConstraintPressure) || 0,
+    0,
+    1
+  );
+  const Compression = Reaction * (
+    0.34 +
+    Intent * 0.34 +
+    Pressure * 0.32
+  );
   const FrontBrace = Compression * Front;
   const BackBrace = Compression * Back;
   const SideBrace = Compression * Side;
   const DepthBoost = THREE.MathUtils.clamp(
-    Number(window.__STORE_MOVEMENT_CONTACT__?.PenetrationDepth) / 0.055 || 0,
+    Number(Contact?.PenetrationDepth) / 0.055 || 0,
     0,
     1
   );
-  const Recoil = Compression * (0.82 + DepthBoost * 0.18);
+  const Recoil = Compression * (0.78 + DepthBoost * 0.12 + Pressure * 0.10);
+  const Effort = Math.sin(State.Phase * 0.78) * Compression * Intent;
+  const EffortAbs = Math.abs(Effort);
 
   // Lower body absorbs the contact first so the feet stay visually planted.
   AddBoneRotation("Hips",
@@ -870,6 +882,14 @@ function ApplyPhysicalContactReaction(Reaction) {
   AddBoneRotation("LowerLegR", -0.090 * FrontBrace, 0, SideBrace * 0.010);
   AddBoneRotation("FootL", 0.024 * FrontBrace, 0, SideBrace * -0.008);
   AddBoneRotation("FootR", 0.024 * FrontBrace, 0, SideBrace * -0.008);
+
+  // Keep showing effort while input is held: weight shifts and knees load,
+  // but the feet do not stride through the obstacle.
+  AddBoneRotation("Hips", 0, Effort * 0.020, Effort * 0.040);
+  AddBoneRotation("UpperLegL", EffortAbs * 0.035 + Math.max(0, Effort) * 0.020, 0, -Effort * 0.020);
+  AddBoneRotation("UpperLegR", EffortAbs * 0.035 + Math.max(0, -Effort) * 0.020, 0, -Effort * 0.020);
+  AddBoneRotation("LowerLegL", -EffortAbs * 0.028, 0, 0);
+  AddBoneRotation("LowerLegR", -EffortAbs * 0.028, 0, 0);
 
   // Spine flexes in a chain instead of the whole model snapping as one rigid part.
   AddBoneRotation("Abdomen",
@@ -919,6 +939,10 @@ function ApplyPhysicalContactReaction(Reaction) {
   );
   AddBoneRotation("LowerArmL", -0.090 * FrontBrace * LeftWeight, 0, 0);
   AddBoneRotation("LowerArmR", -0.090 * FrontBrace * RightWeight, 0, 0);
+
+  AddBoneRotation("Chest", EffortAbs * -0.018, Effort * 0.018, Effort * 0.025);
+  AddBoneRotation("ShoulderL", Math.max(0, Effort) * -0.035, 0, Effort * 0.020);
+  AddBoneRotation("ShoulderR", Math.max(0, -Effort) * -0.035, 0, Effort * 0.020);
 }
 
 function ApplyProceduralOverlay(Delta) {
@@ -1174,16 +1198,9 @@ function GetMovementSpeed(WantsSprint, Moving) {
   State.Moving = Boolean(Moving);
   State.Sprinting = State.WantsSprint && State.Moving && !State.Exhausted && State.Stamina > 0.01;
 
-  const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
-  const ContactAge = performance.now() - Number(Contact?.LastHit ?? -Infinity);
-  const HardBlocked = Boolean(
-    ContactAge >= 0 &&
-    ContactAge < 130 &&
-    Number(Contact?.IntentInward) > 0.58 &&
-    State.SmoothedVelocity.length() < 0.48
-  );
-
-  BasePlayer.GetMovementSpeed?.(false, State.Moving && !HardBlocked);
+  // Input stays alive while a contact constraint resists the body.
+  // The force manifold removes only illegal inward displacement.
+  BasePlayer.GetMovementSpeed?.(false, State.Moving);
   return State.Sprinting ? SPRINT_SPEED : WALK_SPEED;
 }
 
@@ -1304,4 +1321,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.6-PHYSICAL-REACTION";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.7-FORCE-REACTION";
