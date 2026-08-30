@@ -934,7 +934,9 @@ function ResolveRaycastCapsuleSegment(Start, End, Radius, Result = new THREE.Vec
 
   const SafeRadius = Math.max(0, Number(Radius) || 0);
   const Skin = Math.max(0.001, Number(Options.Skin) || 0.008);
-  const Roots = RaycastCandidateRoots(Scene, Start, Length + SafeRadius + 1.2);
+  const Roots = Array.isArray(Options.Roots)
+    ? Options.Roots
+    : RaycastCandidateRoots(Scene, Start, Length + SafeRadius + 1.2);
 
   RayWorld.CandidateDirection.copy(End).sub(Start).normalize();
   let EverHit = false;
@@ -1011,7 +1013,9 @@ function ProbeVisibleGeometrySeparation(Point, Radius, Target = new THREE.Vector
   const SafeRadius = Math.max(0.02, Number(Radius) || 0.20);
   const Skin = Math.max(0.002, Number(Options.Skin) || 0.012);
   const ProbeDistance = SafeRadius + Skin;
-  const Roots = RaycastCandidateRoots(Scene, Point, ProbeDistance + 1.2);
+  const Roots = Array.isArray(Options.Roots)
+    ? Options.Roots
+    : RaycastCandidateRoots(Scene, Point, ProbeDistance + 1.2);
   const Directions = [
     [1, 0], [-1, 0], [0, 1], [0, -1],
     [0.70710678, 0.70710678], [-0.70710678, 0.70710678],
@@ -1113,3 +1117,4 @@ export {
   ResolveRaycastCapsuleSegment,
   ProbeVisibleGeometrySeparation
 };
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.27-SHARED-RAY-ROOTS";
