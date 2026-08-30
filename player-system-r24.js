@@ -50,7 +50,12 @@ const FOOT_SOLE_SKIN = 0.006;
 const LEDGE_FOOT_RADIUS = 0.105;
 const LEDGE_LOCK_MAX_AGE = 360;
 const LEDGE_LOCK_MAX_DRIFT = 0.20;
-const LEDGE_PELVIS_MAX = 0.035;
+const LEDGE_PELVIS_MAX = 0.045;
+const LEDGE_PELVIS_XZ_MAX = 0.032;
+const EDGE_TRANSITION_RANGE = 0.31;
+const EDGE_TRANSITION_HOLD_MS = 620;
+const EDGE_FOOT_NORMAL_OFFSET = 0.122;
+const EDGE_FOOT_TANGENT_OFFSET = 0.095;
 const FOOT_PROBE_TOE = 0.115;
 const FOOT_PROBE_HEEL = 0.075;
 const FOOT_PROBE_SIDE = 0.058;
@@ -101,7 +106,25 @@ const State = {
   FootGroundLeft: 0,
   FootGroundRight: 0,
   LedgePelvisOffset: 0,
+  LedgePelvisOffsetX: 0,
+  LedgePelvisOffsetZ: 0,
   LedgeSplitActive: false,
+  LocomotionSurfaceState: "FlatGround",
+  EdgeTransition: {
+    Active: false,
+    RugId: "",
+    Entering: false,
+    LeadSide: 1,
+    NormalX: 0,
+    NormalZ: 0,
+    TangentX: 1,
+    TangentZ: 0,
+    EdgeX: 0,
+    EdgeZ: 0,
+    Height: 0,
+    StartedAt: -Infinity,
+    LastSeenAt: -Infinity
+  },
   LedgeLockLeft: {
     Active: false,
     StartedAt: -Infinity,
@@ -810,10 +833,326 @@ function FootprintGroundProfile(SurfaceStep, Position, Travel, StartY) {
   };
 }
 
+function ResetEdgeTransition() {
+  State.EdgeTransition.Active = false;
+  State.EdgeTransition.RugId = "";
+  State.EdgeTransition.LastSeenAt = -Infinity;
+  State.LocomotionSurfaceState = "FlatGround";
+  State.LedgePelvisOffsetX = 0;
+  State.LedgePelvisOffsetZ = 0;
+}
+
+function UpdateGeometryEdgeTransition(SurfaceStep, Step, Travel) {
+  const Query = SurfaceStep?.GetNearestLedgeState;
+  if (typeof Query !== "function" || !State.Pivot) {
+    ResetEdgeTransition();
+    return null;
+  }
+
+  const Ledge = Query(
+    State.Pivot.position,
+    Travel,
+    EDGE_TRANSITION_RANGE
+  );
+  const Now = performance.now();
+  const Existing = State.EdgeTransition;
+
+  const CrossingIntent = Boolean(
+    Ledge &&
+    (
+      Math.abs(Number(Ledge.MotionDot) || 0) > 0.10 ||
+      Step?.Active === true
+    )
+  );
+
+  const ContinueExisting = Boolean(
+    Existing.Active &&
+    Ledge &&
+    Existing.RugId === Ledge.RugId &&
+    Now - Existing.LastSeenAt < EDGE_TRANSITION_HOLD_MS
+  );
+
+  if (!Ledge || (!CrossingIntent && !ContinueExisting)) {
+    if (
+      Existing.Active &&
+      Now - Existing.LastSeenAt < 120 &&
+      Math.abs(Number(Existing.NormalX) || 0) +
+        Math.abs(Number(Existing.NormalZ) || 0) > 0
+    ) {
+      return Existing;
+    }
+
+    ResetEdgeTransition();
+    return null;
+  }
+
+  if (!Existing.Active || Existing.RugId !== Ledge.RugId) {
+    Existing.Active = true;
+    Existing.RugId = Ledge.RugId;
+    Existing.StartedAt = Now;
+    Existing.LeadSide = Step?.Side === -1
+      ? -1
+      : Step?.Side === 1
+        ? 1
+        : (Math.sin(State.Phase) >= 0 ? -1 : 1);
+
+    if (Ledge.Entering) Existing.Entering = true;
+    else if (Ledge.Exiting) Existing.Entering = false;
+    else Existing.Entering = Step?.Entering !== false;
+  } else {
+    if (Ledge.Entering) Existing.Entering = true;
+    if (Ledge.Exiting) Existing.Entering = false;
+  }
+
+  Existing.LastSeenAt = Now;
+  Existing.NormalX = Number(Ledge.NormalX) || 0;
+  Existing.NormalZ = Number(Ledge.NormalZ) || 0;
+  Existing.TangentX = Number(Ledge.TangentX) || 0;
+  Existing.TangentZ = Number(Ledge.TangentZ) || 0;
+  Existing.EdgeX = Number(Ledge.EdgeX) || 0;
+  Existing.EdgeZ = Number(Ledge.EdgeZ) || 0;
+  Existing.Height = Math.max(0, Number(Ledge.Height) || 0);
+
+  State.LocomotionSurfaceState = "EdgeTransition";
+  return Existing;
+}
+
+function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
+  if (!Transition?.Active || !State.Pivot) return null;
+
+  const IsLeft = Side < 0;
+  const Upper = IsLeft ? "UpperLegL" : "UpperLegR";
+  const Lower = IsLeft ? "LowerLegL" : "LowerLegR";
+  const Foot = IsLeft ? "FootL" : "FootR";
+  const FootBone = State.Bones.get(Foot);
+  if (!FootBone) return null;
+
+  State.Pivot.updateMatrixWorld(true);
+  FootBone.getWorldPosition(State.TempLegTarget);
+
+  const Lead = Side === Transition.LeadSide;
+  const WantsTop = Transition.Entering ? Lead : !Lead;
+  const SupportHeight = WantsTop ? Transition.Height : 0;
+
+  // Map character left/right onto the ledge tangent so the generated stance
+  // remains anatomically left/right even when the rug edge is rotated 90°.
+  const BodyYaw = State.Pivot.rotation.y;
+  State.TempRight.set(
+    Math.cos(BodyYaw),
+    0,
+    -Math.sin(BodyYaw)
+  );
+  State.TempFootSide.set(
+    Transition.TangentX,
+    0,
+    Transition.TangentZ
+  );
+  if (State.TempFootSide.lengthSq() <= 0.000001) {
+    State.TempFootSide.set(1, 0, 0);
+  } else {
+    State.TempFootSide.normalize();
+  }
+
+  const TangentSign = State.TempRight.dot(State.TempFootSide) >= 0 ? 1 : -1;
+  const TangentOffset =
+    Side * EDGE_FOOT_TANGENT_OFFSET * TangentSign;
+  const NormalOffset = WantsTop
+    ? -EDGE_FOOT_NORMAL_OFFSET
+    : EDGE_FOOT_NORMAL_OFFSET;
+
+  State.TempLegTarget.set(
+    Transition.EdgeX +
+      Transition.NormalX * NormalOffset +
+      Transition.TangentX * TangentOffset,
+    State.TempLegTarget.y,
+    Transition.EdgeZ +
+      Transition.NormalZ * NormalOffset +
+      Transition.TangentZ * TangentOffset
+  );
+
+  // Remove walk-cycle vertical bob from the stance target. Only the rig's
+  // natural ankle height above the root is retained.
+  const NaturalFootHeight = THREE.MathUtils.clamp(
+    State.TempLegTarget.y - State.Pivot.position.y,
+    0.035,
+    0.16
+  );
+  State.TempLegTarget.y =
+    SupportHeight +
+    NaturalFootHeight +
+    (WantsTop ? FOOT_SOLE_SKIN : 0);
+
+  if (WantsTop) {
+    SurfaceStep.ResolveRaisedFootLedge?.(
+      State.TempLegTarget,
+      LEDGE_FOOT_RADIUS,
+      SupportHeight
+    );
+  } else {
+    SurfaceStep.ResolveLowerFootLedge?.(
+      State.TempLegTarget,
+      LEDGE_FOOT_RADIUS,
+      0
+    );
+  }
+
+  const StoredTarget = IsLeft
+    ? State.LedgeTargetLeft
+    : State.LedgeTargetRight;
+  StoredTarget.copy(State.TempLegTarget);
+
+  return {
+    Side,
+    Upper,
+    Lower,
+    Foot,
+    Target: StoredTarget,
+    GroundHeight: SupportHeight,
+    CenterGroundHeight: SupportHeight,
+    SupportFraction: 1,
+    SupportWeight: 1,
+    Arc: 0,
+    GeometryDriven: true,
+    WantsTop
+  };
+}
+
+function ApplyGeometryEdgePelvis(LeftSupport, RightSupport, Transition, Delta) {
+  if (!State.Pivot || !LeftSupport || !RightSupport) return;
+
+  const RootFloor = Number(State.Pivot.position.y) || 0;
+  const BalancedHeight =
+    (Number(LeftSupport.CenterGroundHeight) +
+      Number(RightSupport.CenterGroundHeight)) * 0.5;
+
+  const TargetY = THREE.MathUtils.clamp(
+    BalancedHeight - RootFloor,
+    -LEDGE_PELVIS_MAX,
+    LEDGE_PELVIS_MAX
+  );
+
+  const MidX = (LeftSupport.Target.x + RightSupport.Target.x) * 0.5;
+  const MidZ = (LeftSupport.Target.z + RightSupport.Target.z) * 0.5;
+
+  const TargetX = THREE.MathUtils.clamp(
+    (MidX - State.Pivot.position.x) * 0.18,
+    -LEDGE_PELVIS_XZ_MAX,
+    LEDGE_PELVIS_XZ_MAX
+  );
+  const TargetZ = THREE.MathUtils.clamp(
+    (MidZ - State.Pivot.position.z) * 0.18,
+    -LEDGE_PELVIS_XZ_MAX,
+    LEDGE_PELVIS_XZ_MAX
+  );
+
+  State.LedgePelvisOffset = THREE.MathUtils.lerp(
+    State.LedgePelvisOffset,
+    TargetY,
+    ExpAlpha(Delta, 20)
+  );
+  State.LedgePelvisOffsetX = THREE.MathUtils.lerp(
+    State.LedgePelvisOffsetX,
+    TargetX,
+    ExpAlpha(Delta, 16)
+  );
+  State.LedgePelvisOffsetZ = THREE.MathUtils.lerp(
+    State.LedgePelvisOffsetZ,
+    TargetZ,
+    ExpAlpha(Delta, 16)
+  );
+
+  State.Pivot.position.x += State.LedgePelvisOffsetX;
+  State.Pivot.position.y += State.LedgePelvisOffset;
+  State.Pivot.position.z += State.LedgePelvisOffsetZ;
+  State.Pivot.updateMatrixWorld(true);
+
+  State.LedgeSplitActive = true;
+}
+
+function ApplyGeometryEdgeTransition(SurfaceStep, Step, Delta, Travel) {
+  const Transition = UpdateGeometryEdgeTransition(
+    SurfaceStep,
+    Step,
+    Travel
+  );
+  if (!Transition?.Active) return false;
+
+  const LeftSupport = BuildGeometryEdgeSupport(
+    -1,
+    SurfaceStep,
+    Transition
+  );
+  const RightSupport = BuildGeometryEdgeSupport(
+    1,
+    SurfaceStep,
+    Transition
+  );
+  if (!LeftSupport || !RightSupport) return false;
+
+  ApplyGeometryEdgePelvis(
+    LeftSupport,
+    RightSupport,
+    Transition,
+    Delta
+  );
+
+  // Lower body is now geometry-driven. The walk clip has already been sampled,
+  // but these IK solves replace its leg result before render.
+  SolveTwoBoneLeg(
+    LeftSupport.Upper,
+    LeftSupport.Lower,
+    LeftSupport.Foot,
+    LeftSupport.Target,
+    LeftSupport.Side
+  );
+  SolveTwoBoneLeg(
+    RightSupport.Upper,
+    RightSupport.Lower,
+    RightSupport.Foot,
+    RightSupport.Target,
+    RightSupport.Side
+  );
+
+  // Feet stay level with their actual support planes.
+  AddBoneRotation("FootL", LeftSupport.WantsTop ? -0.012 : 0.010, 0, 0);
+  AddBoneRotation("FootR", RightSupport.WantsTop ? -0.012 : 0.010, 0, 0);
+
+  window.__STORE_FOOT_SUPPORT__ = {
+    Active: true,
+    EdgeTransition: true,
+    Height: THREE.MathUtils.clamp(
+      (LeftSupport.GroundHeight + RightSupport.GroundHeight) * 0.5,
+      0,
+      0.30
+    ),
+    LeftHeight: LeftSupport.CenterGroundHeight,
+    RightHeight: RightSupport.CenterGroundHeight,
+    LeftVisualHeight: LeftSupport.GroundHeight,
+    RightVisualHeight: RightSupport.GroundHeight,
+    LeftWeight: 1,
+    RightWeight: 1,
+    UpdatedAt: performance.now()
+  };
+
+  window.__STORE_EDGE_TRANSITION__ = {
+    Active: true,
+    State: "EdgeTransition",
+    RugId: Transition.RugId,
+    Entering: Transition.Entering,
+    LeadSide: Transition.LeadSide,
+    UpdatedAt: performance.now()
+  };
+
+  return true;
+}
+
 function ResetLedgeFootLocks() {
   State.LedgeLockLeft.Active = false;
   State.LedgeLockRight.Active = false;
   State.LedgeSplitActive = false;
+  if (!State.EdgeTransition.Active) {
+    State.LocomotionSurfaceState = "FlatGround";
+  }
 }
 
 function LedgeLockForSide(Side) {
@@ -1053,6 +1392,19 @@ function ApplyCarpetStepOverlay(Delta) {
   }
 
   const LeadSide = Step?.Side === -1 ? -1 : 1;
+
+  if (
+    ApplyGeometryEdgeTransition(
+      SurfaceStep,
+      Step,
+      Delta,
+      State.TempTravel
+    )
+  ) {
+    return;
+  }
+
+  if (State.EdgeTransition.Active) ResetEdgeTransition();
 
   const LeftSupport = GroundAndPlaceFoot(-1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
   const RightSupport = GroundAndPlaceFoot(1, SurfaceStep, Step, Delta, State.TempTravel, LeadSide);
@@ -1751,4 +2103,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.12-FOOT-LOCK";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.13-EDGE-STATE";
