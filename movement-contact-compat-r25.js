@@ -35,8 +35,8 @@ const TRIANGLE_MAX_PUSH = 0.12;
 const FORCE_SKIN = 0.016;
 const FORCE_SUBSTEP = 0.026;
 const FORCE_PASSES = 8;
-const FORCE_MAX_SINGLE_PUSH = 0.085;
-const FORCE_MAX_TOTAL_PUSH = 0.22;
+const FORCE_MAX_SINGLE_PUSH = 0.072;
+const FORCE_MAX_TOTAL_PUSH = 0.18;
 const FORCE_INTENT_PROBE = 0.045;
 
 const CoreBodyProxyDefinitions = Object.freeze([
@@ -684,29 +684,49 @@ function SolveForceConstraint(Start, ProposedEnd, RequestedEnd, Radius, Records)
         Primary = Manifold.Primary;
       }
 
-      let PassPush = 0;
-      for (const Hit of Manifold.Contacts) {
+      // Build one manifold correction instead of applying contacts in
+      // sequence. Sequential pushes created order-dependent sideways drag.
+      Scratch.Correction.set(0, 0, 0);
+      let WeightSum = 0;
+      let NeededPush = 0;
+
+      for (const Hit of Manifold.Contacts.slice(0, 6)) {
         Scratch.ConstraintNormal.copy(Hit.Normal);
         Scratch.ConstraintNormal.y = 0;
         if (Scratch.ConstraintNormal.lengthSq() <= 0.000001) continue;
         Scratch.ConstraintNormal.normalize();
 
-        const Push = Math.min(
-          FORCE_MAX_SINGLE_PUSH,
-          Math.max(0.0015, Number(Hit.Depth) + FORCE_SKIN * 0.35)
+        const Depth = Math.max(0.0001, Number(Hit.Depth) || 0);
+        const Weight = Depth + 0.002;
+        Scratch.Correction.addScaledVector(Scratch.ConstraintNormal, Weight);
+        WeightSum += Weight;
+        NeededPush = Math.max(
+          NeededPush,
+          Depth + FORCE_SKIN * 0.30
         );
-
-        Scratch.ConstraintTarget.addScaledVector(
-          Scratch.ConstraintNormal,
-          Push
-        );
-        PassPush += Push;
-        TotalCorrection += Push;
-
-        if (TotalCorrection >= FORCE_MAX_TOTAL_PUSH) break;
       }
 
-      if (PassPush <= 0.0001 || TotalCorrection >= FORCE_MAX_TOTAL_PUSH) break;
+      if (WeightSum <= 0.0001 || Scratch.Correction.lengthSq() <= 0.000001) {
+        const PrimaryNormal = Manifold.Primary?.Normal;
+        if (!PrimaryNormal?.isVector3) break;
+        Scratch.Correction.copy(PrimaryNormal).setY(0);
+      }
+
+      if (Scratch.Correction.lengthSq() <= 0.000001) break;
+      Scratch.Correction.normalize();
+
+      const PassPush = Math.min(
+        FORCE_MAX_SINGLE_PUSH,
+        Math.max(0.0015, NeededPush)
+      );
+
+      Scratch.ConstraintTarget.addScaledVector(
+        Scratch.Correction,
+        PassPush
+      );
+      TotalCorrection += PassPush;
+
+      if (TotalCorrection >= FORCE_MAX_TOTAL_PUSH) break;
     }
 
     if (!StepSolved) {
@@ -1052,4 +1072,4 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
   }
 };
 
-window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.7-FORCE-MANIFOLD";
+window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.8-LOW-DRAG-MANIFOLD";
