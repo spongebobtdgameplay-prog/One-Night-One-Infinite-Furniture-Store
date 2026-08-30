@@ -149,6 +149,43 @@ function RaycastGroundHeight(Position, StartY = null) {
   return Height;
 }
 
+function ResolveLowerFootLedge(Position, Radius = 0.075, GroundHeight = 0) {
+  if (!Position?.isVector3) return Position;
+
+  const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || 0.075, 0.045, 0.11);
+  const SafeGround = Math.max(0, Number(GroundHeight) || 0);
+  const Skin = 0.008;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    const Top = Bounds.max.y;
+    if (SafeGround >= Top - 0.012) continue;
+
+    const WithinZ = Position.z >= Bounds.min.z - SafeRadius &&
+      Position.z <= Bounds.max.z + SafeRadius;
+    const WithinX = Position.x >= Bounds.min.x - SafeRadius &&
+      Position.x <= Bounds.max.x + SafeRadius;
+    if (!WithinX || !WithinZ) continue;
+
+    const Candidates = [
+      { Axis: "x", Value: Bounds.min.x - SafeRadius - Skin, Distance: Math.abs(Position.x - Bounds.min.x) },
+      { Axis: "x", Value: Bounds.max.x + SafeRadius + Skin, Distance: Math.abs(Position.x - Bounds.max.x) },
+      { Axis: "z", Value: Bounds.min.z - SafeRadius - Skin, Distance: Math.abs(Position.z - Bounds.min.z) },
+      { Axis: "z", Value: Bounds.max.z + SafeRadius + Skin, Distance: Math.abs(Position.z - Bounds.max.z) }
+    ].sort((A, B) => A.Distance - B.Distance);
+
+    const Best = Candidates[0];
+    if (!Best || Best.Distance > SafeRadius + 0.035) continue;
+
+    Position[Best.Axis] = Best.Value;
+  }
+
+  return Position;
+}
+
+
 function TriggerStep(Side = null, Entering = true, RugId = "", Speed = 0, Direction = null) {
   const Now = performance.now();
   if (Now - LastTriggerAt < STEP_COOLDOWN) return false;
@@ -228,7 +265,8 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   GetStepState,
   NearRug,
   RaycastGroundHeight,
+  ResolveLowerFootLedge,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.27.9-PHYSICS";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.10-LEDGE";
