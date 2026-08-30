@@ -1040,7 +1040,7 @@ async function WarmChunkGpu(Chunk) {
         Renderer.compile(StreamWarmScene, Camera);
       }
     } catch (Error) {
-      console.warn(\`GPU warm-up skipped for \${Chunk.Id}\`, Error);
+      console.warn(`GPU warm-up skipped for ${Chunk.Id}`, Error);
     } finally {
       StreamWarmScene.remove(Chunk.Group);
       if (
