@@ -15,6 +15,7 @@ const MaxSweepSteps = 56;
 const BinarySteps = 18;
 
 const WalkableSurfaces = new Map();
+const StrictCollisionEntries = [];
 
 let VerticalStateInitialized = false;
 let AuthoritativeFloorY = 0;
@@ -211,18 +212,40 @@ function MoveToward(Current, Target, MaximumDelta) {
   return Current;
 }
 
+function CollectStrictCollisionEntries(Start, Desired, Radius, Entries) {
+  StrictCollisionEntries.length = 0;
+  if (!Array.isArray(Entries) || !Entries.length) return StrictCollisionEntries;
+
+  const Padding = Math.max(0.10, Radius + 0.08);
+  const EndX = Start.x + Desired.x;
+  const EndZ = Start.z + Desired.z;
+  const MinX = Math.min(Start.x, EndX) - Padding;
+  const MaxX = Math.max(Start.x, EndX) + Padding;
+  const MinZ = Math.min(Start.z, EndZ) - Padding;
+  const MaxZ = Math.max(Start.z, EndZ) + Padding;
+
+  for (const Entry of Entries) {
+    if (!Entry || Entry.Active === false) continue;
+    const Bounds = Collision.EntryBounds?.(Entry);
+    if (!Bounds?.min || !Bounds?.max) continue;
+    if (Bounds.max.x < MinX || Bounds.min.x > MaxX) continue;
+    if (Bounds.max.z < MinZ || Bounds.min.z > MaxZ) continue;
+    StrictCollisionEntries.push(Entry);
+  }
+
+  return StrictCollisionEntries;
+}
+
 function ResolveEntryMove(Start, Desired, Radius, Entries) {
-  if (
-    !Array.isArray(Entries) ||
-    !Entries.length ||
-    typeof Collision.ResolveHorizontalMove !== "function"
-  ) return null;
+  if (typeof Collision.ResolveHorizontalMove !== "function") return null;
+  const NearbyEntries = CollectStrictCollisionEntries(Start, Desired, Radius, Entries);
+  if (!NearbyEntries.length) return null;
 
   return Collision.ResolveHorizontalMove(
     Start,
     Desired,
     Radius,
-    Entries,
+    NearbyEntries,
     {
       Skin: 0.012,
       AllowSlide: true,
