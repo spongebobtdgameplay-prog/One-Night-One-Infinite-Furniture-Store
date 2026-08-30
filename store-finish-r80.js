@@ -116,21 +116,20 @@ async function EnsureRearClosure() {
   }
 }
 
-function ProcessChunk(Chunk) {
+async function ProcessChunk(Chunk) {
   if (!Chunk?.Ready || Chunk.Cancelled || Chunk.Group.userData?.PresentationReadyR83) return;
   RemoveLegacyDisplayFrames(Chunk);
-  FinishPartitions(Chunk).catch(Error => console.warn("Partition finish failed", Error));
+  await FinishPartitions(Chunk);
 }
 
-function ProcessAll() {
-  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk);
-  EnsureRearClosure().catch(Error => console.warn("Rear closure failed", Error));
+async function ProcessAll() {
+  for (const Chunk of Game.ActiveChunks.values()) await ProcessChunk(Chunk);
+  for (const Chunk of Game.PreparedChunks.values()) await ProcessChunk(Chunk);
+  await EnsureRearClosure();
 }
 
-ProcessAll();
-const Interval = setInterval(ProcessAll, 1400);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
+// Initial boot pass only. Runtime chunks are finished by presentation-ready.
+ProcessAll().catch(Error => console.warn("Initial store finish failed", Error));
 
 window.__STORE_FINISH_R80__ = { ProcessAll, ProcessChunk, EnsureRearClosure };
-window.__STORE_FINISH_BUILD__ = "V0.26.0-R88";
+window.__STORE_FINISH_BUILD__ = "V0.35.16-PIPELINE";
