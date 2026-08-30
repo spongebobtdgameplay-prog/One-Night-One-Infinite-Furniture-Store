@@ -943,6 +943,13 @@ function PrepareChunk(Index) {
         return null;
       }
       Chunk.Ready = true;
+
+      // Runtime chunks finalize immediately when their assets settle. The
+      // presentation poller is only a fallback now.
+      queueMicrotask(() => {
+        window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk?.(Chunk);
+      });
+
       return Chunk;
     })
     .finally(() => PreparingChunks.delete(Index));
