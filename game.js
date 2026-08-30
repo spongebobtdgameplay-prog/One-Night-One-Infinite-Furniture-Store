@@ -830,7 +830,7 @@ async function OptimizeChunkStaticRender(Chunk) {
     Batch.name = `StaticFurnitureBatchR104-${Chunk.Index}-${BatchIndex++}`;
     Batch.userData.ChunkId = Chunk.Id;
     Batch.userData.RenderBatchR104 = true;
-    Batch.userData.DecorationNoCollision = true;
+    Batch.userData.VisualContactProxyR104 = true;
     Batch.castShadow = false;
     Batch.receiveShadow = false;
     Batch.frustumCulled = true;
@@ -2114,8 +2114,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.26";
-window.__STORE_VERSION__ = "0.35.26";
+window.__STORE_GAME_BUILD__ = "V0.35.27";
+window.__STORE_VERSION__ = "0.35.27";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2140,6 +2140,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.26"
+  Version: "0.35.27"
 };
 Animate();
