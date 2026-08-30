@@ -218,10 +218,20 @@ function PrioritizeIndex(Index) {
 }
 
 function EnsureStrictBuffer(CurrentIndex) {
-  const Minimum = Math.max(0, CurrentIndex - STRICT_BEHIND);
-  const Maximum = CurrentIndex + STRICT_AHEAD;
+  const Order = [];
 
-  for (let Index = Minimum; Index <= Maximum; Index += 1) {
+  for (let Offset = 1; Offset <= STRICT_AHEAD; Offset += 1) {
+    Order.push(CurrentIndex + Offset);
+  }
+
+  Order.push(CurrentIndex);
+
+  for (let Offset = 1; Offset <= STRICT_BEHIND; Offset += 1) {
+    const Index = CurrentIndex - Offset;
+    if (Index >= 0) Order.push(Index);
+  }
+
+  for (const Index of Order) {
     const Chunk = FindChunk(Index);
     if (!IsTraversalReady(Chunk)) PrioritizeIndex(Index);
   }
@@ -311,4 +321,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   EnsureStrictBuffer,
   IsTraversalReady
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.17-STRICT-BUFFER";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.18-FORWARD-FIRST";
