@@ -50,6 +50,12 @@ const State = {
   ThirdPerson: true,
   Distance: THIRD_PERSON_DEFAULT,
   OrbitHeld: false,
+  OrbitReady: false,
+  OrbitTargetYaw: 0,
+  OrbitTargetPitch: 0,
+  OrbitCurrentYaw: 0,
+  OrbitCurrentPitch: 0,
+  OrbitEuler: new THREE.Euler(0, 0, 0, "YXZ"),
   Pivot: null,
   Head: null,
   Bones: new Map(),
@@ -154,6 +160,57 @@ function HudActive() {
   return Boolean(Hud && !Hud.classList.contains("Hidden"));
 }
 
+function UserSettings() {
+  return window.__STORE_USER_SETTINGS__ || {
+    Sensitivity: 0.92,
+    TrackpadSmoothing: 58
+  };
+}
+
+function CameraSensitivity() {
+  return THREE.MathUtils.clamp(Number(UserSettings().Sensitivity) || 0.92, 0.35, 2);
+}
+
+function ReadThirdPersonOrbit() {
+  if (!State.Camera) return false;
+  State.OrbitEuler.setFromQuaternion(State.Camera.quaternion, "YXZ");
+  State.OrbitCurrentPitch = State.OrbitEuler.x;
+  State.OrbitCurrentYaw = State.OrbitEuler.y;
+  State.OrbitTargetPitch = State.OrbitCurrentPitch;
+  State.OrbitTargetYaw = State.OrbitCurrentYaw;
+  State.OrbitReady = true;
+  return true;
+}
+
+function UpdateThirdPersonOrbit(Delta) {
+  if (!State.ThirdPerson || !State.OrbitHeld || !State.Camera) return;
+  if (!State.OrbitReady && !ReadThirdPersonOrbit()) return;
+
+  const Smooth = THREE.MathUtils.clamp(
+    Number(UserSettings().TrackpadSmoothing) || 0,
+    0,
+    100
+  ) / 100;
+  const Responsiveness = THREE.MathUtils.lerp(30, 10.5, Smooth);
+  const Alpha = 1 - Math.exp(-Math.max(0.001, Delta) * Responsiveness);
+
+  State.OrbitCurrentYaw += NormalizeAngle(State.OrbitTargetYaw - State.OrbitCurrentYaw) * Alpha;
+  State.OrbitCurrentPitch = THREE.MathUtils.lerp(
+    State.OrbitCurrentPitch,
+    State.OrbitTargetPitch,
+    Alpha
+  );
+
+  State.OrbitEuler.set(
+    State.OrbitCurrentPitch,
+    State.OrbitCurrentYaw,
+    0,
+    "YXZ"
+  );
+  State.Camera.quaternion.setFromEuler(State.OrbitEuler);
+  State.Camera.updateMatrixWorld(true);
+}
+
 function ExpAlpha(Delta, Responsiveness) {
   return 1 - Math.exp(-Delta * Responsiveness);
 }
@@ -194,7 +251,7 @@ function ApplyInputMode() {
     CaptureControls(Controls);
     Controls.enabled = true;
     Controls.isLocked = State.ThirdPerson ? HudActive() : Boolean(document.pointerLockElement);
-    Controls.pointerSpeed = State.ThirdPerson ? (State.OrbitHeld ? 1 : 0) : 1;
+    Controls.pointerSpeed = State.ThirdPerson ? 0 : CameraSensitivity();
   }
 
   const Cursor = State.ThirdPerson ? "default" : "none";
@@ -235,12 +292,15 @@ function SetMode(ThirdPerson, RequestPointerLock = false) {
 
   if (State.ThirdPerson) {
     if (State.Distance < THIRD_PERSON_MIN) State.Distance = THIRD_PERSON_DEFAULT;
+    State.OrbitReady = false;
     if (!WasThirdPerson && State.Pivot) State.Pivot.rotation.y = CameraFacingYaw();
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch {}
     }
   } else {
     State.Distance = 0;
+    State.OrbitHeld = false;
+    State.OrbitReady = false;
     if (State.Pivot) State.Pivot.rotation.y = CameraFacingYaw();
     const Controls = State.Controls || window.__STORE_POINTER_CONTROLS__ || null;
     if (RequestPointerLock && Controls && !document.pointerLockElement && document.hasFocus()) {
@@ -918,6 +978,7 @@ function Render(Renderer, Scene, Camera) {
   State.LastRenderAt = Now;
 
   ForceBodyVisible();
+  UpdateThirdPersonOrbit(Delta);
   UpdateMotion(Delta);
   UpdateStamina(Delta);
   UpdateCharacterFacing(Delta);
@@ -981,12 +1042,15 @@ addEventListener("mousedown", Event => {
   if (State.ThirdPerson) {
     if (Event.button !== 2) return;
     State.OrbitHeld = true;
+    ReadThirdPersonOrbit();
+
     if (Controls) {
       CaptureControls(Controls);
       Controls.enabled = true;
       Controls.isLocked = true;
-      Controls.pointerSpeed = 1;
+      Controls.pointerSpeed = 0;
     }
+
     Event.preventDefault();
     return;
   }
@@ -999,8 +1063,27 @@ addEventListener("mousedown", Event => {
 addEventListener("mouseup", Event => {
   if (Event.button !== 2) return;
   State.OrbitHeld = false;
+  State.OrbitReady = false;
   ApplyInputMode();
 });
+
+addEventListener("blur", () => {
+  State.OrbitHeld = false;
+  State.OrbitReady = false;
+});
+
+document.addEventListener("mousemove", Event => {
+  if (!State.ThirdPerson || !State.OrbitHeld) return;
+  if (!State.OrbitReady && !ReadThirdPersonOrbit()) return;
+
+  const Scale = 0.00185 * CameraSensitivity();
+  State.OrbitTargetYaw -= Event.movementX * Scale;
+  State.OrbitTargetPitch -= Event.movementY * Scale;
+  State.OrbitTargetPitch = THREE.MathUtils.clamp(State.OrbitTargetPitch, -1.12, 1.08);
+
+  Event.preventDefault();
+  Event.stopImmediatePropagation();
+}, true);
 
 Canvas.addEventListener("contextmenu", Event => {
   if (State.ThirdPerson) Event.preventDefault();
@@ -1036,4 +1119,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.1-CAMERA";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.1-CAMERA-ORBIT";
