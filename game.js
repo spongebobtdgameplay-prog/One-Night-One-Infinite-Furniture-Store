@@ -326,9 +326,9 @@ const KhronosSampleBase = "https://raw.githubusercontent.com/KhronosGroup/glTF-S
 const ReplicaCabinetUrl = "https://huggingface.co/datasets/ai-habitat/ReplicaCAD_dataset/resolve/main/objects/frl_apartment_cabinet.glb";
 
 const ModelDefinitions = {
-  Couch_Large1: { Url: `${KayKitFurnitureBase}couch_pillows.gltf`, Axis: "x", Target: 2.45, PreserveMaterials: true },
-  Couch_L: { Url: `${KayKitFurnitureBase}couch.gltf`, Axis: "x", Target: 2.80, PreserveMaterials: true },
-  Chair_2: { Url: `${KayKitFurnitureBase}armchair_pillows.gltf`, Axis: "y", Target: 1.00, PreserveMaterials: true },
+  Couch_Large1: { Url: `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`, Axis: "x", Target: 2.45, PreserveMaterials: true },
+  Couch_L: { Url: `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`, Axis: "x", Target: 2.80, PreserveMaterials: true },
+  Chair_2: { Url: `${KhronosSampleBase}ChairDamaskPurplegold/glTF-Binary/ChairDamaskPurplegold.glb`, Axis: "y", Target: 1.00, PreserveMaterials: true },
   Table_RoundLarge: { Url: `${KayKitFurnitureBase}table_medium.gltf`, Axis: "x", Target: 1.55, PreserveMaterials: true },
   Bed_King: { Url: "Models/Bedroom/GLB/Bed_King.glb", Axis: "z", Target: 2.08 },
   Bed_Single: { Url: "Models/Bedroom/GLB/Bed_Single.glb", Axis: "z", Target: 2.02 },
@@ -692,6 +692,166 @@ function AddModelCollision(Chunk, Entry) {
   void Chunk;
   void Entry;
   return null;
+}
+
+function RenderBatchYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => Resolve(), { timeout: 350 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
+}
+
+function BatchMaterialSignature(Material) {
+  if (!Material || Array.isArray(Material)) return "";
+  const Color = Material.color?.isColor ? Material.color.getHexString() : "";
+  const Emissive = Material.emissive?.isColor ? Material.emissive.getHexString() : "";
+  const Map = Material.map?.uuid || "";
+  const NormalMap = Material.normalMap?.uuid || "";
+  const RoughnessMap = Material.roughnessMap?.uuid || "";
+  const MetalnessMap = Material.metalnessMap?.uuid || "";
+  return [
+    Material.type,
+    Color,
+    Emissive,
+    Number(Material.emissiveIntensity || 0).toFixed(3),
+    Number(Material.roughness ?? -1).toFixed(3),
+    Number(Material.metalness ?? -1).toFixed(3),
+    Number(Material.opacity ?? 1).toFixed(3),
+    Number(Material.alphaTest ?? 0).toFixed(3),
+    Number(Material.side ?? 0),
+    Number(Material.blending ?? 0),
+    Map,
+    NormalMap,
+    RoughnessMap,
+    MetalnessMap
+  ].join(":");
+}
+
+function CanBatchStaticMesh(Mesh) {
+  if (!Mesh?.isMesh || Mesh.isSkinnedMesh || !Mesh.geometry || !Mesh.material) return false;
+  if (Array.isArray(Mesh.material)) return false;
+  if (Mesh.morphTargetInfluences?.length) return false;
+  if (Mesh.material.transparent && Number(Mesh.material.opacity ?? 1) < 0.995) return false;
+  if (Mesh.userData?.NoRenderBatchR104) return false;
+  return true;
+}
+
+function StaticBatchRoots(Chunk) {
+  const Roots = [];
+  const Seen = new Set();
+  const Add = Root => {
+    if (!Root?.isObject3D || !Root.parent || Seen.has(Root)) return;
+    if (Root.name === "StoreTask") return;
+    Seen.add(Root);
+    Roots.push(Root);
+  };
+
+  for (const Model of Chunk.Models || []) Add(Model);
+  for (const Object of Chunk.Group?.children || []) {
+    if (
+      Object?.userData?.RetailImportedR79 ||
+      Object?.userData?.RetailSellableR84 ||
+      Object?.userData?.ShelfStockR83
+    ) Add(Object);
+  }
+
+  return Roots;
+}
+
+function FreezeStaticRoot(Root) {
+  Root.traverse(Object => {
+    if (!Object?.isObject3D) return;
+    Object.updateMatrix();
+    Object.matrixAutoUpdate = false;
+  });
+}
+
+async function OptimizeChunkStaticRender(Chunk) {
+  if (
+    !Chunk?.Group ||
+    Chunk.Cancelled ||
+    Chunk.Group.userData?.StaticRenderBatchedR104
+  ) return false;
+
+  await RenderBatchYield();
+  if (!Chunk?.Group || Chunk.Cancelled) return false;
+
+  const Roots = StaticBatchRoots(Chunk);
+  if (!Roots.length) {
+    Chunk.Group.userData.StaticRenderBatchedR104 = true;
+    return true;
+  }
+
+  Chunk.Group.updateWorldMatrix(true, true);
+  const ChunkInverse = new THREE.Matrix4().copy(Chunk.Group.matrixWorld).invert();
+  const Groups = new Map();
+
+  for (const Root of Roots) {
+    Root.updateWorldMatrix(true, true);
+    Root.traverse(Mesh => {
+      if (!CanBatchStaticMesh(Mesh) || Mesh.visible === false) return;
+      const Signature = `${Mesh.geometry.uuid}|${BatchMaterialSignature(Mesh.material)}`;
+      let Group = Groups.get(Signature);
+      if (!Group) {
+        Group = {
+          Geometry: Mesh.geometry,
+          Material: Mesh.material,
+          Meshes: []
+        };
+        Groups.set(Signature, Group);
+      }
+      Group.Meshes.push(Mesh);
+    });
+  }
+
+  let BatchIndex = 0;
+  let SourceMeshCount = 0;
+  const LocalMatrix = new THREE.Matrix4();
+
+  for (const Group of Groups.values()) {
+    if (Group.Meshes.length < 2) continue;
+
+    const Batch = new THREE.InstancedMesh(
+      Group.Geometry,
+      Group.Material,
+      Group.Meshes.length
+    );
+    Batch.name = `StaticFurnitureBatchR104-${Chunk.Index}-${BatchIndex++}`;
+    Batch.userData.ChunkId = Chunk.Id;
+    Batch.userData.RenderBatchR104 = true;
+    Batch.userData.DecorationNoCollision = true;
+    Batch.castShadow = false;
+    Batch.receiveShadow = false;
+    Batch.frustumCulled = true;
+
+    for (let Index = 0; Index < Group.Meshes.length; Index += 1) {
+      const Mesh = Group.Meshes[Index];
+      Mesh.updateWorldMatrix(true, false);
+      LocalMatrix.multiplyMatrices(ChunkInverse, Mesh.matrixWorld);
+      Batch.setMatrixAt(Index, LocalMatrix);
+      Mesh.visible = false;
+      Mesh.userData.RenderBatchedSourceR104 = true;
+      SourceMeshCount += 1;
+    }
+
+    Batch.instanceMatrix.setUsage(THREE.StaticDrawUsage);
+    Batch.instanceMatrix.needsUpdate = true;
+    Batch.computeBoundingBox?.();
+    Batch.computeBoundingSphere?.();
+    Batch.updateMatrix();
+    Batch.matrixAutoUpdate = false;
+    Chunk.Group.add(Batch);
+  }
+
+  for (const Root of Roots) FreezeStaticRoot(Root);
+
+  Chunk.Group.userData.StaticRenderBatchedR104 = true;
+  Chunk.Group.userData.StaticRenderBatchCountR104 = BatchIndex;
+  Chunk.Group.userData.StaticRenderSourceMeshCountR104 = SourceMeshCount;
+  return BatchIndex > 0;
 }
 
 function SpawnLayoutModel(Chunk, Entry) {
@@ -1302,6 +1462,7 @@ function IsStructuralStreamObject(Object) {
   if (Object.isLight) return true;
   if (Object.userData?.WalkableCarpetR87) return true;
   if (Object.userData?.StreamLoadingR83) return true;
+  if (Object.userData?.RenderBatchedSourceR104) return true;
 
   const Name = String(Object.name || "");
   return /^(Floor|Ceiling|WallLeft|WallRight|Baseboard|ShowroomPartition|PartitionCap|PartitionBase|RearStoreClosureR80|RearStoreWallR80|RearStoreBaseboardR80)/i.test(Name);
@@ -1900,8 +2061,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.24";
-window.__STORE_VERSION__ = "0.35.24";
+window.__STORE_GAME_BUILD__ = "V0.35.25";
+window.__STORE_VERSION__ = "0.35.25";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1917,6 +2078,7 @@ window.__STORE_GAME__ = {
   PrepareChunk,
   TryActivateIndex,
   UpdateObjectStreaming,
+  OptimizeChunkStaticRender,
   WarmChunkGpu,
   SetStoreSeconds,
   SetCompletedTaskCount,
@@ -1925,6 +2087,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.24"
+  Version: "0.35.25"
 };
 Animate();
