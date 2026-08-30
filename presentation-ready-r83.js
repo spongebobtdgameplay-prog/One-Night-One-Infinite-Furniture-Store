@@ -175,6 +175,7 @@ async function RunContentPasses(Chunk) {
   const Organize = window.__STORE_RETAIL_ORGANIZATION_R83__;
   const ShelfStock = window.__STORE_SHELF_STOCK_R83__;
   const SaleDisplays = window.__STORE_RETAIL_SALE_DISPLAYS_R84__;
+  const Materials = window.__STORE_VISIBLE_MATERIALS_R77__;
   const CoreFix = window.__STORE_CORE_FIX_R86__;
 
   if (Visual?.ProcessChunk) await Visual.ProcessChunk(Chunk);
@@ -197,6 +198,8 @@ async function RunContentPasses(Chunk) {
 
   RemoveTerminalBeacons(Chunk);
   CoreFix?.ProcessChunk?.(Chunk, true);
+  Materials?.ProcessChunk?.(Chunk);
+  await Game.OptimizeChunkStaticRender?.(Chunk);
   window.__STORE_RENDER_DISTANCE_LIGHTING__?.ProcessChunk?.(Chunk);
 }
 
@@ -418,4 +421,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.19-PRIORITY-IDLE";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.25-STATIC-BATCH";
