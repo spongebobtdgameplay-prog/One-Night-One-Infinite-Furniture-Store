@@ -62,7 +62,7 @@ const CHUNKS_BEHIND = 2;
 const PREFETCH_CHUNKS = 4;
 const STREAM_PROMOTION_DISTANCE = 42;
 const STREAM_KEEP_BEHIND = 2;
-const VIEW_KEEP_DISTANCE = 108;
+const VIEW_KEEP_DISTANCE = 145;
 const VIEW_KEEP_HOLD_MS = 2200;
 const PREPARED_BACK_CACHE = 5;
 const PREPARED_FORWARD_EXTRA = 2;
@@ -1351,18 +1351,17 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
 
   for (const Chunk of ActiveChunks.values()) {
     if (!Chunk?.Group || Chunk.Cancelled || Chunk.Group.parent !== Scene) continue;
+    if (!Chunk.Group.userData?.PresentationReadyR83) continue;
 
     for (const Object of StreamableRoots(Chunk)) {
       if (!Object?.parent) continue;
 
-      let WorldPosition = Object.userData?.ObjectStreamWorldR101;
-      if (!WorldPosition?.isVector3) {
-        WorldPosition = new THREE.Vector3();
-        Object.getWorldPosition(WorldPosition);
-        Object.userData.ObjectStreamWorldR101 = WorldPosition;
+      StreamObjectPosition.copy(Object.position);
+      if (Object.parent !== Chunk.Group || Chunk.Group.position.lengthSq() > 0.000001) {
+        Object.getWorldPosition(StreamObjectPosition);
       }
 
-      StreamToObject.copy(WorldPosition).sub(Camera.position);
+      StreamToObject.copy(StreamObjectPosition).sub(Camera.position);
       StreamToObject.y = 0;
       const DistanceSq = StreamToObject.lengthSq();
 
