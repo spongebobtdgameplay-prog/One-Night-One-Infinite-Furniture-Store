@@ -32,6 +32,31 @@ const TRIANGLE_BINARY_STEPS = 14;
 const TRIANGLE_PUSH_PASSES = 10;
 const TRIANGLE_MAX_PUSH = 0.12;
 
+const FORCE_SKIN = 0.016;
+const FORCE_SUBSTEP = 0.026;
+const FORCE_PASSES = 8;
+const FORCE_MAX_SINGLE_PUSH = 0.085;
+const FORCE_MAX_TOTAL_PUSH = 0.22;
+const FORCE_INTENT_PROBE = 0.045;
+
+const CoreBodyProxyDefinitions = Object.freeze([
+  { Bone: "Hips",       RadiusScale: 0.92, MinimumRadius: 0.220, Part: "hips" },
+  { Bone: "Abdomen",    RadiusScale: 0.96, MinimumRadius: 0.228, Part: "abdomen" },
+  { Bone: "Torso",      RadiusScale: 1.00, MinimumRadius: 0.238, Part: "torso" },
+  { Bone: "Chest",      RadiusScale: 1.04, MinimumRadius: 0.248, Part: "chest" },
+  { Bone: "Neck",       RadiusScale: 0.60, MinimumRadius: 0.145, Part: "neck" },
+  { Bone: "Shoulder.L", RadiusScale: 0.62, MinimumRadius: 0.150, Part: "shoulder-left" },
+  { Bone: "Shoulder.R", RadiusScale: 0.62, MinimumRadius: 0.150, Part: "shoulder-right" },
+  { Bone: "UpperLeg.L", RadiusScale: 0.70, MinimumRadius: 0.168, Part: "upper-leg-left" },
+  { Bone: "UpperLeg.R", RadiusScale: 0.70, MinimumRadius: 0.168, Part: "upper-leg-right" }
+]);
+
+const CoreBodyProxySamples = CoreBodyProxyDefinitions.map(Definition => ({
+  ...Definition,
+  Point: new THREE.Vector3(),
+  Radius: Definition.MinimumRadius
+}));
+
 const BodyProfile = Object.freeze([
   { Height: 0.12, RadiusScale: 0.88 },
   { Height: 0.29, RadiusScale: 1.00 },
@@ -67,7 +92,16 @@ const Scratch = {
   InverseMatrix: new THREE.Matrix4(),
   Safe: new THREE.Vector3(),
   SegmentEnd: new THREE.Vector3(),
-  Correction: new THREE.Vector3()
+  Correction: new THREE.Vector3(),
+  Requested: new THREE.Vector3(),
+  RequestedDirection: new THREE.Vector3(),
+  RequestedEnd: new THREE.Vector3(),
+  ConstraintTarget: new THREE.Vector3(),
+  ConstraintNormal: new THREE.Vector3(),
+  IntentProbe: new THREE.Vector3(),
+  PivotWorld: new THREE.Vector3(),
+  ForceStart: new THREE.Vector3(),
+  ForceLastSafe: new THREE.Vector3()
 };
 
 function EyeHeight() {
@@ -473,6 +507,308 @@ function ResolveSegmentAgainstTriangles(Start, End, Radius, Records, Result = ne
   };
 }
 
+
+function ComputeRequestedMotion(Camera, ForwardAmount, RightAmount, Distance, Target = Scratch.Requested) {
+  Target.set(0, 0, 0);
+  if (!Camera?.quaternion || !Number.isFinite(Distance) || Distance <= 0) return Target;
+
+  Scratch.TriA.set(0, 0, -1).applyQuaternion(Camera.quaternion);
+  Scratch.TriA.y = 0;
+  if (Scratch.TriA.lengthSq() <= 0.000001) Scratch.TriA.set(0, 0, -1);
+  else Scratch.TriA.normalize();
+
+  Scratch.TriB.set(1, 0, 0).applyQuaternion(Camera.quaternion);
+  Scratch.TriB.y = 0;
+  if (Scratch.TriB.lengthSq() <= 0.000001) Scratch.TriB.set(1, 0, 0);
+  else Scratch.TriB.normalize();
+
+  Target
+    .addScaledVector(Scratch.TriA, Number(ForwardAmount) || 0)
+    .addScaledVector(Scratch.TriB, Number(RightAmount) || 0);
+
+  if (Target.lengthSq() <= 0.000001) return Target.set(0, 0, 0);
+  return Target.normalize().multiplyScalar(Distance);
+}
+
+function UpdateCoreBodyProxySamples(StartPosition, CandidatePosition, Radius) {
+  const Pivot = Game?.Scene?.getObjectByName?.("PlayerCharacterPivot") || null;
+  const OffsetX = CandidatePosition.x - StartPosition.x;
+  const OffsetZ = CandidatePosition.z - StartPosition.z;
+
+  if (Pivot) Pivot.updateMatrixWorld(true);
+
+  let ValidBones = 0;
+  for (const Sample of CoreBodyProxySamples) {
+    const Bone = Pivot?.getObjectByName?.(Sample.Bone) || null;
+    Sample.Radius = Math.max(
+      Sample.MinimumRadius,
+      Math.max(0.20, Number(Radius) || 0.255) * Sample.RadiusScale
+    );
+
+    if (!Bone?.isBone) {
+      Sample.Point.set(Number.NaN, Number.NaN, Number.NaN);
+      continue;
+    }
+
+    Bone.getWorldPosition(Sample.Point);
+    Sample.Point.x += OffsetX;
+    Sample.Point.z += OffsetZ;
+    ValidBones += 1;
+  }
+
+  return ValidBones;
+}
+
+function FindCoreBodyManifold(Position, StartPosition, Radius, Records) {
+  const Contacts = [];
+  let Primary = null;
+  let MaxDepth = 0;
+
+  const ValidBones = UpdateCoreBodyProxySamples(StartPosition, Position, Radius);
+
+  if (ValidBones > 0) {
+    for (const Sample of CoreBodyProxySamples) {
+      if (!Number.isFinite(Sample.Point.x)) continue;
+
+      const Hit = FindSphereTriangleContact(
+        Sample.Point,
+        Sample.Radius,
+        Records,
+        {
+          Skin: FORCE_SKIN,
+          HorizontalOnly: true
+        }
+      );
+
+      if (!Hit) continue;
+      Hit.BodyPart = Sample.Part;
+      Hit.ProxyBone = Sample.Bone;
+      Contacts.push(Hit);
+
+      if (Hit.Depth > MaxDepth) {
+        MaxDepth = Hit.Depth;
+        Primary = Hit;
+      }
+    }
+  } else {
+    const Height = EyeHeight();
+    const FeetY = Position.y - Height;
+
+    for (let Index = 0; Index < BodyProfile.length; Index += 1) {
+      const Profile = BodyProfile[Index];
+      Scratch.Sample.set(
+        Position.x,
+        FeetY + Height * Profile.Height,
+        Position.z
+      );
+
+      const Hit = FindSphereTriangleContact(
+        Scratch.Sample,
+        Radius * Profile.RadiusScale,
+        Records,
+        {
+          Skin: FORCE_SKIN,
+          HorizontalOnly: true
+        }
+      );
+
+      if (!Hit) continue;
+      Hit.BodyPart = "fallback-body-" + Index;
+      Contacts.push(Hit);
+
+      if (Hit.Depth > MaxDepth) {
+        MaxDepth = Hit.Depth;
+        Primary = Hit;
+      }
+    }
+  }
+
+  Contacts.sort((A, B) => Number(B.Depth || 0) - Number(A.Depth || 0));
+
+  return {
+    Hit: Contacts.length > 0,
+    Contacts,
+    Primary,
+    MaxDepth
+  };
+}
+
+function SolveForceConstraint(Start, ProposedEnd, RequestedEnd, Radius, Records) {
+  Scratch.ForceStart.copy(Start);
+  Scratch.ConstraintTarget.copy(ProposedEnd);
+  Scratch.ForceLastSafe.copy(Start);
+
+  const Travel = Math.hypot(
+    ProposedEnd.x - Start.x,
+    ProposedEnd.z - Start.z
+  );
+  const Steps = THREE.MathUtils.clamp(
+    Math.ceil(Math.max(Travel, 0.0001) / FORCE_SUBSTEP),
+    1,
+    24
+  );
+
+  let AnyHit = false;
+  let Primary = null;
+  let MaxDepth = 0;
+  let TotalCorrection = 0;
+  let ManifoldCount = 0;
+  let Failed = false;
+
+  for (let Step = 1; Step <= Steps; Step += 1) {
+    const Fraction = Step / Steps;
+    Scratch.ConstraintTarget.lerpVectors(Start, ProposedEnd, Fraction);
+    Scratch.ConstraintTarget.y = ProposedEnd.y;
+
+    let StepSolved = false;
+
+    for (let Pass = 0; Pass < FORCE_PASSES; Pass += 1) {
+      const Manifold = FindCoreBodyManifold(
+        Scratch.ConstraintTarget,
+        Start,
+        Radius,
+        Records
+      );
+
+      if (!Manifold.Hit) {
+        StepSolved = true;
+        Scratch.ForceLastSafe.copy(Scratch.ConstraintTarget);
+        break;
+      }
+
+      AnyHit = true;
+      ManifoldCount = Math.max(ManifoldCount, Manifold.Contacts.length);
+
+      if (Manifold.MaxDepth > MaxDepth) {
+        MaxDepth = Manifold.MaxDepth;
+        Primary = Manifold.Primary;
+      }
+
+      let PassPush = 0;
+      for (const Hit of Manifold.Contacts) {
+        Scratch.ConstraintNormal.copy(Hit.Normal);
+        Scratch.ConstraintNormal.y = 0;
+        if (Scratch.ConstraintNormal.lengthSq() <= 0.000001) continue;
+        Scratch.ConstraintNormal.normalize();
+
+        const Push = Math.min(
+          FORCE_MAX_SINGLE_PUSH,
+          Math.max(0.0015, Number(Hit.Depth) + FORCE_SKIN * 0.35)
+        );
+
+        Scratch.ConstraintTarget.addScaledVector(
+          Scratch.ConstraintNormal,
+          Push
+        );
+        PassPush += Push;
+        TotalCorrection += Push;
+
+        if (TotalCorrection >= FORCE_MAX_TOTAL_PUSH) break;
+      }
+
+      if (PassPush <= 0.0001 || TotalCorrection >= FORCE_MAX_TOTAL_PUSH) break;
+    }
+
+    if (!StepSolved) {
+      const Remaining = FindCoreBodyManifold(
+        Scratch.ConstraintTarget,
+        Start,
+        Radius,
+        Records
+      );
+
+      if (Remaining.Hit) {
+        Failed = true;
+        Scratch.ConstraintTarget.copy(Scratch.ForceLastSafe);
+        break;
+      }
+
+      Scratch.ForceLastSafe.copy(Scratch.ConstraintTarget);
+    }
+  }
+
+  // Even if the actual position is now safe, probe a few centimeters into the
+  // player's requested input. This keeps contact pressure alive while the wall
+  // is resisting the requested motion instead of treating the input as "stopped".
+  Scratch.RequestedDirection.copy(RequestedEnd).sub(Start);
+  Scratch.RequestedDirection.y = 0;
+  const RequestedLength = Scratch.RequestedDirection.length();
+
+  let IntentContact = null;
+  if (RequestedLength > 0.000001) {
+    Scratch.RequestedDirection.divideScalar(RequestedLength);
+    Scratch.IntentProbe.copy(Scratch.ConstraintTarget)
+      .addScaledVector(
+        Scratch.RequestedDirection,
+        Math.min(FORCE_INTENT_PROBE, RequestedLength)
+      );
+
+    const IntentManifold = FindCoreBodyManifold(
+      Scratch.IntentProbe,
+      Start,
+      Radius,
+      Records
+    );
+
+    if (IntentManifold.Hit) {
+      IntentContact = IntentManifold.Primary;
+      ManifoldCount = Math.max(ManifoldCount, IntentManifold.Contacts.length);
+      if (!Primary || Number(IntentContact?.Depth) > MaxDepth) {
+        Primary = IntentContact;
+        MaxDepth = Number(IntentContact?.Depth) || MaxDepth;
+      }
+    }
+  }
+
+  const ContactHit = AnyHit || Boolean(IntentContact);
+  if (!Failed) {
+    LastVerifiedPosition.copy(Scratch.ConstraintTarget);
+    HasLastVerifiedPosition = true;
+  } else if (
+    HasLastVerifiedPosition &&
+    Math.hypot(
+      LastVerifiedPosition.x - Start.x,
+      LastVerifiedPosition.z - Start.z
+    ) < 1.25
+  ) {
+    const LastSafeManifold = FindCoreBodyManifold(
+      LastVerifiedPosition,
+      Start,
+      Radius,
+      Records
+    );
+    if (!LastSafeManifold.Hit) Scratch.ConstraintTarget.copy(LastVerifiedPosition);
+  }
+
+  const RequestedDistance = Math.max(0.000001, RequestedLength);
+  const ActualDistance = Math.hypot(
+    Scratch.ConstraintTarget.x - Start.x,
+    Scratch.ConstraintTarget.z - Start.z
+  );
+  const MotionResistance = THREE.MathUtils.clamp(
+    1 - ActualDistance / RequestedDistance,
+    0,
+    1
+  );
+  const CorrectionPressure = THREE.MathUtils.clamp(
+    TotalCorrection / 0.12,
+    0,
+    1
+  );
+
+  return {
+    Position: Scratch.ConstraintTarget.clone(),
+    Hit: ContactHit,
+    Contact: Primary,
+    ManifoldCount,
+    MaxDepth,
+    ConstraintPressure: Math.max(MotionResistance, CorrectionPressure),
+    CorrectionDistance: TotalCorrection,
+    Failed,
+    ForceConstrained: AnyHit
+  };
+}
+
 function PushOutIfEmbedded(Position, Radius, Records) {
   const Result = Position.clone();
   let LastHit = null;
@@ -504,123 +840,11 @@ function PositionBlocked(Position, Radius, Records) {
 }
 
 function StrictTriangleSweep(Start, End, Radius, Records) {
-  Scratch.Start.copy(Start);
-  Scratch.End.copy(End);
-  Scratch.Start.y = End.y;
-
-  const Distance = Math.hypot(
-    Scratch.End.x - Scratch.Start.x,
-    Scratch.End.z - Scratch.Start.z
-  );
-
-  const StartHit = PositionBlocked(Scratch.Start, Radius, Records);
-  if (StartHit) {
-    if (
-      HasLastVerifiedPosition &&
-      Math.hypot(
-        LastVerifiedPosition.x - Scratch.Start.x,
-        LastVerifiedPosition.z - Scratch.Start.z
-      ) < 1.5
-    ) {
-      Scratch.Safe.copy(LastVerifiedPosition);
-      Scratch.Safe.y = End.y;
-      if (!PositionBlocked(Scratch.Safe, Radius, Records)) {
-        return {
-          Position: Scratch.Safe.clone(),
-          Hit: true,
-          Contact: StartHit,
-          Recovered: true,
-          UsedLastSafe: true
-        };
-      }
-    }
-
-    const Recovery = PushOutIfEmbedded(Scratch.Start, Radius, Records);
-    return {
-      Position: Recovery.Position,
-      Hit: Recovery.Hit,
-      Contact: Recovery.Contact || StartHit,
-      Recovered: Recovery.Hit
-    };
-  }
-
-  if (Distance <= 0.00001) {
-    LastVerifiedPosition.copy(End);
-    HasLastVerifiedPosition = true;
-    return { Position: End.clone(), Hit: false, Contact: null };
-  }
-
-  const Steps = THREE.MathUtils.clamp(
-    Math.ceil(Distance / TRIANGLE_SAMPLE_SPACING),
-    2,
-    28
-  );
-
-  let LastSafeFraction = 0;
-  let FirstBlockedFraction = -1;
-  let BlockingContact = null;
-
-  for (let Step = 1; Step <= Steps; Step += 1) {
-    const Fraction = Step / Steps;
-    Scratch.Candidate.lerpVectors(Scratch.Start, Scratch.End, Fraction);
-    Scratch.Candidate.y = End.y;
-
-    const Hit = PositionBlocked(Scratch.Candidate, Radius, Records);
-    if (!Hit) {
-      LastSafeFraction = Fraction;
-      continue;
-    }
-
-    FirstBlockedFraction = Fraction;
-    BlockingContact = Hit;
-    break;
-  }
-
-  if (FirstBlockedFraction < 0) {
-    LastVerifiedPosition.copy(End);
-    HasLastVerifiedPosition = true;
-    return { Position: End.clone(), Hit: false, Contact: null };
-  }
-
-  let Low = LastSafeFraction;
-  let High = FirstBlockedFraction;
-
-  for (let Binary = 0; Binary < TRIANGLE_BINARY_STEPS; Binary += 1) {
-    const Mid = (Low + High) * 0.5;
-    Scratch.Candidate.lerpVectors(Scratch.Start, Scratch.End, Mid);
-    Scratch.Candidate.y = End.y;
-
-    if (PositionBlocked(Scratch.Candidate, Radius, Records)) High = Mid;
-    else Low = Mid;
-  }
-
-  const Backoff = Distance > 0.00001
-    ? Math.min(0.014 / Distance, 0.10)
-    : 0;
-  const SafeFraction = Math.max(0, Low - Backoff);
-
-  Scratch.Safe.lerpVectors(
-    Scratch.Start,
-    Scratch.End,
-    SafeFraction
-  );
-  Scratch.Safe.y = End.y;
-
-  const Recovery = PushOutIfEmbedded(Scratch.Safe, Radius, Records);
-  const FinalPosition = Recovery.Position;
-
-  LastVerifiedPosition.copy(FinalPosition);
-  HasLastVerifiedPosition = true;
-
-  return {
-    Position: FinalPosition,
-    Hit: true,
-    Contact: BlockingContact || Recovery.Contact,
-    RolledBack: true
-  };
+  return SolveForceConstraint(Start, End, End, Radius, Records);
 }
 
-function RecordStrictContact(Start, End, Verified) {
+
+function RecordStrictContact(Start, RequestedEnd, Verified) {
   const Hit = Verified?.Contact;
   if (!Verified?.Hit || !Hit) return;
 
@@ -634,41 +858,61 @@ function RecordStrictContact(Start, End, Verified) {
   if (Contact.Normal.lengthSq() > 0.00001) Contact.Normal.normalize();
 
   Contact.Position.copy(Verified.Position);
-  Contact.DesiredDirection.copy(End).sub(Start);
+  Contact.DesiredDirection.copy(RequestedEnd).sub(Start);
   Contact.DesiredDirection.y = 0;
   if (Contact.DesiredDirection.lengthSq() > 0.00001) {
     Contact.DesiredDirection.normalize();
   }
 
-  Contact.SlideDirection.set(0, 0, 0);
+  Contact.SlideDirection.set(
+    -Contact.Normal.z,
+    0,
+    Contact.Normal.x
+  );
+
   Contact.IntentInward = Math.max(
     0,
     -Contact.DesiredDirection.dot(Contact.Normal)
   );
-  Contact.Strength = THREE.MathUtils.clamp(
-    0.55 + Contact.IntentInward * 0.45,
+  Contact.ConstraintPressure = THREE.MathUtils.clamp(
+    Number(Verified.ConstraintPressure) || 0,
     0,
     1
   );
-  Contact.PenetrationDepth = Number(Hit.Depth) || 0;
-  Contact.SlideAmount = 0;
-  Contact.Sliding = false;
-  Contact.Type = "TriangleMesh:" + String(Hit.Object?.name || "VisibleGeometry");
+  Contact.Strength = THREE.MathUtils.clamp(
+    0.35 +
+      Contact.IntentInward * 0.38 +
+      Contact.ConstraintPressure * 0.42,
+    0,
+    1
+  );
+  Contact.PenetrationDepth = Number(Verified.MaxDepth || Hit.Depth) || 0;
+  Contact.ManifoldCount = Number(Verified.ManifoldCount) || 1;
+  Contact.BodyPart = String(Hit.BodyPart || "");
+  Contact.SlideAmount = THREE.MathUtils.clamp(
+    1 - Contact.IntentInward,
+    0,
+    1
+  );
+  Contact.Sliding = Contact.SlideAmount > 0.18;
+  Contact.Type = "ForceTriangle:" + String(Hit.Object?.name || "VisibleGeometry");
   Contact.Object = Hit.Object || null;
   Contact.TriangleVerified = true;
+  Contact.ForceConstraint = true;
   Contact.LastHit = performance.now();
 }
+
 
 function InstallStrictMovementVerifier() {
   if (
     !Physics?.MoveCharacter ||
     !Game?.Scene ||
-    Physics.__StrictTriangleVerifierR35
+    Physics.__ForceTriangleConstraintR35
   ) return false;
 
   const PreviousMoveCharacter = Physics.MoveCharacter.bind(Physics);
 
-  Physics.MoveCharacter = function MoveCharacterWithTriangleVerifier(
+  Physics.MoveCharacter = function MoveCharacterWithForceTriangleConstraint(
     Camera,
     ForwardAmount,
     RightAmount,
@@ -690,6 +934,15 @@ function InstallStrictMovementVerifier() {
     }
 
     Scratch.Start.copy(Camera.position);
+    ComputeRequestedMotion(
+      Camera,
+      ForwardAmount,
+      RightAmount,
+      Distance,
+      Scratch.Requested
+    );
+    Scratch.RequestedEnd.copy(Scratch.Start).add(Scratch.Requested);
+
     const Result = PreviousMoveCharacter(
       Camera,
       ForwardAmount,
@@ -699,6 +952,7 @@ function InstallStrictMovementVerifier() {
       Entries,
       Radius
     );
+
     Scratch.End.copy(Camera.position);
 
     const SafeRadius = THREE.MathUtils.clamp(
@@ -706,70 +960,78 @@ function InstallStrictMovementVerifier() {
         Number(Physics.GetSettings?.()?.DefaultRadius) ||
         0.255,
       0.20,
-      0.32
+      0.34
     );
 
     Scratch.Center.copy(Scratch.Start)
-      .add(Scratch.End)
+      .add(Scratch.RequestedEnd)
       .multiplyScalar(0.5);
     Scratch.Center.y = Scratch.End.y;
 
-    const TravelDistance = Math.hypot(
-      Scratch.End.x - Scratch.Start.x,
-      Scratch.End.z - Scratch.Start.z
-    );
-
+    const RequestedTravel = Scratch.Requested.length();
     const Records = CollectNearbyMeshRecords(
       Scratch.Center,
       SafeRadius,
-      TravelDistance
+      RequestedTravel
     );
 
-    const Verified = StrictTriangleSweep(
+    const Verified = SolveForceConstraint(
       Scratch.Start,
       Scratch.End,
+      Scratch.RequestedEnd,
       SafeRadius,
       Records
     );
 
-    if (!Verified.Hit) return Result;
-
     Camera.position.x = Verified.Position.x;
     Camera.position.z = Verified.Position.z;
-    RecordStrictContact(Scratch.Start, Scratch.End, Verified);
+
+    if (Verified.Hit) {
+      RecordStrictContact(
+        Scratch.Start,
+        Scratch.RequestedEnd,
+        Verified
+      );
+    }
 
     if (Result && typeof Result === "object") {
       Result.Position = Camera.position.clone();
       Result.Resolved = Camera.position.clone().sub(Scratch.Start);
       Result.Resolved.y = 0;
-      Result.Hit = true;
-      Result.StrictVerified = true;
-      Result.TriangleVerified = true;
-      Result.StrictRolledBack = Boolean(Verified.RolledBack);
-      Result.StrictRecovered = Boolean(Verified.Recovered);
+      Result.ForceConstrained = Boolean(Verified.ForceConstrained);
+      Result.ConstraintPressure = Number(Verified.ConstraintPressure) || 0;
+      Result.ManifoldCount = Number(Verified.ManifoldCount) || 0;
 
-      if (Verified.Contact?.Object) {
-        Result.Object = Verified.Contact.Object;
-        Result.Entry = {
-          Type: "TriangleMesh:" + String(
-            Verified.Contact.Object.name || "VisibleGeometry"
-          ),
-          CollisionObject: Verified.Contact.Object,
-          StrictTriangleVerifierR35: true
-        };
-      }
+      if (Verified.Hit) {
+        Result.Hit = true;
+        Result.StrictVerified = true;
+        Result.TriangleVerified = true;
+        Result.ForceConstraint = true;
 
-      if (Verified.Contact?.Normal) {
-        Result.Normal = Verified.Contact.Normal.clone();
+        if (Verified.Contact?.Object) {
+          Result.Object = Verified.Contact.Object;
+          Result.Entry = {
+            Type: "ForceTriangle:" + String(
+              Verified.Contact.Object.name || "VisibleGeometry"
+            ),
+            CollisionObject: Verified.Contact.Object,
+            ForceTriangleConstraintR35: true
+          };
+        }
+
+        if (Verified.Contact?.Normal) {
+          Result.Normal = Verified.Contact.Normal.clone();
+        }
       }
     }
 
     return Result;
   };
 
-  Physics.__StrictTriangleVerifierR35 = true;
+  Physics.__ForceTriangleConstraintR35 = true;
   return true;
 }
+
 
 InstallStrictMovementVerifier();
 
@@ -779,8 +1041,10 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
   CollectNearbyMeshRecords,
   FindSphereTriangleContact,
   FindBodyTriangleContact,
+  FindCoreBodyManifold,
   FindSegmentTriangleContact,
   ResolveSegmentAgainstTriangles,
+  SolveForceConstraint,
   PositionBlocked,
   ResetLastSafe() {
     HasLastVerifiedPosition = false;
@@ -788,4 +1052,4 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
   }
 };
 
-window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.6-TRIANGLE";
+window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.7-FORCE-MANIFOLD";
