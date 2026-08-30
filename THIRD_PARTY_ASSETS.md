@@ -24,15 +24,13 @@ The player is an imported rigged mesh. The game does not construct the humanoid 
 The original in-game plant/cactus assets remain unchanged. KayKit decorations are added around the authored furniture instead of replacing the original plants. Imported decorations are visual-only and do not create gameplay collision boxes.
 
 
-## High-detail living room furniture
+## Living room furniture
 
-- Source collection: Khronos glTF Sample Assets
-- Source: https://github.com/KhronosGroup/glTF-Sample-Assets
-- Sofa asset: `GlamVelvetSofa`
-- Chair asset: `ChairDamaskPurplegold`
-- Original creator/credit: Wayfair / Eric Chadwick
-- License: CC BY 4.0
-- Usage here: higher-detail sofas and accent chairs replacing the older blocky living-room merchandise
+- Asset pack: KayKit Furniture Bits 1.0
+- Original creator: Kay Lousberg / KayKit
+- Source: https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0
+- License: CC0 1.0 Universal
+- Usage here: couches, armchairs, tables, and other showroom furniture chosen for lower draw-call and texture cost while keeping authored 3D geometry
 
 ## Industrial steel shelving
 
