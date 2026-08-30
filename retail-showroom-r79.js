@@ -348,15 +348,30 @@ async function PlacePlannedRetailAsset(Chunk, Entry) {
   return true;
 }
 
+function PlacementYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => Resolve(), { timeout: 700 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
+}
+
 async function AddRealShowroomPieces(Chunk) {
   if (DecoratedChunks.has(Chunk)) return true;
   const Planned = Chunk.Layout?.Retail || [];
-  for (const Entry of Planned) {
+  for (let Index = 0; Index < Planned.length; Index += 1) {
+    const Entry = Planned[Index];
     try {
       await PlacePlannedRetailAsset(Chunk, Entry);
     } catch (Error) {
       console.warn(`Planned retail asset unavailable for ${Entry.Slot}`, Error);
     }
+
+    // Cached GLTF clones can resolve synchronously; force a real scheduling
+    // boundary so a whole showroom cannot clone in one frame.
+    if (Index < Planned.length - 1) await PlacementYield();
   }
   const PlacedSlots = new Set((Chunk.Group?.children || []).map(Object => String(Object?.userData?.LayoutSlot || "")).filter(Boolean));
   const Ready = Planned.every(Entry => PlacedSlots.has(Entry.Slot));
