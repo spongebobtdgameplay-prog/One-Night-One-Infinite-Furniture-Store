@@ -185,27 +185,24 @@ function BedroomTemplateB() {
 }
 
 function KitchenTemplateA() {
-  const LeftZ = 6.15;
-  const RightZ = -6.15;
+  const LeftZ = 6.35;
+  const RightZ = -6.35;
   return {
     Name: "KitchenTemplateA",
     Base: [
-      Slot("Kitchen.Left.Fridge", "Kitchen_Fridge", -14.00, LeftZ, 0),
-      Slot("Kitchen.Left.CabinetA", "Kitchen_Cabinet1", -12.45, LeftZ, 0),
-      Slot("Kitchen.Left.Sink", "Kitchen_Sink", -10.85, LeftZ, 0),
-      Slot("Kitchen.Left.CabinetB", "Kitchen_Cabinet1", -9.25, LeftZ, 0),
-      Slot("Kitchen.Left.Oven", "Kitchen_Oven", -7.75, LeftZ, 0),
-      Slot("Kitchen.Right.Fridge", "Kitchen_Fridge", 14.00, RightZ, Math.PI),
-      Slot("Kitchen.Right.CabinetA", "Kitchen_Cabinet1", 12.45, RightZ, Math.PI),
-      Slot("Kitchen.Right.Sink", "Kitchen_Sink", 10.85, RightZ, Math.PI),
-      Slot("Kitchen.Right.CabinetB", "Kitchen_Cabinet1", 9.25, RightZ, Math.PI),
-      Slot("Kitchen.Right.Oven", "Kitchen_Oven", 7.75, RightZ, Math.PI)
+      Slot("Kitchen.Left.Fridge", "Kitchen_Fridge", -14.05, LeftZ, 0),
+      Slot("Kitchen.Left.CabinetA", "Kitchen_Cabinet1", -12.55, LeftZ, 0),
+      Slot("Kitchen.Left.Sink", "Kitchen_Sink", -11.10, LeftZ, 0),
+      Slot("Kitchen.Left.CabinetB", "Kitchen_Cabinet1", -9.65, LeftZ, 0),
+      Slot("Kitchen.Left.Oven", "Kitchen_Oven", -8.15, LeftZ, 0),
+      Slot("Kitchen.Right.Fridge", "Kitchen_Fridge", 14.05, RightZ, Math.PI),
+      Slot("Kitchen.Right.CabinetA", "Kitchen_Cabinet1", 12.55, RightZ, Math.PI),
+      Slot("Kitchen.Right.Sink", "Kitchen_Sink", 11.10, RightZ, Math.PI),
+      Slot("Kitchen.Right.CabinetB", "Kitchen_Cabinet1", 9.65, RightZ, Math.PI),
+      Slot("Kitchen.Right.Oven", "Kitchen_Oven", 8.15, RightZ, Math.PI)
     ],
     Rugs: [],
-    Sale: [
-      Slot("Kitchen.Left.Dining", "RetailDiningTableR84", -10.20, -1.65, 0, { Kind: "Sale", AssetKey: "DiningTable", Name: "RetailDiningTableR84" }),
-      Slot("Kitchen.Right.SideTable", "RetailSideTableR84", 9.20, 1.70, 0, { Kind: "Sale", AssetKey: "SideTable", Name: "RetailSideTableR84" })
-    ],
+    Sale: [],
     Retail: [],
     Partitions: []
   };
@@ -430,13 +427,6 @@ function AddDenseDepartmentSlots(Layout, Theme) {
       Slot("Density.Bedroom.Left.Chair", "Chair_2", -6.55, -7.75, 0.10),
       Slot("Density.Bedroom.Right.Chair", "Chair_2", 6.55, 7.75, -0.10)
     );
-  } else if (Theme === "KITCHENS") {
-    for (const [Index, X] of [-13.35, -11.85, -10.35, -8.85].entries()) {
-      Extra.push(Slot(`Density.Kitchen.Left.Run.${Index}`, "Kitchen_Cabinet1", X, -7.85, Math.PI));
-    }
-    for (const [Index, X] of [8.85, 10.35, 11.85, 13.35].entries()) {
-      Extra.push(Slot(`Density.Kitchen.Right.Run.${Index}`, "Kitchen_Cabinet1", X, 7.85, 0));
-    }
   } else if (Theme === "BATHROOMS") {
     Extra.push(
       Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -9.15, -1.10, 0),
@@ -783,4 +773,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.24-SINK-FIT";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.28-KITCHEN-VIGNETTES";
