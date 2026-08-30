@@ -296,4 +296,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   PrioritizeNext,
   IsTraversalReady
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.15-FRONTIER";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.16-FRONTIER";
