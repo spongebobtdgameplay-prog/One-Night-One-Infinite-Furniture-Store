@@ -34,6 +34,8 @@ const CAMERA_FLOOR = 0.34;
 const CAMERA_CEILING = 3.48;
 const CAMERA_PADDING = 0.10;
 const FIRST_PERSON_NEAR = 0.012;
+const FIRST_PERSON_FACE_OFFSET = 0.085;
+const FIRST_PERSON_EYE_LIFT = 0.022;
 const ARM_WALL_PADDING = 0.015;
 const ARM_WALL_GAP = 0.035;
 const PLAYER_RADIUS = 0.255;
@@ -1229,6 +1231,26 @@ function RenderThirdPerson(Renderer, Scene, Camera) {
 }
 
 function RenderFirstPerson(Renderer, Scene, Camera) {
+  State.SavedCameraPosition.copy(Camera.position);
+
+  // Render from the approximate face/eye position instead of the body
+  // centerline. Physical movement/collision still uses the original position.
+  State.TempForward.set(0, 0, -1).applyQuaternion(Camera.quaternion);
+  State.TempForward.y = 0;
+  if (State.TempForward.lengthSq() <= 0.000001) {
+    State.TempForward.set(
+      Math.sin(State.Pivot?.rotation.y || 0),
+      0,
+      Math.cos(State.Pivot?.rotation.y || 0)
+    );
+  } else {
+    State.TempForward.normalize();
+  }
+
+  Camera.position.addScaledVector(State.TempForward, FIRST_PERSON_FACE_OFFSET);
+  Camera.position.y += FIRST_PERSON_EYE_LIFT;
+  Camera.updateMatrixWorld(true);
+
   ApplyFirstPersonArms();
 
   const SavedNear = Camera.near;
@@ -1246,6 +1268,9 @@ function RenderFirstPerson(Renderer, Scene, Camera) {
   try {
     Renderer.render(Scene, Camera);
   } finally {
+    Camera.position.copy(State.SavedCameraPosition);
+    Camera.updateMatrixWorld(true);
+
     if (State.Head) {
       State.Head.scale.copy(State.SavedHeadScale);
       State.Head.updateMatrixWorld(true);
@@ -1419,4 +1444,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.9-CONTACT-ROUTING";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.9-NECK-CONTACT";
