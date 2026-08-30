@@ -5,10 +5,11 @@ const Finalizing = new WeakSet();
 const Stability = new WeakMap();
 const PendingFinalization = new WeakMap();
 let FinalizationTail = Promise.resolve();
+let DiscoverFlight = null;
 const FurnitureNames = new Set([
   "Couch_Large1", "Couch_L", "Chair_2", "Table_RoundLarge", "Bed_King", "Bed_Single",
   "NightStand_2", "Shelf_Large", "Bookshelf", "Kitchen_Cabinet1", "Kitchen_Fridge",
-  "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1"
+  "Kitchen_Oven", "Kitchen_Sink", "Bathroom_Sink", "Bathroom_Bathtub", "Bathroom_Toilet", "Light_Floor1"
 ]);
 const RetailNames = new Set([
   "RetailArmchairR79", "RetailLivingShelfR79", "RetailBedroomCabinetR79", "RetailBedroomChairR79",
@@ -174,7 +175,6 @@ async function RunWorldPasses(Chunk) {
 
   await Tags?.RebuildChunk?.(Chunk);
   RemoveTerminalBeacons(Chunk);
-  window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
   window.__STORE_VISIBLE_MATERIALS_R77__?.ProcessAll?.();
   CoreFix?.ProcessChunk?.(Chunk);
 }
@@ -202,7 +202,7 @@ async function FinalizeChunkNow(Chunk) {
     }
 
     if (!CoreReady(Chunk)) {
-      Chunk.Group.userData.PresentationRetryAfter = performance.now() + 900;
+      Chunk.Group.userData.PresentationRetryAfter = performance.now() + 700;
       console.warn(`Chunk ${Chunk.Id} is not presentation-ready yet; deferring instead of exposing a partial aisle.`);
       return false;
     }
@@ -211,10 +211,7 @@ async function FinalizeChunkNow(Chunk) {
     Chunk.Group.userData.PresentationReadyR82 = true;
     Chunk.Group.userData.PresentationReadyAt = performance.now();
     delete Chunk.Group.userData.PresentationRetryAfter;
-
-    window.__STORE_SOLID_OBJECT_COLLISION_R83__?.ProcessChunk?.(Chunk, true);
-    window.__STORE_RETAIL_ZONE_COLLISION_R82__?.ProcessChunk?.(Chunk);
-    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk);
+    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk, true);
     return true;
   } finally {
     Finalizing.delete(Chunk);
@@ -249,6 +246,7 @@ async function PrimeBootWorld() {
 }
 
 await PrimeBootWorld();
+window.__STORE_REQUIRE_PRESENTATION_READY__ = true;
 
 const PreviousPreparedGet = Game.PreparedChunks.get.bind(Game.PreparedChunks);
 Game.PreparedChunks.get = function(Index) {
@@ -258,17 +256,43 @@ Game.PreparedChunks.get = function(Index) {
   return Chunk;
 };
 
-function Discover() {
+function DistanceFromPlayer(Chunk) {
+  const CenterZ = Number.isFinite(Chunk?.CenterZ)
+    ? Chunk.CenterZ
+    : ((Number(Chunk?.TopZ) || 0) + (Number(Chunk?.BottomZ) || 0)) * 0.5;
+  return Math.abs(CenterZ - (Number(Game.Camera?.position?.z) || 0));
+}
+
+function NextFinalizeCandidate() {
+  const Now = performance.now();
+  const Candidates = [];
   for (const Chunk of Game.PreparedChunks.values()) {
-    if (Chunk?.Ready && !Chunk.Cancelled && !Chunk.Group?.userData?.PresentationReadyR83) {
-      FinalizeChunk(Chunk).catch(Error => console.warn("Prepared chunk presentation failed", Error));
-    }
+    if (!Chunk?.Ready || Chunk.Cancelled || Chunk.Group?.userData?.PresentationReadyR83) continue;
+    if (PendingFinalization.has(Chunk) || Finalizing.has(Chunk)) continue;
+    const RetryAfter = Number(Chunk.Group.userData?.PresentationRetryAfter) || 0;
+    if (RetryAfter > Now) continue;
+    Candidates.push(Chunk);
   }
+  Candidates.sort((A, B) => DistanceFromPlayer(A) - DistanceFromPlayer(B));
+  return Candidates[0] || null;
+}
+
+function Discover() {
+  if (DiscoverFlight) return DiscoverFlight;
+  const Chunk = NextFinalizeCandidate();
+  if (!Chunk) return null;
+
+  DiscoverFlight = FinalizeChunk(Chunk)
+    .catch(Error => console.warn("Prepared chunk presentation failed", Error))
+    .finally(() => {
+      DiscoverFlight = null;
+    });
+  return DiscoverFlight;
 }
 
 Discover();
-const Interval = setInterval(Discover, 650);
+const Interval = setInterval(Discover, 280);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = { FinalizeChunk, CoreReady, Discover };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.27.7";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.4-STREAM";
