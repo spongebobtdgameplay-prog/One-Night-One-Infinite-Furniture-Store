@@ -2,7 +2,7 @@ const STORE_HALF_WIDTH = 17;
 const CENTRAL_AISLE_HALF_WIDTH = 3.4;
 const DISPLAY_INNER_EDGE = 5.25;
 const DISPLAY_OUTER_EDGE = 15.45;
-const MERCHANDISE_Z_LIMIT = 10.45;
+const MERCHANDISE_Z_LIMIT = 14.15;
 const SLOT_SPACING = 0.28;
 
 const Footprints = Object.freeze({
@@ -497,6 +497,28 @@ function AddDenseDepartmentSlots(Layout, Theme) {
     );
   }
 
+  const TransitionModels = {
+    "LIVING ROOM": ["Chair_2", "Table_RoundLarge"],
+    "BEDROOMS": ["NightStand_2", "Chair_2"],
+    "KITCHENS": ["Kitchen_Cabinet1", "Kitchen_Oven"],
+    "BATHROOMS": ["Bathroom_Sink", "Bathroom_Toilet"],
+    "WAREHOUSE": ["Shelf_Large", "Bookshelf"],
+    "STORAGE": ["Shelf_Large", "Bookshelf"],
+    "SHOWROOM": ["Bookshelf", "Chair_2"],
+    "CLEARANCE": ["Bookshelf", "Chair_2"]
+  };
+
+  const Pair = TransitionModels[Theme] || ["Chair_2", "Table_RoundLarge"];
+  const TransitionTag = Theme.replace(/\s+/g, "");
+  const TransitionZ = 12.65;
+
+  Extra.push(
+    Slot(`Density.${TransitionTag}.Transition.Front.Left`, Pair[0], -10.55, TransitionZ, 0, { StockStyle: /Shelf|Bookshelf/.test(Pair[0]) ? "Books" : "" }),
+    Slot(`Density.${TransitionTag}.Transition.Front.Right`, Pair[1], 10.55, TransitionZ, Math.PI, { StockStyle: /Shelf|Bookshelf/.test(Pair[1]) ? "Books" : "" }),
+    Slot(`Density.${TransitionTag}.Transition.Back.Left`, Pair[1], -10.55, -TransitionZ, 0, { StockStyle: /Shelf|Bookshelf/.test(Pair[1]) ? "Books" : "" }),
+    Slot(`Density.${TransitionTag}.Transition.Back.Right`, Pair[0], 10.55, -TransitionZ, Math.PI, { StockStyle: /Shelf|Bookshelf/.test(Pair[0]) ? "Books" : "" })
+  );
+
   for (const Entry of Extra) Entry.Required = false;
   Layout.Base.push(...Extra);
 }
@@ -765,4 +787,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.16-DENSITY";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.18-TRANSITION-DENSITY";
