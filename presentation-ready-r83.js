@@ -382,7 +382,7 @@ function Discover() {
 }
 
 Discover();
-const Interval = setInterval(Discover, 1200);
+const Interval = setInterval(Discover, 5000);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = {
