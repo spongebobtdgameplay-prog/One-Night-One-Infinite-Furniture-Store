@@ -105,6 +105,13 @@ function IsTraversalReady(Chunk) {
   );
 }
 
+function IsAlreadyVisible(Chunk) {
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
+  if (!Chunk.Active) return false;
+  if (Game.ActiveChunks.get(Chunk.Index) !== Chunk) return false;
+  return Chunk.Group.parent === Game.Scene && Chunk.Group.visible !== false;
+}
+
 function RemoveBarrier() {
   if (!Barrier) return;
 
@@ -266,6 +273,7 @@ function Tick() {
   const NextIndex = CurrentIndex + 1;
   const Next = FindChunk(NextIndex);
   const NextReady = IsTraversalReady(Next);
+  const NextAlreadyVisible = IsAlreadyVisible(Next);
 
   const DistanceToForwardEdge = Math.max(
     0,
@@ -276,7 +284,8 @@ function Tick() {
     PrioritizeIndex(NextIndex);
   }
 
-  if (NextReady) {
+  if (NextReady || NextAlreadyVisible) {
+    if (NextAlreadyVisible && !NextReady) PrioritizeIndex(NextIndex);
     Hide();
     requestAnimationFrame(Tick);
     return;
@@ -319,6 +328,7 @@ window.__STORE_STREAM_LOADING_R83__ = {
   PrioritizeNext: PrioritizeIndex,
   PrioritizeIndex,
   EnsureStrictBuffer,
-  IsTraversalReady
+  IsTraversalReady,
+  IsAlreadyVisible
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.18-FORWARD-FIRST";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.20-NO-FALSE-WALL";
