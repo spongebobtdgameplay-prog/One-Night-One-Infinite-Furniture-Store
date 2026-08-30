@@ -200,6 +200,7 @@ async function RunContentPasses(Chunk) {
   CoreFix?.ProcessChunk?.(Chunk, true);
   Materials?.ProcessChunk?.(Chunk);
   await Game.OptimizeChunkStaticRender?.(Chunk);
+  window.__STORE_APPLY_TEXTURE_BUDGET_TO_CHUNK__?.(Chunk);
   window.__STORE_RENDER_DISTANCE_LIGHTING__?.ProcessChunk?.(Chunk);
 }
 
@@ -216,7 +217,7 @@ async function RunPolishPasses(Chunk) {
 
   // Per-chunk only. Never rescan the full world just because one aisle finished.
   Materials?.ProcessChunk?.(Chunk);
-  CoreFix?.ProcessChunk?.(Chunk, true);
+  CoreFix?.ProcessChunk?.(Chunk);
 
   const Ready = CoreReady(Chunk);
   Chunk.Group.userData.PresentationReadyR83 = true;
@@ -421,4 +422,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.25-STATIC-BATCH";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.26-BUDGETED-PRESENTATION";
