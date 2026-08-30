@@ -159,6 +159,13 @@ function ApplyAnimationWeights(Mixer, Delta, State) {
   const UseSprintClip = Sprinting && !FirstPerson && Boolean(Actions.sprint);
   const ResolvedMoving = Boolean(State?.ResolvedMoving);
   const ResolvedSpeed = Math.max(0, Number(State?.ResolvedSpeed) || 0);
+  const EdgeTransition = window.__STORE_EDGE_TRANSITION__ || null;
+  const EdgeAge = performance.now() - Number(EdgeTransition?.UpdatedAt ?? -Infinity);
+  const EdgeActive = Boolean(
+    EdgeTransition?.Active === true &&
+    EdgeAge >= 0 &&
+    EdgeAge < 120
+  );
   const Bracing = Boolean(State?.ContactDriven) && !ResolvedMoving;
   const Pressure = THREE.MathUtils.clamp(Number(State?.ContactPressure) || 0, 0, 1);
   const Intent = THREE.MathUtils.clamp(Number(State?.ContactIntent) || 0, 0, 1);
@@ -170,12 +177,20 @@ function ApplyAnimationWeights(Mixer, Delta, State) {
   };
 
   if (ResolvedMoving) {
-    // Final physics displacement is authoritative. If the body moved, force a
-    // locomotion clip this frame so there is never visible collision skating.
-    let Target = UseSprintClip ? "sprint" : "walk";
-    if (!Actions[Target]) Target = Actions.walk ? "walk" : Actions.sprint ? "sprint" : "idle";
-    DesiredWeights[Target] = 1;
-    State.Target = Target;
+    // Final physics displacement is authoritative. Ledge transitions still
+    // animate movement, but the base flat-ground clip is deliberately reduced
+    // because geometry-driven IK owns both legs during the split stance.
+    if (EdgeActive && Actions.walk) {
+      DesiredWeights.walk = 0.46;
+      DesiredWeights.idle = Actions.idle ? 0.54 : 0;
+      if (!Actions.idle) DesiredWeights.walk = 1;
+      State.Target = "edge-walk";
+    } else {
+      let Target = UseSprintClip ? "sprint" : "walk";
+      if (!Actions[Target]) Target = Actions.walk ? "walk" : Actions.sprint ? "sprint" : "idle";
+      DesiredWeights[Target] = 1;
+      State.Target = Target;
+    }
   } else if (Bracing) {
     // No actual displacement: show effort/brace instead of a full stride.
     const AttemptWeight = THREE.MathUtils.clamp(
@@ -217,15 +232,17 @@ function ApplyAnimationWeights(Mixer, Delta, State) {
     );
 
     if (typeof Action.setEffectiveTimeScale === "function") {
-      const TargetScale = ResolvedMoving && (Kind === "walk" || Kind === "sprint")
-        ? THREE.MathUtils.clamp(
-            ResolvedSpeed / (Kind === "sprint" ? 5.35 : 3.45),
-            0.58,
-            1.15
-          )
-        : Bracing && Kind === "walk"
-          ? THREE.MathUtils.lerp(0.72, 0.42, Pressure)
-          : 1;
+      const TargetScale = EdgeActive && Kind === "walk"
+        ? 0.42
+        : ResolvedMoving && (Kind === "walk" || Kind === "sprint")
+          ? THREE.MathUtils.clamp(
+              ResolvedSpeed / (Kind === "sprint" ? 5.35 : 3.45),
+              0.58,
+              1.15
+            )
+          : Bracing && Kind === "walk"
+            ? THREE.MathUtils.lerp(0.72, 0.42, Pressure)
+            : 1;
       const CurrentScale = Number(Action.getEffectiveTimeScale?.()) || 1;
       Action.setEffectiveTimeScale(
         THREE.MathUtils.lerp(CurrentScale, TargetScale, Alpha)
@@ -244,4 +261,4 @@ THREE.AnimationMixer.prototype.update = function UpdateAnimationFromMotionAndVie
 };
 
 window.__STORE_ANIMATION_MOTION_AUTHORITY__ = MixerStates;
-window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.11-RESOLVED-WALK";
+window.__STORE_ANIMATION_MOTION_AUTHORITY_BUILD__ = "V0.35.13-EDGE-WALK";
