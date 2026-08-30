@@ -39,6 +39,11 @@ const ARM_WALL_GAP = 0.035;
 const PLAYER_RADIUS = 0.255;
 const PLAYER_EYE_HEIGHT = 1.68;
 const TURN_RESPONSIVENESS = 13;
+const FIRST_PERSON_HEAD_YAW_MAX = THREE.MathUtils.degToRad(78);
+const FIRST_PERSON_BODY_FOLLOW_IDLE = THREE.MathUtils.degToRad(66);
+const FIRST_PERSON_BODY_FOLLOW_MOVING = THREE.MathUtils.degToRad(52);
+const FIRST_PERSON_BODY_FOLLOW_IDLE_RATE = 5.2;
+const FIRST_PERSON_BODY_FOLLOW_MOVING_RATE = 8.6;
 const FOOT_SOLE_SKIN = 0.024;
 const FOOT_PROBE_TOE = 0.115;
 const FOOT_PROBE_HEEL = 0.075;
@@ -92,6 +97,8 @@ const State = {
   ContactBack: 0,
   ContactSide: 0,
   ContactIntent: 0,
+  FirstPersonHeadYaw: 0,
+  FirstPersonHeadPitch: 0,
   TempForward: new THREE.Vector3(),
   TempRight: new THREE.Vector3(),
   TempUp: new THREE.Vector3(),
@@ -318,6 +325,8 @@ function SetMode(ThirdPerson, RequestPointerLock = false) {
   if (State.ThirdPerson) {
     if (State.Distance < THIRD_PERSON_MIN) State.Distance = THIRD_PERSON_DEFAULT;
     State.OrbitReady = false;
+    State.FirstPersonHeadYaw = 0;
+    State.FirstPersonHeadPitch = 0;
     if (!WasThirdPerson && State.Pivot) State.Pivot.rotation.y = CameraFacingYaw();
     if (document.pointerLockElement) {
       try { document.exitPointerLock(); } catch {}
@@ -326,6 +335,8 @@ function SetMode(ThirdPerson, RequestPointerLock = false) {
     State.Distance = 0;
     State.OrbitHeld = false;
     State.OrbitReady = false;
+    State.FirstPersonHeadYaw = 0;
+    State.FirstPersonHeadPitch = 0;
     if (State.Pivot) State.Pivot.rotation.y = CameraFacingYaw();
     const Controls = State.Controls || window.__STORE_POINTER_CONTROLS__ || null;
     if (RequestPointerLock && Controls && !document.pointerLockElement && document.hasFocus()) {
@@ -463,19 +474,74 @@ function UpdateMotion(Delta) {
 
 function UpdateCharacterFacing(Delta) {
   if (!State.Pivot || !State.Camera) return;
-  State.Pivot.position.set(State.Camera.position.x, Math.max(0, State.Camera.position.y - PLAYER_EYE_HEIGHT), State.Camera.position.z);
+
+  // Physical position follows the controller only. Mouse look must never move
+  // the player root.
+  State.Pivot.position.set(
+    State.Camera.position.x,
+    Math.max(0, State.Camera.position.y - PLAYER_EYE_HEIGHT),
+    State.Camera.position.z
+  );
 
   let TargetYaw = State.Pivot.rotation.y;
-  if (!State.ThirdPerson) {
-    TargetYaw = CameraFacingYaw();
-  } else if (State.SmoothedVelocity.lengthSq() > 0.015) {
-    State.TempForward.copy(State.SmoothedVelocity).normalize();
-    TargetYaw = Math.atan2(State.TempForward.x, State.TempForward.z);
-  }
+  let Responsiveness = TURN_RESPONSIVENESS;
 
-  const Difference = NormalizeAngle(TargetYaw - State.Pivot.rotation.y);
-  const Responsiveness = State.ThirdPerson ? TURN_RESPONSIVENESS : 28;
-  State.Pivot.rotation.y += Difference * ExpAlpha(Delta, Responsiveness);
+  if (!State.ThirdPerson) {
+    const CameraYaw = CameraFacingYaw();
+    let RelativeYaw = NormalizeAngle(CameraYaw - State.Pivot.rotation.y);
+    const FollowLimit = State.Moving
+      ? FIRST_PERSON_BODY_FOLLOW_MOVING
+      : FIRST_PERSON_BODY_FOLLOW_IDLE;
+
+    if (Math.abs(RelativeYaw) > FollowLimit) {
+      TargetYaw = CameraYaw - Math.sign(RelativeYaw) * FollowLimit;
+      Responsiveness = State.Moving
+        ? FIRST_PERSON_BODY_FOLLOW_MOVING_RATE
+        : FIRST_PERSON_BODY_FOLLOW_IDLE_RATE;
+    } else {
+      TargetYaw = State.Pivot.rotation.y;
+      Responsiveness = 0;
+    }
+
+    if (Responsiveness > 0) {
+      const Difference = NormalizeAngle(TargetYaw - State.Pivot.rotation.y);
+      State.Pivot.rotation.y += Difference * ExpAlpha(Delta, Responsiveness);
+    }
+
+    RelativeYaw = NormalizeAngle(CameraYaw - State.Pivot.rotation.y);
+    State.FirstPersonHeadYaw = THREE.MathUtils.clamp(
+      RelativeYaw,
+      -FIRST_PERSON_HEAD_YAW_MAX,
+      FIRST_PERSON_HEAD_YAW_MAX
+    );
+
+    State.TempViewForward.set(0, 0, -1).applyQuaternion(State.Camera.quaternion).normalize();
+    const CameraPitch = Math.asin(THREE.MathUtils.clamp(State.TempViewForward.y, -1, 1));
+    State.FirstPersonHeadPitch = THREE.MathUtils.clamp(
+      CameraPitch,
+      THREE.MathUtils.degToRad(-72),
+      THREE.MathUtils.degToRad(72)
+    );
+  } else {
+    State.FirstPersonHeadYaw = THREE.MathUtils.lerp(
+      State.FirstPersonHeadYaw,
+      0,
+      ExpAlpha(Delta, 12)
+    );
+    State.FirstPersonHeadPitch = THREE.MathUtils.lerp(
+      State.FirstPersonHeadPitch,
+      0,
+      ExpAlpha(Delta, 12)
+    );
+
+    if (State.SmoothedVelocity.lengthSq() > 0.015) {
+      State.TempForward.copy(State.SmoothedVelocity).normalize();
+      TargetYaw = Math.atan2(State.TempForward.x, State.TempForward.z);
+    }
+
+    const Difference = NormalizeAngle(TargetYaw - State.Pivot.rotation.y);
+    State.Pivot.rotation.y += Difference * ExpAlpha(Delta, TURN_RESPONSIVENESS);
+  }
 
   const CurrentYaw = State.Pivot.rotation.y;
   if (!State.HasYaw) {
@@ -945,6 +1011,20 @@ function ApplyPhysicalContactReaction(Reaction) {
   AddBoneRotation("ShoulderR", Math.max(0, -Effort) * -0.035, 0, Effort * 0.020);
 }
 
+function ApplyFirstPersonLookOverlay() {
+  if (State.ThirdPerson) return;
+
+  const Yaw = State.FirstPersonHeadYaw;
+  const Pitch = State.FirstPersonHeadPitch;
+
+  // Distribute free-look through the upper chain. The root stays physically
+  // still until the head-turn cone is exceeded.
+  AddBoneRotation("Torso", 0, Yaw * 0.08, 0);
+  AddBoneRotation("Chest", -Pitch * 0.07, Yaw * 0.16, 0);
+  AddBoneRotation("Neck", -Pitch * 0.34, Yaw * 0.46, 0);
+  AddBoneRotation("Head", -Pitch * 0.30, Yaw * 0.30, 0);
+}
+
 function ApplyProceduralOverlay(Delta) {
   if (!State.Pivot) return;
 
@@ -975,6 +1055,7 @@ function ApplyProceduralOverlay(Delta) {
   AddBoneRotation("FootR", 0, 0, State.LocalStrafe * 0.014 * Move);
 
   ApplyPhysicalContactReaction(Reaction);
+  ApplyFirstPersonLookOverlay();
 
   ApplyCarpetStepOverlay(Delta);
   State.Pivot.updateMatrixWorld(true);
@@ -1321,4 +1402,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.7-FORCE-REACTION";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.8-FREELOOK";
