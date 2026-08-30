@@ -17,7 +17,7 @@ function Brightness(Color) {
 function StabilizeGlow(Object) {
   if (!Object?.isMesh || ProcessedObjects.has(Object)) return;
   ProcessedObjects.add(Object);
-  Object.frustumCulled = false;
+  Object.frustumCulled = true;
   Object.renderOrder = 1;
   Object.geometry?.computeBoundingSphere?.();
 
@@ -106,17 +106,21 @@ function ConfigureAtmosphere() {
   }
 }
 
+function ProcessChunk(Chunk) {
+  if (!Chunk?.Group || Chunk.Cancelled) return;
+  ProcessRoot(Chunk.Group);
+  for (const Object of Chunk.ExternalObjects || []) ProcessRoot(Object);
+}
+
 function ProcessAll() {
   ConfigureProjection();
   ConfigureAtmosphere();
   ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
+  for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
+  for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk);
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
-window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll };
-window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.19.0-R78";
+window.__STORE_RENDER_DISTANCE_LIGHTING__ = { ProcessAll, ProcessChunk };
+window.__STORE_RENDER_DISTANCE_LIGHTING_BUILD__ = "V0.35.19-EVENT-LIGHTING";
