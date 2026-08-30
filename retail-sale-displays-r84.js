@@ -201,10 +201,19 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
 
   if (Entry.AssetKey === "CardboardBox") {
     Object.userData.RayCollisionSolidR35 = true;
-    window.__STORE_CORE_FIX_R86__?.ProcessChunk?.(Chunk, true);
   }
 
   return Object;
+}
+
+function PlacementYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(() => Resolve(), { timeout: 700 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
 }
 
 async function EnsureSaleItems(Chunk) {
@@ -221,6 +230,8 @@ async function EnsureSaleItems(Chunk) {
     } catch (Error) {
       console.warn(`Planned sale asset unavailable for ${Entry.Slot}`, Error);
     }
+
+    if (Index < Planned.length - 1) await PlacementYield();
   }
 
   const CurrentSlots = new Set(ExistingSaleItems(Chunk).map(Object => String(Object.userData?.LayoutSlot || "")));
