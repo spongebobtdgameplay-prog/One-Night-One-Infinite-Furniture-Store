@@ -703,7 +703,7 @@ function CreateRugTexture(Chunk, Entry) {
     SeededRandom(Chunk.Seed + Variant * 17 + 31) * Palettes.length
   );
   const StripeVariant = Variant % 4;
-  const CacheKey = \`\${PaletteIndex}:\${StripeVariant}\`;
+  const CacheKey = `${PaletteIndex}:${StripeVariant}`;
 
   let TextureCanvas = RugCanvasCache.get(CacheKey);
 
@@ -767,7 +767,7 @@ function CreateRugTexture(Chunk, Entry) {
         0.025 +
         SeededRandom(FiberSeed + Dot * 3 + 3) * 0.055;
       Context.fillStyle =
-        \`rgba(255,245,225,\${Alpha.toFixed(3)})\`;
+        `rgba(255,245,225,${Alpha.toFixed(3)})`;
       Context.fillRect(X, Y, 1, 1);
     }
 
