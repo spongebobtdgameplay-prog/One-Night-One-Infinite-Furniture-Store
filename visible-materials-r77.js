@@ -120,15 +120,34 @@ function ProcessRoot(Root) {
   });
 }
 
-function ProcessAll() {
-  ProcessRoot(Game.Scene);
-  for (const Chunk of Game.ActiveChunks.values()) ProcessRoot(Chunk.Group);
-  for (const Chunk of Game.PreparedChunks.values()) ProcessRoot(Chunk.Group);
+function ProcessChunk(Chunk) {
+  if (!Chunk || Chunk.Cancelled) return;
+  ProcessRoot(Chunk.Group);
+  for (const Object of Chunk.ExternalObjects || []) ProcessRoot(Object);
 }
 
-ProcessAll();
-const Interval = setInterval(ProcessAll, 900);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
+function ProcessAll() {
+  const Seen = new Set();
 
-window.__STORE_VISIBLE_MATERIALS_R77__ = { ProcessAll };
-window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.20.0-R79";
+  for (const Chunk of Game.ActiveChunks.values()) {
+    if (!Chunk || Seen.has(Chunk)) continue;
+    Seen.add(Chunk);
+    ProcessChunk(Chunk);
+  }
+
+  for (const Chunk of Game.PreparedChunks.values()) {
+    if (!Chunk || Seen.has(Chunk)) continue;
+    Seen.add(Chunk);
+    ProcessChunk(Chunk);
+  }
+}
+
+// Initial boot correction only. Streaming presentation explicitly calls
+// ProcessChunk for new aisles; do not traverse the entire scene every 900 ms.
+ProcessAll();
+
+window.__STORE_VISIBLE_MATERIALS_R77__ = {
+  ProcessAll,
+  ProcessChunk
+};
+window.__STORE_VISIBLE_MATERIALS_BUILD__ = "V0.35.15-CHUNK";
