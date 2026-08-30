@@ -39,11 +39,11 @@ const ARM_WALL_GAP = 0.035;
 const PLAYER_RADIUS = 0.255;
 const PLAYER_EYE_HEIGHT = 1.68;
 const TURN_RESPONSIVENESS = 13;
-const FIRST_PERSON_HEAD_YAW_MAX = THREE.MathUtils.degToRad(78);
-const FIRST_PERSON_BODY_FOLLOW_IDLE = THREE.MathUtils.degToRad(66);
-const FIRST_PERSON_BODY_FOLLOW_MOVING = THREE.MathUtils.degToRad(52);
-const FIRST_PERSON_BODY_FOLLOW_IDLE_RATE = 5.2;
-const FIRST_PERSON_BODY_FOLLOW_MOVING_RATE = 8.6;
+const FIRST_PERSON_HEAD_YAW_MAX = THREE.MathUtils.degToRad(50);
+const FIRST_PERSON_BODY_FOLLOW_IDLE = THREE.MathUtils.degToRad(34);
+const FIRST_PERSON_BODY_FOLLOW_MOVING = THREE.MathUtils.degToRad(28);
+const FIRST_PERSON_BODY_FOLLOW_IDLE_RATE = 10.0;
+const FIRST_PERSON_BODY_FOLLOW_MOVING_RATE = 14.0;
 const FOOT_SOLE_SKIN = 0.024;
 const FOOT_PROBE_TOE = 0.115;
 const FOOT_PROBE_HEEL = 0.075;
@@ -509,6 +509,15 @@ function UpdateCharacterFacing(Delta) {
     }
 
     RelativeYaw = NormalizeAngle(CameraYaw - State.Pivot.rotation.y);
+
+    // Hard safety cone: the camera may free-look, but it may never get far
+    // enough behind the body to expose the inside of the neck/shoulders.
+    if (Math.abs(RelativeYaw) > FIRST_PERSON_HEAD_YAW_MAX) {
+      State.Pivot.rotation.y = CameraYaw -
+        Math.sign(RelativeYaw) * FIRST_PERSON_HEAD_YAW_MAX;
+      RelativeYaw = NormalizeAngle(CameraYaw - State.Pivot.rotation.y);
+    }
+
     State.FirstPersonHeadYaw = THREE.MathUtils.clamp(
       RelativeYaw,
       -FIRST_PERSON_HEAD_YAW_MAX,
@@ -906,6 +915,14 @@ function ApplyPhysicalContactReaction(Reaction) {
   const Side = State.ContactSide;
   const Intent = State.ContactIntent;
   const Contact = window.__STORE_MOVEMENT_CONTACT__ || null;
+  const BodyPart = String(Contact?.BodyPart || "");
+  const LowerOnlyContact = /leg|foot|hips/i.test(BodyPart) &&
+    !/abdomen|torso|chest|shoulder|neck/i.test(BodyPart);
+  const UpperContact = /abdomen|torso|chest|shoulder|neck/i.test(BodyPart);
+  const LowerResponse = UpperContact ? 0.42 : 1.0;
+  const UpperResponse = LowerOnlyContact ? 0.10 : 1.0;
+  const ArmResponse = LowerOnlyContact ? 0.0 : 1.0;
+
   const Pressure = THREE.MathUtils.clamp(
     Number(Contact?.ConstraintPressure) || 0,
     0,
@@ -930,53 +947,53 @@ function ApplyPhysicalContactReaction(Reaction) {
 
   // Lower body absorbs the contact first so the feet stay visually planted.
   AddBoneRotation("Hips",
-    0.050 * FrontBrace - 0.030 * BackBrace,
-    SideBrace * -0.030,
-    SideBrace * -0.070
+    (0.050 * FrontBrace - 0.030 * BackBrace) * LowerResponse,
+    SideBrace * -0.030 * LowerResponse,
+    SideBrace * -0.070 * LowerResponse
   );
   AddBoneRotation("UpperLegL",
-    0.095 * FrontBrace + 0.035 * Recoil,
-    SideBrace * 0.018,
-    SideBrace * -0.026
+    (0.095 * FrontBrace + 0.035 * Recoil) * LowerResponse,
+    SideBrace * 0.018 * LowerResponse,
+    SideBrace * -0.026 * LowerResponse
   );
   AddBoneRotation("UpperLegR",
-    0.095 * FrontBrace + 0.035 * Recoil,
-    SideBrace * 0.018,
-    SideBrace * -0.026
+    (0.095 * FrontBrace + 0.035 * Recoil) * LowerResponse,
+    SideBrace * 0.018 * LowerResponse,
+    SideBrace * -0.026 * LowerResponse
   );
-  AddBoneRotation("LowerLegL", -0.090 * FrontBrace, 0, SideBrace * 0.010);
-  AddBoneRotation("LowerLegR", -0.090 * FrontBrace, 0, SideBrace * 0.010);
-  AddBoneRotation("FootL", 0.024 * FrontBrace, 0, SideBrace * -0.008);
-  AddBoneRotation("FootR", 0.024 * FrontBrace, 0, SideBrace * -0.008);
+  AddBoneRotation("LowerLegL", -0.090 * FrontBrace * LowerResponse, 0, SideBrace * 0.010 * LowerResponse);
+  AddBoneRotation("LowerLegR", -0.090 * FrontBrace * LowerResponse, 0, SideBrace * 0.010 * LowerResponse);
+  AddBoneRotation("FootL", 0.024 * FrontBrace * LowerResponse, 0, SideBrace * -0.008 * LowerResponse);
+  AddBoneRotation("FootR", 0.024 * FrontBrace * LowerResponse, 0, SideBrace * -0.008 * LowerResponse);
 
   // Keep showing effort while input is held: weight shifts and knees load,
   // but the feet do not stride through the obstacle.
-  AddBoneRotation("Hips", 0, Effort * 0.020, Effort * 0.040);
-  AddBoneRotation("UpperLegL", EffortAbs * 0.035 + Math.max(0, Effort) * 0.020, 0, -Effort * 0.020);
-  AddBoneRotation("UpperLegR", EffortAbs * 0.035 + Math.max(0, -Effort) * 0.020, 0, -Effort * 0.020);
-  AddBoneRotation("LowerLegL", -EffortAbs * 0.028, 0, 0);
-  AddBoneRotation("LowerLegR", -EffortAbs * 0.028, 0, 0);
+  AddBoneRotation("Hips", 0, Effort * 0.020 * LowerResponse, Effort * 0.040 * LowerResponse);
+  AddBoneRotation("UpperLegL", (EffortAbs * 0.035 + Math.max(0, Effort) * 0.020) * LowerResponse, 0, -Effort * 0.020 * LowerResponse);
+  AddBoneRotation("UpperLegR", (EffortAbs * 0.035 + Math.max(0, -Effort) * 0.020) * LowerResponse, 0, -Effort * 0.020 * LowerResponse);
+  AddBoneRotation("LowerLegL", -EffortAbs * 0.028 * LowerResponse, 0, 0);
+  AddBoneRotation("LowerLegR", -EffortAbs * 0.028 * LowerResponse, 0, 0);
 
   // Spine flexes in a chain instead of the whole model snapping as one rigid part.
   AddBoneRotation("Abdomen",
-    -0.060 * FrontBrace + 0.035 * BackBrace,
-    SideBrace * -0.028,
-    SideBrace * -0.055
+    (-0.060 * FrontBrace + 0.035 * BackBrace) * UpperResponse,
+    SideBrace * -0.028 * UpperResponse,
+    SideBrace * -0.055 * UpperResponse
   );
   AddBoneRotation("Torso",
-    -0.090 * FrontBrace + 0.050 * BackBrace,
-    SideBrace * -0.040,
-    SideBrace * -0.080
+    (-0.090 * FrontBrace + 0.050 * BackBrace) * UpperResponse,
+    SideBrace * -0.040 * UpperResponse,
+    SideBrace * -0.080 * UpperResponse
   );
   AddBoneRotation("Chest",
-    0.052 * FrontBrace - 0.032 * BackBrace,
-    SideBrace * 0.032,
-    SideBrace * 0.060
+    (0.052 * FrontBrace - 0.032 * BackBrace) * UpperResponse,
+    SideBrace * 0.032 * UpperResponse,
+    SideBrace * 0.060 * UpperResponse
   );
   AddBoneRotation("Neck",
-    0.025 * FrontBrace - 0.018 * BackBrace,
-    SideBrace * 0.018,
-    SideBrace * 0.025
+    (0.025 * FrontBrace - 0.018 * BackBrace) * UpperResponse,
+    SideBrace * 0.018 * UpperResponse,
+    SideBrace * 0.025 * UpperResponse
   );
 
   // Near-side shoulder gives first; both arms brace on a frontal impact.
@@ -984,31 +1001,31 @@ function ApplyPhysicalContactReaction(Reaction) {
   const RightWeight = THREE.MathUtils.clamp(0.72 + Side * 0.38, 0.34, 1.10);
 
   AddBoneRotation("ShoulderL",
-    -0.070 * FrontBrace * LeftWeight,
-    SideBrace * -0.025,
-    0.045 * Recoil * LeftWeight
+    -0.070 * FrontBrace * LeftWeight * ArmResponse,
+    SideBrace * -0.025 * ArmResponse,
+    0.045 * Recoil * LeftWeight * ArmResponse
   );
   AddBoneRotation("ShoulderR",
-    -0.070 * FrontBrace * RightWeight,
-    SideBrace * -0.025,
-    -0.045 * Recoil * RightWeight
+    -0.070 * FrontBrace * RightWeight * ArmResponse,
+    SideBrace * -0.025 * ArmResponse,
+    -0.045 * Recoil * RightWeight * ArmResponse
   );
   AddBoneRotation("UpperArmL",
-    -0.105 * FrontBrace * LeftWeight,
-    SideBrace * -0.030,
-    0.060 * Recoil * LeftWeight
+    -0.105 * FrontBrace * LeftWeight * ArmResponse,
+    SideBrace * -0.030 * ArmResponse,
+    0.060 * Recoil * LeftWeight * ArmResponse
   );
   AddBoneRotation("UpperArmR",
-    -0.105 * FrontBrace * RightWeight,
-    SideBrace * -0.030,
-    -0.060 * Recoil * RightWeight
+    -0.105 * FrontBrace * RightWeight * ArmResponse,
+    SideBrace * -0.030 * ArmResponse,
+    -0.060 * Recoil * RightWeight * ArmResponse
   );
-  AddBoneRotation("LowerArmL", -0.090 * FrontBrace * LeftWeight, 0, 0);
-  AddBoneRotation("LowerArmR", -0.090 * FrontBrace * RightWeight, 0, 0);
+  AddBoneRotation("LowerArmL", -0.090 * FrontBrace * LeftWeight * ArmResponse, 0, 0);
+  AddBoneRotation("LowerArmR", -0.090 * FrontBrace * RightWeight * ArmResponse, 0, 0);
 
-  AddBoneRotation("Chest", EffortAbs * -0.018, Effort * 0.018, Effort * 0.025);
-  AddBoneRotation("ShoulderL", Math.max(0, Effort) * -0.035, 0, Effort * 0.020);
-  AddBoneRotation("ShoulderR", Math.max(0, -Effort) * -0.035, 0, Effort * 0.020);
+  AddBoneRotation("Chest", EffortAbs * -0.018 * UpperResponse, Effort * 0.018 * UpperResponse, Effort * 0.025 * UpperResponse);
+  AddBoneRotation("ShoulderL", Math.max(0, Effort) * -0.035 * ArmResponse, 0, Effort * 0.020 * ArmResponse);
+  AddBoneRotation("ShoulderR", Math.max(0, -Effort) * -0.035 * ArmResponse, 0, Effort * 0.020 * ArmResponse);
 }
 
 function ApplyFirstPersonLookOverlay() {
@@ -1402,4 +1419,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.8-FREELOOK";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.9-CONTACT-ROUTING";
