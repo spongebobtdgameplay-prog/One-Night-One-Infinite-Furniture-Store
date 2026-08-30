@@ -765,4 +765,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.15-DENSITY";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.16-DENSITY";
