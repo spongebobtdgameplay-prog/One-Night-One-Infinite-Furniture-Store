@@ -1180,11 +1180,17 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
     );
   }
 
+  const CrossingAllowed = Boolean(
+    (Transition.Phase === "LeadCrossed" && Lead) ||
+    (Transition.Phase === "Destination" && !Lead)
+  );
+
   ProtectFootFromCurbs(
     Side,
     SurfaceStep,
     State.TempLegTarget,
-    SupportHeight
+    SupportHeight,
+    CrossingAllowed
   );
 
   const StoredTarget = IsLeft
@@ -1206,6 +1212,7 @@ function BuildGeometryEdgeSupport(Side, SurfaceStep, Transition) {
     GeometryDriven: true,
     WantsTop,
     UsesDestination,
+    CrossingAllowed,
     TransitionPhase: Transition.Phase
   };
 }
@@ -1445,7 +1452,7 @@ function ApplySplitStancePelvis(LeftSupport, RightSupport, Delta) {
   return SplitStance;
 }
 
-function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0) {
+function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0, AllowCrossing = false) {
   if (!Target?.isVector3 || !SurfaceStep) return Target;
 
   const IsLeft = Side < 0;
@@ -1471,6 +1478,15 @@ function ProtectFootFromCurbs(Side, SurfaceStep, Target, GroundHeight = 0) {
     }
     Safe.copy(Candidate);
     State[ReadyKey] = true;
+  }
+
+  if (AllowCrossing) {
+    if (SurfaceStep.IsFootCurbSafe?.(Target, LEDGE_FOOT_RADIUS, 0.055) !== false) {
+      Safe.copy(Target);
+    } else {
+      Target.copy(Safe);
+    }
+    return Target;
   }
 
   SurfaceStep.ResolveFootRollback?.(
@@ -1593,7 +1609,8 @@ function GroundAndPlaceFoot(Side, SurfaceStep, Step, Delta, Travel, LeadSide) {
     Side,
     SurfaceStep,
     State.TempLegTarget,
-    CenterGroundHeight
+    CenterGroundHeight,
+    Arc > 0.22
   );
 
   const StoredTarget = IsLeft ? State.LedgeTargetLeft : State.LedgeTargetRight;
@@ -1682,13 +1699,15 @@ function ApplyCarpetStepOverlay(Delta) {
       LeftSupport.Side,
       SurfaceStep,
       LeftSupport.Target,
-      LeftSupport.CenterGroundHeight
+      LeftSupport.CenterGroundHeight,
+      Boolean(LeftSupport.CrossingAllowed || LeftSupport.Arc > 0.22)
     );
     ProtectFootFromCurbs(
       RightSupport.Side,
       SurfaceStep,
       RightSupport.Target,
-      RightSupport.CenterGroundHeight
+      RightSupport.CenterGroundHeight,
+      Boolean(RightSupport.CrossingAllowed || RightSupport.Arc > 0.22)
     );
 
     // Re-solve after pelvis compensation and world-space stance locking.
