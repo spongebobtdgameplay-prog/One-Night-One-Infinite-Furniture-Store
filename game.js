@@ -89,6 +89,12 @@ let LastChunkMaintenanceAt = -Infinity;
 let LastMaintainedChunkIndex = Number.NaN;
 const StreamViewDirection = new THREE.Vector3();
 const StreamToChunk = new THREE.Vector3();
+const StreamWarmScene = new THREE.Scene();
+const StreamWarmTextures = new WeakSet();
+const StreamWarmAmbient = new THREE.AmbientLight(0xffffff, 0.75);
+const StreamWarmDirectional = new THREE.DirectionalLight(0xffffff, 0.45);
+StreamWarmDirectional.position.set(4, 8, 5);
+StreamWarmScene.add(StreamWarmAmbient, StreamWarmDirectional);
 
 function MixSeed32(Value) {
   let Mixed = Value >>> 0;
@@ -957,6 +963,108 @@ function PrepareChunk(Index) {
   return PromiseValue;
 }
 
+function WarmMaterialTextures(Material) {
+  if (!Material) return;
+
+  for (const Key of [
+    "map",
+    "alphaMap",
+    "aoMap",
+    "bumpMap",
+    "normalMap",
+    "displacementMap",
+    "roughnessMap",
+    "metalnessMap",
+    "emissiveMap",
+    "lightMap"
+  ]) {
+    const Texture = Material[Key];
+    if (!Texture?.isTexture || StreamWarmTextures.has(Texture)) continue;
+    StreamWarmTextures.add(Texture);
+
+    try {
+      Renderer.initTexture?.(Texture);
+    } catch {}
+  }
+}
+
+function WaitForGpuWarmBudget() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(Deadline => {
+        if (!Deadline.didTimeout && Deadline.timeRemaining() < 7) {
+          requestAnimationFrame(() => Resolve());
+          return;
+        }
+        Resolve();
+      }, { timeout: 900 });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
+  });
+}
+
+async function WarmChunkGpu(Chunk) {
+  if (!Chunk?.Group || Chunk.Cancelled) return false;
+  if (Chunk.Group.userData?.GpuWarmReadyR92) return true;
+  if (Chunk.GpuWarmPromise) return Chunk.GpuWarmPromise;
+
+  // Boot chunks may already be visible by the time presentation loads.
+  if (Chunk.Active || Chunk.Group.parent === Scene) {
+    Chunk.Group.userData.GpuWarmReadyR92 = true;
+    return true;
+  }
+
+  Chunk.GpuWarmPromise = (async () => {
+    await WaitForGpuWarmBudget();
+    if (Chunk.Cancelled || !Chunk.Group) return false;
+
+    Chunk.Group.traverse(Object => {
+      if (!Object?.isMesh || !Object.material) return;
+      const Materials = Array.isArray(Object.material)
+        ? Object.material
+        : [Object.material];
+      for (const Material of Materials) WarmMaterialTextures(Material);
+    });
+
+    await new Promise(Resolve => requestAnimationFrame(Resolve));
+    if (Chunk.Cancelled || !Chunk.Group) return false;
+
+    const PreviousParent = Chunk.Group.parent;
+    try {
+      StreamWarmScene.add(Chunk.Group);
+
+      if (typeof Renderer.compileAsync === "function") {
+        await Renderer.compileAsync(StreamWarmScene, Camera);
+      } else {
+        Renderer.compile(StreamWarmScene, Camera);
+      }
+    } catch (Error) {
+      console.warn(\`GPU warm-up skipped for \${Chunk.Id}\`, Error);
+    } finally {
+      StreamWarmScene.remove(Chunk.Group);
+      if (
+        PreviousParent &&
+        PreviousParent !== StreamWarmScene &&
+        !Chunk.Cancelled
+      ) {
+        PreviousParent.add(Chunk.Group);
+      }
+    }
+
+    if (!Chunk.Cancelled && Chunk.Group) {
+      Chunk.Group.userData.GpuWarmReadyR92 = true;
+      Chunk.Group.userData.GpuWarmReadyAt = performance.now();
+    }
+
+    return !Chunk.Cancelled;
+  })().finally(() => {
+    Chunk.GpuWarmPromise = null;
+  });
+
+  return Chunk.GpuWarmPromise;
+}
+
 function ActivateChunk(Chunk) {
   if (!Chunk || Chunk.Cancelled || !Chunk.Ready || Chunk.Active) return false;
 
@@ -968,6 +1076,17 @@ function ActivateChunk(Chunk) {
   );
 
   if (TraversalGateEnabled && !TraversalReady) return false;
+
+  const GpuWarmRequired =
+    TraversalGateEnabled &&
+    typeof Renderer.compileAsync === "function";
+  if (
+    GpuWarmRequired &&
+    !Chunk.Group?.userData?.GpuWarmReadyR92
+  ) {
+    WarmChunkGpu(Chunk).catch(() => {});
+    return false;
+  }
 
   PreparedChunks.delete(Chunk.Index);
   Chunk.Active = true;
@@ -1500,8 +1619,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.15";
-window.__STORE_VERSION__ = "0.35.15";
+window.__STORE_GAME_BUILD__ = "V0.35.16";
+window.__STORE_VERSION__ = "0.35.16";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -1515,6 +1634,7 @@ window.__STORE_GAME__ = {
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
   PrepareChunk,
+  WarmChunkGpu,
   SetStoreSeconds,
   SetCompletedTaskCount,
   CompleteSharedTask,
@@ -1522,6 +1642,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.15"
+  Version: "0.35.16"
 };
 Animate();
