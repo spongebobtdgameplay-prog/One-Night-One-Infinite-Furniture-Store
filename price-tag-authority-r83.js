@@ -165,9 +165,9 @@ function Discover() {
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) RebuildChunk(Chunk).catch(() => {});
 }
 
+// Initial discovery only. Deferred polish explicitly rebuilds each streamed
+// chunk once, so polling here only duplicates work.
 Discover();
-const Interval = setInterval(Discover, 1000);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.27.2";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.35.16-PIPELINE";
