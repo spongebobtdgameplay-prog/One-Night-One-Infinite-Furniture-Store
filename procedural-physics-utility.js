@@ -211,32 +211,80 @@ function MoveToward(Current, Target, MaximumDelta) {
   return Current;
 }
 
-function ResolveWithSlide(Start, Desired, Radius, Entries) {
-  void Entries;
-  const Scene = window.__STORE_GAME__?.Scene || null;
-  if (!Scene?.isScene || typeof Collision.ResolveRaycastHorizontalMove !== "function") {
-    return {
-      Position: Start.clone().add(Desired),
-      Resolved: Desired.clone(),
-      Hit: false,
-      Normal: new THREE.Vector3(),
-      Entry: null
-    };
-  }
+function ResolveEntryMove(Start, Desired, Radius, Entries) {
+  if (
+    !Array.isArray(Entries) ||
+    !Entries.length ||
+    typeof Collision.ResolveHorizontalMove !== "function"
+  ) return null;
 
-  return Collision.ResolveRaycastHorizontalMove(
+  return Collision.ResolveHorizontalMove(
     Start,
     Desired,
     Radius,
+    Entries,
     {
-      Scene,
-      Skin: 0.010,
-      EyeHeight,
+      Skin: 0.012,
       AllowSlide: true,
-      RangePadding: 1.8,
-      HeightFractions: [0.07, 0.17, 0.28, 0.40, 0.52, 0.68, 0.86]
+      MaxIterations: 5,
+      MaxSweepSteps: 72,
+      BinarySteps: 20,
+      SlideIntentThreshold: 0.06
     }
   );
+}
+
+function ResolveWithSlide(Start, Desired, Radius, Entries) {
+  const Scene = window.__STORE_GAME__?.Scene || null;
+  const EntryFirst = ResolveEntryMove(Start, Desired, Radius, Entries);
+  const EntryDelta = EntryFirst?.Resolved?.isVector3 ? EntryFirst.Resolved : Desired;
+
+  let RayResult = {
+    Position: Start.clone().add(EntryDelta),
+    Resolved: EntryDelta.clone(),
+    Hit: false,
+    Normal: new THREE.Vector3(),
+    Entry: null
+  };
+
+  if (Scene?.isScene && typeof Collision.ResolveRaycastHorizontalMove === "function") {
+    RayResult = Collision.ResolveRaycastHorizontalMove(
+      Start,
+      EntryDelta,
+      Radius,
+      {
+        Scene,
+        Skin: 0.012,
+        EyeHeight,
+        AllowSlide: true,
+        RangePadding: 2.2,
+        HeightFractions: [0.055, 0.11, 0.18, 0.27, 0.38, 0.50, 0.63, 0.77, 0.90],
+        LateralRatios: [-0.96, -0.64, -0.32, 0, 0.32, 0.64, 0.96]
+      }
+    );
+  }
+
+  const EntryFinal = ResolveEntryMove(Start, RayResult.Resolved, Radius, Entries);
+  const Final = EntryFinal || RayResult;
+  const Hit = Boolean(EntryFirst?.Hit || RayResult?.Hit || EntryFinal?.Hit);
+
+  if (!Hit) return Final;
+
+  const Normal =
+    EntryFinal?.Hit && EntryFinal.Normal?.lengthSq?.() > 0.000001
+      ? EntryFinal.Normal.clone()
+      : RayResult?.Hit && RayResult.Normal?.lengthSq?.() > 0.000001
+        ? RayResult.Normal.clone()
+        : EntryFirst?.Normal?.clone?.() || new THREE.Vector3();
+
+  return {
+    ...Final,
+    Hit: true,
+    Entry: EntryFinal?.Entry || RayResult?.Entry || EntryFirst?.Entry || null,
+    Normal,
+    Sliding: Boolean(RayResult?.Sliding),
+    SlideVector: RayResult?.SlideVector?.clone?.() || Final.Resolved?.clone?.() || new THREE.Vector3()
+  };
 }
 
 function ContactState() {
@@ -386,4 +434,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.10-SPLIT-STANCE";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.17-STRICT-MESH";
