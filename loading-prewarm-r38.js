@@ -104,7 +104,7 @@ function ResolveWorldSeed() {
 const World = ResolveWorldSeed();
 window.__STORE_WORLD_SEED__ = World.Seed;
 window.__STORE_WORLD_SEED_SOURCE__ = World.Source;
-window.__STORE_WORLD_SEED_BUILD__ = "V0.30.0-SEED";
+window.__STORE_WORLD_SEED_BUILD__ = "V0.35.0-SEED";
 
 function CreateLoaderUi() {
   if (!BootCard) return { SkipButton: null, Warning: null, Progress: null, SeedLabel: null };
@@ -254,4 +254,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.30.0-R93";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.0-RAY";
