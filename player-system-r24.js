@@ -160,6 +160,8 @@ const State = {
   SafeFootRight: new THREE.Vector3(),
   SafeFootLeftReady: false,
   SafeFootRightReady: false,
+  ExactFootMeshSamplesLeft: [],
+  ExactFootMeshSamplesRight: [],
   FootHull: {
     HalfLength: 0.155,
     HalfWidth: 0.082,
@@ -198,6 +200,8 @@ const State = {
   TempKnee: new THREE.Vector3(),
   TempFoot: new THREE.Vector3(),
   TempFootVertex: new THREE.Vector3(),
+  TempExactFootForce: new THREE.Vector3(),
+  TempExactFootTarget: new THREE.Vector3(),
   TempFootBonePosition: new THREE.Vector3(),
   TempFootMeasureDelta: new THREE.Vector3(),
   TempBodyPartPosition: new THREE.Vector3(),
@@ -477,6 +481,8 @@ function UpdateFootHullOrientation() {
 function MeasureFootHullFromRig() {
   if (!State.Pivot) return;
 
+  State.ExactFootMeshSamplesLeft.length = 0;
+  State.ExactFootMeshSamplesRight.length = 0;
   State.Pivot.updateMatrixWorld(true);
 
   const Hull = UpdateFootHullOrientation();
@@ -493,6 +499,10 @@ function MeasureFootHullFromRig() {
   for (const FootName of ["FootL", "FootR"]) {
     const FootBone = State.Bones.get(FootName);
     if (!FootBone) continue;
+
+    const ExactSamples = FootName === "FootL"
+      ? State.ExactFootMeshSamplesLeft
+      : State.ExactFootMeshSamplesRight;
 
     FootBone.getWorldPosition(State.TempFootBonePosition);
 
@@ -525,6 +535,7 @@ function MeasureFootHullFromRig() {
       if (!FootBoneIndices.size) continue;
 
       Mesh.updateWorldMatrix(true, false);
+      Mesh.skeleton.update?.();
 
       for (let VertexIndex = 0; VertexIndex < Position.count; VertexIndex += 1) {
         const Indices = [
@@ -547,7 +558,7 @@ function MeasureFootHullFromRig() {
           }
         }
 
-        if (FootWeight < 0.08) continue;
+        if (FootWeight < 0.02) continue;
 
         State.TempFootVertex.fromBufferAttribute(Position, VertexIndex);
 
@@ -574,7 +585,12 @@ function MeasureFootHullFromRig() {
         );
         const Below = Math.max(0, -State.TempFootMeasureDelta.y);
 
-        if (Forward > 0.42 || Side > 0.28 || Below > 0.20) continue;
+        if (Forward > 0.45 || Side > 0.31 || Below > 0.22) continue;
+
+        ExactSamples.push({
+          Mesh,
+          VertexIndex
+        });
 
         MaxForward = Math.max(MaxForward, Forward);
         MaxSide = Math.max(MaxSide, Side);
@@ -593,17 +609,17 @@ function MeasureFootHullFromRig() {
   Hull.HalfLength = THREE.MathUtils.clamp(
     MaxForward + 0.014,
     0.145,
-    0.230
+    0.240
   );
   Hull.HalfWidth = THREE.MathUtils.clamp(
     MaxSide + 0.012,
     0.070,
-    0.135
+    0.145
   );
   Hull.SoleOffset = THREE.MathUtils.clamp(
     MaxBelow + 0.008,
     0.045,
-    0.115
+    0.120
   );
   Hull.Measured = true;
   Hull.Samples = Samples;
