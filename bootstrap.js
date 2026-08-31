@@ -1,5 +1,5 @@
-const Cache = "20260830-v03535-fastboot2";
-const Version = "0.35.35";
+const Cache = "20260830-v03536-loadertruth1";
+const Version = "0.35.36";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -26,6 +26,20 @@ const BuildVersion = document.getElementById("BuildVersion");
 if (BuildVersion) BuildVersion.textContent = `BUILD V${Version}`;
 window.__STORE_VERSION__ = Version;
 
+const BootStatus = document.getElementById("BootStatus");
+const BootStageLabel = document.getElementById("BootStageLabel");
+
+function SetBootStage(Text) {
+  const Value = String(Text || "");
+  if (BootStatus) BootStatus.textContent = Value;
+  if (BootStageLabel) BootStageLabel.textContent = Value;
+  window.__STORE_BOOT_STAGE__ = Value;
+  window.dispatchEvent(new CustomEvent("store-boot-stage", { detail: { stage: Value } }));
+}
+
+window.__STORE_SET_BOOT_STAGE__ = SetBootStage;
+SetBootStage("Starting store services...");
+
 async function OptionalImport(Path, Label) {
   try {
     return await import(`${Path}?v=${Cache}`);
@@ -45,36 +59,44 @@ function ShowBootError(Error) {
 let CoreReady = false;
 
 try {
+  SetBootStage("Loading account system...");
   await import(`./multiplayer.js?v=${Cache}`);
   const AccountReady = window.__STORE_MULTIPLAYER__.WaitForAccount();
 
+  SetBootStage("Starting furniture asset warm-up...");
   await import(`./loading-prewarm-r38.js?v=${Cache}`);
+
+  SetBootStage("Checking your saved account...");
   await AccountReady;
 
-  const BootStatus = document.getElementById("BootStatus");
-  if (BootStatus) BootStatus.textContent = "Loading store controls...";
-
+  SetBootStage("Loading interface and performance systems...");
   await OptionalImport("./three-text-utility-r73.js", "3D text utility");
   await import(`./idle-budget-r72.js?v=${Cache}`);
   await import(`./single-menu-pre-r24.js?v=${Cache}`);
   await OptionalImport("./world-enhancements-r13.js", "World enhancements");
   await OptionalImport("./performance-manager.js", "Settings and performance manager");
+
+  SetBootStage("Loading collision and procedural physics...");
   await import(`./collision-utility.js?v=${Cache}`);
   await import(`./procedural-physics-utility.js?v=${Cache}`);
   await import(`./surface-contact-utility-r17.js?v=${Cache}`);
 
+  SetBootStage("Loading player controller and animation...");
   await import(`./player-controller.js?v=${Cache}`);
   await import(`./player-system-r24.js?v=${Cache}`);
   await OptionalImport("./sprint-animation-rate-r40.js", "Sprint animation cadence");
   await import(`./animation-motion-authority-r18.js?v=${Cache}`);
   await OptionalImport("./first-person-fullbody-r32.js", "First-person full body");
+
+  SetBootStage("Building the first playable aisle...");
   await import(`./game.js?v=${Cache}`);
   window.__STORE_VERSION__ = Version;
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
+  SetBootStage("Connecting multiplayer to the store...");
   await window.__STORE_MULTIPLAYER__.AttachGame();
-  if (BootStatus) BootStatus.textContent = "Finalizing movement, collision, and streaming...";
 
+  SetBootStage("Loading aisle streaming and showroom systems...");
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
   await import(`./world-polish-r72.js?v=${Cache}`);
@@ -95,6 +117,7 @@ try {
   await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
 
+  SetBootStage("Finalizing movement contact and the main menu...");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await OptionalImport("./final-contact-r19.js", "Final limb contact");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
@@ -109,9 +132,8 @@ if (ReadyButton && CoreReady) {
   ReadyButton.disabled = false;
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
-  const BootStatus = document.getElementById("BootStatus");
   const Seed = Number(window.__STORE_WORLD_SEED__) || 0;
-  if (BootStatus) BootStatus.textContent = `Ready to enter • nearby aisles continue buffering • seed ${Seed}`;
+  SetBootStage(`Ready to enter • nearby aisles continue buffering • seed ${Seed}`);
   window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
