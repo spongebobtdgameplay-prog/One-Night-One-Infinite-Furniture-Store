@@ -12,6 +12,7 @@ const Prices = new Map([
   ["Kitchen_Fridge", 1199.99],
   ["Kitchen_Oven", 899.99],
   ["Kitchen_Sink", 349.99],
+  ["Bathroom_Sink", 299.99],
   ["Bathroom_Bathtub", 799.99],
   ["Bathroom_Toilet", 269.99],
   ["Light_Floor1", 89.99],
@@ -41,4 +42,4 @@ export function FurniturePrice(Name, ChunkIndex = 0, ItemIndex = 0) {
   return `$${Price.toFixed(2)}`;
 }
 
-window.__STORE_PRICING_BUILD__ = "V0.20.1-R80";
+window.__STORE_PRICING_BUILD__ = "V0.35.37-SINKS";
