@@ -34,7 +34,6 @@ const CAMERA_FLOOR = 0.34;
 const CAMERA_CEILING = 3.48;
 const CAMERA_PADDING = 0.22;
 const CAMERA_VOLUME_RADIUS = 0.20;
-const CAMERA_VOLUME_HEIGHT = 0.16;
 const FIRST_PERSON_NEAR = 0.012;
 const FIRST_PERSON_FACE_OFFSET = 0.085;
 const FIRST_PERSON_EYE_LIFT = 0.022;
@@ -2856,48 +2855,33 @@ function ApplyFirstPersonArms() {
 
 function CameraDistance(Target, Desired) {
   const SegmentLength = Math.max(Target.distanceTo(Desired), 0.001);
-  if (!State.Scene || typeof Collision?.RaycastVisibleSegment !== "function") return SegmentLength;
+  const Entries = window.__STORE_COLLISION_BOXES__ || [];
+  if (
+    !Array.isArray(Entries) ||
+    typeof Collision?.EntryBounds !== "function" ||
+    typeof Collision?.SegmentExpandedBoundsHit !== "function"
+  ) return SegmentLength;
 
   let Allowed = SegmentLength;
-  const Probes = [
-    [0, 0],
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-    [0.72, 0.72],
-    [-0.72, 0.72],
-    [0.72, -0.72],
-    [-0.72, -0.72]
-  ];
 
-  State.TempUp.set(0, 1, 0);
+  for (const Entry of Entries) {
+    if (!Entry || Entry.Active === false) continue;
+    const Bounds = Collision.EntryBounds(Entry);
+    if (!Bounds?.min || !Bounds?.max) continue;
 
-  for (const [Side, Vertical] of Probes) {
-    State.TempCameraProbeOffset
-      .copy(State.TempRight)
-      .multiplyScalar(Side * CAMERA_VOLUME_RADIUS)
-      .addScaledVector(State.TempUp, Vertical * CAMERA_VOLUME_HEIGHT);
-
-    State.TempCameraProbeStart.copy(Target).add(State.TempCameraProbeOffset);
-    State.TempCameraProbeEnd.copy(Desired).add(State.TempCameraProbeOffset);
-
-    const Hit = Collision.RaycastVisibleSegment(
-      State.TempCameraProbeStart,
-      State.TempCameraProbeEnd,
-      {
-        Scene: State.Scene,
-        Center: Target,
-        Range: SegmentLength + CAMERA_VOLUME_RADIUS + 1.5,
-        Mode: "camera"
-      }
+    const Hit = Collision.SegmentExpandedBoundsHit(
+      Target,
+      Desired,
+      Bounds,
+      CAMERA_VOLUME_RADIUS
     );
+    if (!Hit || !Number.isFinite(Hit.Fraction)) continue;
 
-    if (!Hit) continue;
-    Allowed = Math.min(
-      Allowed,
-      Math.max(0.42, Hit.Distance - CAMERA_PADDING)
+    const Candidate = Math.max(
+      0.42,
+      Hit.Fraction * SegmentLength - CAMERA_PADDING
     );
+    if (Candidate < Allowed) Allowed = Candidate;
   }
 
   return Allowed;
@@ -3160,4 +3144,4 @@ window.__STORE_PLAYER__ = {
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.34-LOCAL-SHOE-BOX-GUARD";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.41-BOUNDS-CAMERA";
