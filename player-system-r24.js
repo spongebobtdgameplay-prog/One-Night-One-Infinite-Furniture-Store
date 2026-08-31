@@ -504,8 +504,25 @@ function MeasureFootHullFromRig() {
       const SkinWeight = Mesh.geometry.attributes?.skinWeight;
       if (!Position || !SkinIndex || !SkinWeight) continue;
 
-      const BoneIndex = Mesh.skeleton.bones.indexOf(FootBone);
-      if (BoneIndex < 0) continue;
+      const FootBoneIndices = new Set();
+
+      for (
+        let SkeletonIndex = 0;
+        SkeletonIndex < Mesh.skeleton.bones.length;
+        SkeletonIndex += 1
+      ) {
+        let Bone = Mesh.skeleton.bones[SkeletonIndex];
+
+        while (Bone?.isBone) {
+          if (Bone === FootBone) {
+            FootBoneIndices.add(SkeletonIndex);
+            break;
+          }
+          Bone = Bone.parent;
+        }
+      }
+
+      if (!FootBoneIndices.size) continue;
 
       Mesh.updateWorldMatrix(true, false);
 
@@ -525,7 +542,7 @@ function MeasureFootHullFromRig() {
 
         let FootWeight = 0;
         for (let Influence = 0; Influence < 4; Influence += 1) {
-          if (Math.round(Indices[Influence]) === BoneIndex) {
+          if (FootBoneIndices.has(Math.round(Indices[Influence]))) {
             FootWeight += Number(Weights[Influence]) || 0;
           }
         }
