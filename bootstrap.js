@@ -1,5 +1,5 @@
-const Cache = "20260830-v03538-cullcam2";
-const Version = "0.35.38";
+const Cache = "20260831-v03539-honestboot1";
+const Version = "0.35.39";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -28,6 +28,33 @@ window.__STORE_VERSION__ = Version;
 
 const BootStatus = document.getElementById("BootStatus");
 const BootStageLabel = document.getElementById("BootStageLabel");
+const BootWorldPercent = document.getElementById("BootWorldPercent");
+const BootWorldProgressFill = document.getElementById("BootWorldProgressFill");
+const BootWorldCounts = document.getElementById("BootWorldCounts");
+
+function SetWorldProgress(Ready, Total, Stage = "", Detail = "") {
+  const SafeTotal = Math.max(1, Number(Total) || 1);
+  const SafeReady = THREE_MATH_CLAMP(Number(Ready) || 0, 0, SafeTotal);
+  const Percent = Math.round((SafeReady / SafeTotal) * 100);
+
+  if (BootWorldPercent) BootWorldPercent.textContent = `${Percent}%`;
+  if (BootWorldProgressFill) BootWorldProgressFill.style.width = `${Percent}%`;
+  if (BootWorldCounts) {
+    BootWorldCounts.textContent =
+      `Required aisles: ${Math.floor(SafeReady)}/${SafeTotal} ready` +
+      (Detail ? ` • ${Detail}` : "");
+  }
+  if (Stage) SetBootStage(Stage);
+}
+
+function THREE_MATH_CLAMP(Value, Min, Max) {
+  return Math.min(Max, Math.max(Min, Value));
+}
+
+window.addEventListener("store-world-buffer-progress", Event => {
+  const Detail = Event.detail || {};
+  SetWorldProgress(Detail.ready, Detail.total, Detail.stage, Detail.detail);
+});
 
 function SetBootStage(Text) {
   const Value = String(Text || "");
@@ -117,6 +144,35 @@ try {
   await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
 
+  const BootBufferCount = 4;
+  const BootChunks = await window.__STORE_GAME__.PrepareBootBuffer(BootBufferCount);
+  const Presentation = window.__STORE_PRESENTATION_READY_R83__;
+  if (!Presentation?.WaitForPresentationReady) {
+    throw new Error("Presentation readiness gate is unavailable.");
+  }
+
+  for (let Index = 0; Index < BootChunks.length; Index += 1) {
+    const Chunk = BootChunks[Index];
+    SetWorldProgress(
+      Index,
+      BootBufferCount,
+      `Finishing aisle ${Index + 1}/${BootBufferCount}`,
+      "Showroom, collision, prices, and GPU preparation"
+    );
+
+    const Ready = await Presentation.WaitForPresentationReady(Chunk, 18000);
+    if (!Ready) {
+      throw new Error(`Aisle ${Index + 1} did not finish before the boot deadline.`);
+    }
+
+    SetWorldProgress(
+      Index + 1,
+      BootBufferCount,
+      `Aisle ${Index + 1}/${BootBufferCount} ready`,
+      "Fully prepared before entry"
+    );
+  }
+
   SetBootStage("Finalizing movement contact and the main menu...");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await OptionalImport("./final-contact-r19.js", "Final limb contact");
@@ -133,7 +189,7 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
   const Seed = Number(window.__STORE_WORLD_SEED__) || 0;
-  SetBootStage(`Ready to enter • nearby aisles continue buffering • seed ${Seed}`);
+  SetWorldProgress(4, 4, `Ready to enter • four aisles fully buffered • seed ${Seed}`, "No required aisle generation remains");
   window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
