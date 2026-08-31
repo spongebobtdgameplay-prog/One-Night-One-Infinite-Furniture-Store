@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03536-loadertruth1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03537-fps1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -57,18 +57,18 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 4;
-const CHUNKS_BEHIND = 2;
-const PREFETCH_CHUNKS = 3;
-const STREAM_PROMOTION_DISTANCE = 42;
+const CHUNKS_AHEAD = 2;
+const CHUNKS_BEHIND = 1;
+const PREFETCH_CHUNKS = 1;
+const STREAM_PROMOTION_DISTANCE = 12;
 const STREAM_KEEP_BEHIND = 2;
-const VIEW_KEEP_DISTANCE = 185;
+const VIEW_KEEP_DISTANCE = 120;
 const VIEW_KEEP_HOLD_MS = 2200;
-const PREPARED_BACK_CACHE = 5;
-const PREPARED_FORWARD_EXTRA = 2;
+const PREPARED_BACK_CACHE = 2;
+const PREPARED_FORWARD_EXTRA = 1;
 const OBJECT_STREAM_INTERVAL_MS = 120;
-const OBJECT_STREAM_NEAR_DISTANCE = 38;
-const OBJECT_STREAM_FAR_DISTANCE = 88;
+const OBJECT_STREAM_NEAR_DISTANCE = 34;
+const OBJECT_STREAM_FAR_DISTANCE = 72;
 const PRICE_TAG_STREAM_DISTANCE = 28;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
@@ -1796,18 +1796,23 @@ let BackgroundChunkBufferToken = 0;
 function StartBackgroundChunkBuffer(Token) {
   let Index = 1;
 
-  const QueueNext = () => {
-    if (Token !== BackgroundChunkBufferToken || Index > 8) return;
+  const QueueNext = async () => {
+    if (Token !== BackgroundChunkBufferToken || Index > 3 || window.__STORE_GAMEPLAY_STARTED__) return;
     const RequestedIndex = Index;
     Index += 1;
-    RequestChunk(RequestedIndex).catch(Error => {
+
+    try {
+      await RequestChunk(RequestedIndex);
+    } catch (Error) {
       console.warn(`Background aisle ${RequestedIndex + 1} could not be prepared yet.`, Error);
-    });
+    }
+
+    if (Token !== BackgroundChunkBufferToken || window.__STORE_GAMEPLAY_STARTED__) return;
 
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(QueueNext, { timeout: 500 });
+      requestIdleCallback(() => QueueNext(), { timeout: 650 });
     } else {
-      setTimeout(QueueNext, 80);
+      setTimeout(() => QueueNext(), 120);
     }
   };
 
@@ -2099,6 +2104,8 @@ function Animate() {
 
 StartButton.addEventListener("click", () => {
   Started = true;
+  window.__STORE_GAMEPLAY_STARTED__ = true;
+  window.dispatchEvent(new CustomEvent("store-gameplay-started"));
   BootScreen.classList.remove("ScreenVisible");
   Hud.classList.remove("Hidden");
   Controls.lock();
@@ -2153,8 +2160,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.36";
-window.__STORE_VERSION__ = "0.35.36";
+window.__STORE_GAME_BUILD__ = "V0.35.37";
+window.__STORE_VERSION__ = "0.35.37";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2179,6 +2186,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.36"
+  Version: "0.35.37"
 };
 Animate();
