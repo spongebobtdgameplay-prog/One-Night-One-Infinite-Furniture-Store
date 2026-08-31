@@ -353,7 +353,13 @@ async function PlacePlannedRetailAsset(Chunk, Entry) {
 function PlacementYield() {
   return new Promise(Resolve => {
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => Resolve(), { timeout: 700 });
+      requestIdleCallback(Deadline => {
+        if (Deadline.timeRemaining() >= 4) {
+          Resolve();
+          return;
+        }
+        requestAnimationFrame(() => PlacementYield().then(Resolve));
+      });
     } else {
       requestAnimationFrame(() => Resolve());
     }
@@ -405,4 +411,4 @@ await Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key)));
 Discover();
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.24-FRUSTUM";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.34-IDLE-PLACEMENT";
