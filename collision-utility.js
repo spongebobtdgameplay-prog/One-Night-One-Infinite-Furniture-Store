@@ -556,6 +556,15 @@ function HasRayIgnoreAncestor(Object, Mode = "movement") {
   return false;
 }
 
+function HasExactMovementAuthorityAncestor(Object) {
+  let Current = Object;
+  while (Current) {
+    if (Current.userData?.LegacyMovementCollisionDisabledR35 === true) return true;
+    Current = Current.parent;
+  }
+  return false;
+}
+
 function MeshHasVisibleMaterial(Object) {
   if (!Object?.material) return true;
   const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
@@ -575,6 +584,7 @@ function IsVisibleRayCollisionMesh(Object, Mode = "movement") {
     HasRayIgnoreAncestor(Object, Mode)
   ) return false;
   if (!MeshHasVisibleMaterial(Object)) return false;
+  if (Mode === "movement" && HasExactMovementAuthorityAncestor(Object)) return false;
 
   const Name = String(Object.name || "");
   if (/Text|Label|Glow|Highlight|Selection|Outline/i.test(Name)) return false;
