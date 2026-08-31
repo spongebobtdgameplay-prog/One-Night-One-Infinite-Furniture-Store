@@ -1791,11 +1791,13 @@ function EnsureChunksAroundPlayer() {
 }
 
 
-function StartBackgroundChunkBuffer() {
+let BackgroundChunkBufferToken = 0;
+
+function StartBackgroundChunkBuffer(Token) {
   let Index = 1;
 
   const QueueNext = () => {
-    if (Index > 8) return;
+    if (Token !== BackgroundChunkBufferToken || Index > 8) return;
     const RequestedIndex = Index;
     Index += 1;
     RequestChunk(RequestedIndex).catch(Error => {
@@ -1813,6 +1815,8 @@ function StartBackgroundChunkBuffer() {
 }
 
 async function PrepareInitialWorld() {
+  const BufferToken = ++BackgroundChunkBufferToken;
+
   if (BootStatus) {
     BootStatus.textContent = `Building first playable aisle • seed ${WorldSeed}`;
   }
@@ -1825,7 +1829,7 @@ async function PrepareInitialWorld() {
     BootStatus.textContent = `First aisle ready • buffering nearby aisles • seed ${WorldSeed}`;
   }
 
-  StartBackgroundChunkBuffer();
+  StartBackgroundChunkBuffer(BufferToken);
 }
 
 function NormalizeWorldSeed(Value) {
