@@ -1,5 +1,5 @@
-const Cache = "20260831-v03539-honestboot1";
-const Version = "0.35.39";
+const Cache = "20260831-v03540-strictboot1";
+const Version = "0.35.40";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -54,6 +54,22 @@ function THREE_MATH_CLAMP(Value, Min, Max) {
 window.addEventListener("store-world-buffer-progress", Event => {
   const Detail = Event.detail || {};
   SetWorldProgress(Detail.ready, Detail.total, Detail.stage, Detail.detail);
+});
+
+let LastWorldReady = 0;
+let LastWorldTotal = 4;
+
+window.__STORE_SET_BOOT_DETAIL__ = Text => {
+  if (!BootWorldCounts) return;
+  BootWorldCounts.textContent =
+    `Required aisles: ${LastWorldReady}/${LastWorldTotal} ready` +
+    (Text ? ` • ${String(Text)}` : "");
+};
+
+window.addEventListener("store-world-buffer-progress", Event => {
+  const Detail = Event.detail || {};
+  LastWorldReady = Math.max(0, Math.floor(Number(Detail.ready) || 0));
+  LastWorldTotal = Math.max(1, Math.floor(Number(Detail.total) || 4));
 });
 
 function SetBootStage(Text) {
@@ -160,17 +176,21 @@ try {
       "Showroom, collision, prices, and GPU preparation"
     );
 
-    const Ready = await Presentation.WaitForPresentationReady(Chunk, 18000);
+    const Ready = await Presentation.WaitForPresentationReady(Chunk, 30000);
     if (!Ready) {
       throw new Error(`Aisle ${Index + 1} did not finish before the boot deadline.`);
     }
 
-    const Degraded = Boolean(Chunk.Group?.userData?.PresentationDegradedR83);
+    const Report = Presentation.StrictReadinessReport?.(Chunk);
+    if (!Report?.Ready) {
+      throw new Error(`Aisle ${Index + 1} reported ready without passing strict completeness checks.`);
+    }
+
     SetWorldProgress(
       Index + 1,
       BootBufferCount,
-      `Aisle ${Index + 1}/${BootBufferCount} ready`,
-      Degraded ? "Settled with optional content skipped" : "Presentation settled before entry"
+      `Aisle ${Index + 1}/${BootBufferCount} complete`,
+      `objects ${Report.Placed}/${Report.Planned} • prices ${Report.Tags}/${Report.Sellable} • GPU ready`
     );
   }
 
@@ -190,7 +210,7 @@ if (ReadyButton && CoreReady) {
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
   const Seed = Number(window.__STORE_WORLD_SEED__) || 0;
-  SetWorldProgress(4, 4, `Ready to enter • four aisles fully buffered • seed ${Seed}`, "No required aisle generation remains");
+  SetWorldProgress(4, 4, `Ready to enter • four aisles fully generated • seed ${Seed}`, "All planned objects, prices, collision, presentation, and GPU prep passed");
   window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
