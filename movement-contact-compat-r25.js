@@ -1219,11 +1219,11 @@ function InstallStrictMovementVerifier() {
 }
 
 
-InstallStrictMovementVerifier();
-
 window.__STORE_MOVEMENT_CONTACT__ = Contact;
 window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
-  Install: InstallStrictMovementVerifier,
+  Install() {
+    return false;
+  },
   CollectNearbyMeshRecords,
   FindSphereTriangleContact,
   FindBodyTriangleContact,
@@ -1238,6 +1238,6 @@ window.__STORE_STRICT_MOVEMENT_VERIFIER__ = {
   }
 };
 
-window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.11-RESOLVED-MOTION";
+window.__STORE_MOVEMENT_CONTACT_COMPAT_BUILD__ = "V0.35.39-NO-DUPLICATE-TRIANGLE-WRAPPER";
 
-window.__STORE_MOVEMENT_CONTACT_BUILD__ = "V0.35.27-STRUCTURE-ONLY";
+window.__STORE_MOVEMENT_CONTACT_BUILD__ = "V0.35.39-CACHED-COLLISION-AUTHORITY";
