@@ -559,8 +559,6 @@ function MeasureFootHullFromRig() {
           }
         }
 
-        if (FootWeight < 0.02) continue;
-
         State.TempFootVertex.fromBufferAttribute(Position, VertexIndex);
 
         if (typeof Mesh.applyBoneTransform === "function") {
@@ -584,9 +582,17 @@ function MeasureFootHullFromRig() {
           State.TempFootMeasureDelta.x * RightX +
           State.TempFootMeasureDelta.z * RightZ
         );
-        const Below = Math.max(0, -State.TempFootMeasureDelta.y);
+        const Vertical = State.TempFootMeasureDelta.y;
+        const Below = Math.max(0, -Vertical);
 
-        if (Forward > 0.45 || Side > 0.31 || Below > 0.22) continue;
+        if (
+          Forward > 0.45 ||
+          Side > 0.31 ||
+          Vertical < -0.22 ||
+          Vertical > 0.18
+        ) continue;
+
+        if (FootWeight < 0.02 && Forward > 0.34) continue;
 
         ExactSamples.push({
           Mesh,
