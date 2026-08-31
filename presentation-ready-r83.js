@@ -90,63 +90,106 @@ function RemoveTerminalBeacons(Chunk) {
   }
 }
 
-function PlacedLayoutSlots(Chunk) {
-  const Placed = new Set();
+function DirectChildForSlot(Chunk, Slot, Predicate) {
+  return (Chunk.Group?.children || []).some(Object =>
+    Object?.parent === Chunk.Group &&
+    String(Object.userData?.LayoutSlot || "") === String(Slot || "") &&
+    Predicate(Object)
+  );
+}
 
-  Chunk.Group?.traverse?.(Object => {
-    const Slot = String(Object?.userData?.LayoutSlot || "");
-    if (Slot) Placed.add(Slot);
-  });
+function EntryPresent(Chunk, GroupName, Entry) {
+  const Slot = String(Entry?.Slot || "");
+  if (!Slot) return false;
 
-  for (const Object of Chunk.TaskObjects || []) {
-    const Slot = String(Object?.userData?.LayoutSlot || "");
-    if (Slot) Placed.add(Slot);
+  if (GroupName === "Base") {
+    return (Chunk.Models || []).some(Model =>
+      Model?.parent &&
+      String(Model.userData?.LayoutSlot || "") === Slot
+    );
   }
 
-  return Placed;
+  if (GroupName === "Rugs") {
+    return DirectChildForSlot(Chunk, Slot, Object =>
+      Object.userData?.WalkableCarpetR87 === true ||
+      Object.userData?.DecorationKind === "Rug" ||
+      String(Object.name || "").startsWith("ShowroomRug-")
+    );
+  }
+
+  if (GroupName === "Retail") {
+    return DirectChildForSlot(Chunk, Slot, Object =>
+      Object.userData?.RetailImportedR79 === true
+    );
+  }
+
+  if (GroupName === "Sale") {
+    return DirectChildForSlot(Chunk, Slot, Object =>
+      Object.userData?.RetailImportedR84 === true
+    );
+  }
+
+  if (GroupName === "Zones") {
+    return DirectChildForSlot(Chunk, Slot, Object =>
+      Object.userData?.RetailZoneR82 === true &&
+      Object.userData?.WallMountedR82 !== true
+    );
+  }
+
+  if (GroupName === "ZoneHeaders") {
+    return DirectChildForSlot(Chunk, Slot, Object =>
+      Object.userData?.RetailZoneR82 === true &&
+      (
+        Object.userData?.WallMountedR82 === true ||
+        String(Object.name || "").startsWith("RetailZoneHeaderR82-")
+      )
+    );
+  }
+
+  if (GroupName === "Partitions") {
+    return DirectChildForSlot(Chunk, Slot, Object =>
+      String(Object.name || "") === "ShowroomPartition"
+    );
+  }
+
+  if (GroupName === "Task") {
+    return (Chunk.TaskObjects || []).some(Object =>
+      Object?.parent &&
+      String(Object.userData?.LayoutSlot || "") === Slot
+    );
+  }
+
+  return false;
 }
 
 function PlannedLayoutEntries(Chunk) {
   const Entries = [];
-  for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
-    for (const Entry of Chunk.Layout?.[GroupName] || []) Entries.push(Entry);
+  for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "ZoneHeaders", "Partitions"]) {
+    for (const Entry of Chunk.Layout?.[GroupName] || []) {
+      Entries.push({ GroupName, Entry });
+    }
   }
-  if (Chunk.Layout?.Task) Entries.push(Chunk.Layout.Task);
+  if (Chunk.Layout?.Task) Entries.push({ GroupName: "Task", Entry: Chunk.Layout.Task });
   return Entries;
 }
 
 function LayoutOccupancyReady(Chunk) {
-  const Placed = PlacedLayoutSlots(Chunk);
-
-  for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
-    for (const Entry of Chunk.Layout?.[GroupName] || []) {
-      if (Entry?.Required === false) continue;
-      if (!Placed.has(Entry.Slot)) return false;
-    }
-  }
-
-  if (
-    Chunk.Layout?.Task &&
-    Chunk.Layout.Task.Required !== false &&
-    !Placed.has(Chunk.Layout.Task.Slot)
-  ) return false;
-
-  return true;
+  return PlannedLayoutEntries(Chunk).every(({ GroupName, Entry }) =>
+    Entry?.Required === false || EntryPresent(Chunk, GroupName, Entry)
+  );
 }
 
 function FullLayoutOccupancyReady(Chunk) {
-  const Placed = PlacedLayoutSlots(Chunk);
-  return PlannedLayoutEntries(Chunk).every(Entry =>
-    Placed.has(String(Entry?.Slot || ""))
+  return PlannedLayoutEntries(Chunk).every(({ GroupName, Entry }) =>
+    EntryPresent(Chunk, GroupName, Entry)
   );
 }
 
 function StrictReadinessReport(Chunk) {
   const Planned = PlannedLayoutEntries(Chunk);
-  const Placed = PlacedLayoutSlots(Chunk);
   const Missing = Planned
-    .filter(Entry => !Placed.has(String(Entry?.Slot || "")))
-    .map(Entry => String(Entry?.Slot || Entry?.Model || "unknown"));
+    .filter(({ GroupName, Entry }) => !EntryPresent(Chunk, GroupName, Entry))
+    .map(({ GroupName, Entry }) => `${GroupName}:${String(Entry?.Slot || Entry?.Model || "unknown")}`);
 
   const Sellable = SellableCount(Chunk);
   const Tags = CompactTagCount(Chunk);
@@ -543,4 +586,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.40-STRICT-COMPLETE-GATE";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.41-REAL-ROOT-GATE";
