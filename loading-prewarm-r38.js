@@ -257,6 +257,6 @@ async function BackgroundWorker() {
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = "background";
-window.__STORE_PRELOAD_BUILD__ = "V0.35.37-GAMEPLAY-BUDGET";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.39-ASSET-DETAIL-ONLY";
 DispatchProgress();
 BackgroundWorker().catch(() => {});
