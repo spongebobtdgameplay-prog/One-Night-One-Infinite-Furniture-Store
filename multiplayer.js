@@ -1383,6 +1383,14 @@ function StartGameFromRoom() {
   StartGameFlight = (async () => {
     const SeedResult = await SyncRoomSeed(CurrentRoom);
     if (!SeedResult?.ok) return;
+
+    if (typeof window.__STORE_ENSURE_START_READY__ === "function") {
+      const Ready = await window.__STORE_ENSURE_START_READY__();
+      if (!Ready || window.__STORE_START_GATE__?.Ready !== true) return;
+    } else if (window.__STORE_START_GATE__?.Ready !== true) {
+      return;
+    }
+
     ApplyCompletedTasks(CurrentRoom?.completedTasks || []);
     const Finalizer = window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk;
     if (typeof Finalizer === "function") {
@@ -2113,7 +2121,7 @@ window.__STORE_MULTIPLAYER__ = {
   GetState,
   GetSocket: () => Socket
 };
-window.__STORE_MULTIPLAYER_BUILD__ = "V0.27.3";
+window.__STORE_MULTIPLAYER_BUILD__ = "V0.35.41-START-AUTHORITY";
 
 InitializeAccountGate().catch(Error => {
   SetStatus("offline");
