@@ -9,7 +9,6 @@ const Templates = new Map();
 const Processing = new WeakSet();
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
-const MicrosoftCardboardBox = "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb";
 
 const Assets = Object.freeze({
   CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
@@ -17,17 +16,7 @@ const Assets = Object.freeze({
   DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   FloorLamp: { Url: `${KayKitBase}lamp_standing.gltf`, Label: "FLOOR LAMP", Price: "119.99", Height: 1.58, MaxWidth: 0.62, MaxDepth: 0.62, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   AccentCabinet: { Url: `${KayKitBase}cabinet_small_decorated.gltf`, Label: "ACCENT CABINET", Price: "219.99", Height: 0.92, MaxWidth: 1.05, MaxDepth: 0.70, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
-  BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" },
-  CardboardBox: {
-    Urls: [MicrosoftCardboardBox],
-    Label: "CARDBOARD BOX",
-    Description: "WORN CORRUGATED SHIPPING BOX",
-    Price: "$4.99",
-    Height: 0.46,
-    MaxWidth: 0.70,
-    MaxDepth: 0.70,
-    Source: "https://github.com/microsoft/experimental-pcf-control-assets",
-  }
+  BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" }
 });
 
 function BoundsOf(Object) {
@@ -52,42 +41,6 @@ function CloneMaterials(Root) {
     Object.geometry?.computeBoundingSphere?.();
   });
 }
-function TextureHasImage(Texture) {
-  return Boolean(Texture?.isTexture && (Texture.image || Texture.source?.data));
-}
-
-function HasLoadedColorTexture(Root) {
-  let Found = false;
-  Root?.traverse?.(Object => {
-    if (Found || !Object?.isMesh || !Object.material) return;
-    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
-    for (const Material of Materials) {
-      if (TextureHasImage(Material?.map)) {
-        Found = true;
-        break;
-      }
-    }
-  });
-  return Found;
-}
-
-function ApplyCardboardColorFallback(Root) {
-  Root.traverse(Object => {
-    if (!Object?.isMesh || !Object.material) return;
-    const Materials = Array.isArray(Object.material) ? Object.material : [Object.material];
-    const Copies = Materials.map(Material => {
-      const Copy = Material.clone();
-      if (Copy.color?.setHex) Copy.color.setHex(0x8c6844);
-      if ("roughness" in Copy) Copy.roughness = 0.94;
-      if ("metalness" in Copy) Copy.metalness = 0;
-      Copy.needsUpdate = true;
-      return Copy;
-    });
-    Object.material = Array.isArray(Object.material) ? Copies : Copies[0];
-  });
-}
-
-
 async function LoadTemplate(Key) {
   const Definition = Assets[Key];
   if (!Definition) return null;
@@ -102,25 +55,7 @@ async function LoadTemplate(Key) {
           Root.name = `RetailSaleTemplateR84-${Key}`;
           CloneMaterials(Root);
 
-          if (Key === "CardboardBox") {
-            if (HasLoadedColorTexture(Root)) {
-              Root.userData.CardboardEmbeddedMaterialR90 = true;
-            } else {
-              ApplyCardboardColorFallback(Root);
-              Root.userData.CardboardMaterialFallbackR90 = true;
-            }
 
-            Root.traverse(Item => {
-              if (!Item?.isMesh) return;
-              Item.frustumCulled = true;
-              Item.geometry?.computeVertexNormals?.();
-              Item.geometry?.computeBoundingBox?.();
-              Item.geometry?.computeBoundingSphere?.();
-            });
-
-            const Bounds = BoundsOf(Root);
-            if (Bounds.isEmpty()) throw new Error("Cardboard model loaded without usable geometry.");
-          }
 
           Root.userData.Source = Definition.Source;
           Root.userData.AssetUrl = Urls[Index];
@@ -184,19 +119,6 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   Object.position.x += Entry.X;
   Object.position.z += Entry.Z;
 
-  if (Entry.AssetKey === "CardboardBox") {
-    Object.rotation.x = 0;
-    Object.rotation.z = 0;
-    Object.userData.CardboardBoxStableR90 = true;
-    Object.userData.ForceSolidCollisionR30 = true;
-    Object.traverse(Item => {
-      if (!Item?.isMesh) return;
-      Item.frustumCulled = true;
-      Item.castShadow = false;
-      Item.receiveShadow = false;
-    });
-  }
-
   Object.name = `${Entry.Name}-${Index}`;
   Object.userData.ChunkId = Chunk.Id;
   Object.userData.LayoutSlot = Entry.Slot;
@@ -210,10 +132,6 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
   Object.userData.DecorationNoCollision = false;
   Chunk.Group.add(Object);
   Object.updateWorldMatrix(true, true);
-
-  if (Entry.AssetKey === "CardboardBox") {
-    Object.userData.RayCollisionSolidR35 = true;
-  }
 
   return Object;
 }
@@ -293,4 +211,4 @@ function Discover() {
 Discover();
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.34-REAL-ACCENTS-IDLE";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.34-NO-BOX-PROPS";
