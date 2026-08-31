@@ -283,8 +283,8 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
         EyeHeight,
         AllowSlide: true,
         RangePadding: 2.2,
-        HeightFractions: [0.055, 0.11, 0.18, 0.27, 0.38, 0.50, 0.63, 0.77, 0.90],
-        LateralRatios: [-0.96, -0.64, -0.32, 0, 0.32, 0.64, 0.96]
+        HeightFractions: [0.08, 0.24, 0.48, 0.72, 0.90],
+        LateralRatios: [-0.90, -0.45, 0, 0.45, 0.90]
       }
     );
   }
@@ -459,4 +459,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.18-CURB-PROBE";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.39-CACHED-COLLISION-RAY-BUDGET";
