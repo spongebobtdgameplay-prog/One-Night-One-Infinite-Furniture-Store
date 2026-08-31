@@ -1,5 +1,5 @@
-const Cache = "20260830-v03534-boxperfclip3";
-const Version = "0.35.34";
+const Cache = "20260830-v03535-fastboot1";
+const Version = "0.35.35";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -46,9 +46,14 @@ let CoreReady = false;
 
 try {
   await import(`./multiplayer.js?v=${Cache}`);
-  await window.__STORE_MULTIPLAYER__.WaitForAccount();
+  const AccountReady = window.__STORE_MULTIPLAYER__.WaitForAccount();
 
   await import(`./loading-prewarm-r38.js?v=${Cache}`);
+  await AccountReady;
+
+  const BootStatus = document.getElementById("BootStatus");
+  if (BootStatus) BootStatus.textContent = "Loading store controls...";
+
   await OptionalImport("./three-text-utility-r73.js", "3D text utility");
   await import(`./idle-budget-r72.js?v=${Cache}`);
   await import(`./single-menu-pre-r24.js?v=${Cache}`);
@@ -68,6 +73,7 @@ try {
   window.__STORE_GAME_BUILD__ = `V${Version}`;
 
   await window.__STORE_MULTIPLAYER__.AttachGame();
+  if (BootStatus) BootStatus.textContent = "Finalizing movement, collision, and streaming...";
 
   await OptionalImport("./forward-generation-r78.js", "Forward-only infinite generation");
   await import(`./pointer-lock-runtime-r19.js?v=${Cache}`);
@@ -103,6 +109,9 @@ if (ReadyButton && CoreReady) {
   ReadyButton.disabled = false;
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
+  const BootStatus = document.getElementById("BootStatus");
+  const Seed = Number(window.__STORE_WORLD_SEED__) || 0;
+  if (BootStatus) BootStatus.textContent = `Ready to enter • nearby aisles continue buffering • seed ${Seed}`;
   window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
