@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03534-boxperfclip3";
+import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03535-fastboot1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -661,13 +661,30 @@ function ComposeSupportedFixture(Name, Fixture, SupportTemplate) {
   return Group;
 }
 
+const MODEL_LOAD_TIMEOUT_MS = 10000;
+
+function LoadModelWithTimeout(Name, Definition) {
+  const LoadPromise = Loader.loadAsync(Definition.Url);
+  let TimeoutId = 0;
+
+  const TimeoutPromise = new Promise((_, Reject) => {
+    TimeoutId = setTimeout(() => {
+      Reject(new Error(`Model ${Name} exceeded the ${MODEL_LOAD_TIMEOUT_MS}ms load limit.`));
+    }, MODEL_LOAD_TIMEOUT_MS);
+  });
+
+  return Promise.race([LoadPromise, TimeoutPromise]).finally(() => {
+    clearTimeout(TimeoutId);
+  });
+}
+
 async function GetModelTemplate(Name) {
   const Definition = ModelDefinitions[Name];
   if (!Definition) throw new Error(`Unknown model ${Name}`);
 
   if (!ModelCache.has(Name)) {
-    ModelCache.set(Name, (async () => {
-      const Gltf = await Loader.loadAsync(Definition.Url);
+    const Pending = (async () => {
+      const Gltf = await LoadModelWithTimeout(Name, Definition);
       const Fixture = Gltf.scene;
       PrepareModel(Name, Fixture);
 
@@ -675,19 +692,15 @@ async function GetModelTemplate(Name) {
 
       const SupportTemplate = await GetModelTemplate(Definition.SupportModel);
       return ComposeSupportedFixture(Name, Fixture, SupportTemplate);
-    })());
+    })().catch(Error => {
+      ModelCache.delete(Name);
+      throw Error;
+    });
+
+    ModelCache.set(Name, Pending);
   }
 
   return ModelCache.get(Name);
-}
-
-async function PreloadBaseFurniture() {
-  const Names = Object.keys(ModelDefinitions);
-  for (let Index = 0; Index < Names.length; Index += 2) {
-    const Batch = Names.slice(Index, Index + 2);
-    await Promise.allSettled(Batch.map(Name => GetModelTemplate(Name)));
-    await new Promise(Resolve => requestAnimationFrame(Resolve));
-  }
 }
 
 function AddModelCollision(Chunk, Entry) {
@@ -1778,19 +1791,41 @@ function EnsureChunksAroundPlayer() {
 }
 
 
-async function PrepareInitialWorld() {
-  const Order = [0, 1, 2, 3, 4];
-  for (let Position = 0; Position < Order.length; Position += 1) {
-    if (BootStatus) {
-      BootStatus.textContent =
-        `Assembling store ${Position + 1}/${Order.length} • seed ${WorldSeed}`;
+function StartBackgroundChunkBuffer() {
+  let Index = 1;
+
+  const QueueNext = () => {
+    if (Index > 8) return;
+    const RequestedIndex = Index;
+    Index += 1;
+    RequestChunk(RequestedIndex).catch(Error => {
+      console.warn(`Background aisle ${RequestedIndex + 1} could not be prepared yet.`, Error);
+    });
+
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(QueueNext, { timeout: 500 });
+    } else {
+      setTimeout(QueueNext, 80);
     }
-    const Chunk = await PrepareChunk(Order[Position]);
-    if (Chunk) ActivateChunk(Chunk);
+  };
+
+  QueueNext();
+}
+
+async function PrepareInitialWorld() {
+  if (BootStatus) {
+    BootStatus.textContent = `Building first playable aisle • seed ${WorldSeed}`;
   }
-  for (let Index = 5; Index <= 8; Index += 1) {
-    RequestChunk(Index).catch(() => {});
+
+  const FirstChunk = await PrepareChunk(0);
+  if (!FirstChunk) throw new Error("The first store aisle could not be prepared.");
+  ActivateChunk(FirstChunk);
+
+  if (BootStatus) {
+    BootStatus.textContent = `First aisle ready • buffering nearby aisles • seed ${WorldSeed}`;
   }
+
+  StartBackgroundChunkBuffer();
 }
 
 function NormalizeWorldSeed(Value) {
@@ -2040,12 +2075,11 @@ const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.40);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
-if (BootStatus) BootStatus.textContent = "Preloading furniture models...";
-await PreloadBaseFurniture();
+if (BootStatus) BootStatus.textContent = "Building the first playable aisle...";
 await PrepareInitialWorld();
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
 window.__STORE_APPLY_PERFORMANCE__?.();
-if (BootStatus) BootStatus.textContent = `Store ready — buffered endless aisles • seed ${WorldSeed}.`;
+if (BootStatus) BootStatus.textContent = `First aisle ready • finalizing store systems • seed ${WorldSeed}`;
 
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
@@ -2118,8 +2152,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.34";
-window.__STORE_VERSION__ = "0.35.34";
+window.__STORE_GAME_BUILD__ = "V0.35.35";
+window.__STORE_VERSION__ = "0.35.35";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2144,6 +2178,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.34"
+  Version: "0.35.35"
 };
 Animate();
