@@ -42,11 +42,12 @@ const AssetUrls = [
   `${KayKitBase}book_single.gltf`,
   `${KayKitBase}pillow_A.gltf`,
   `${KayKitBase}pillow_B.gltf`,
+  `${KayKitBase}lamp_standing.gltf`,
+  `${KayKitBase}cabinet_small_decorated.gltf`,
   `${KenneyBase}shopping-cart.glb`,
   `${KenneyBase}shopping-basket.glb`,
   `${KenneyBase}shelf-bags.glb`,
-  `${KenneyBase}shelf-boxes.glb`,
-  "https://raw.githubusercontent.com/microsoft/experimental-pcf-control-assets/master/cardboard_box.glb"
+  `${KenneyBase}shelf-boxes.glb`
 ];
 
 const TrackedAssets = new Set(AssetUrls);
@@ -253,4 +254,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.35.28-KITCHEN-CABINET";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.34-REAL-ACCENTS";
