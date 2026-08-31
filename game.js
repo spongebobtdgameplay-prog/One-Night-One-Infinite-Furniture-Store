@@ -66,10 +66,11 @@ const VIEW_KEEP_DISTANCE = 120;
 const VIEW_KEEP_HOLD_MS = 2200;
 const PREPARED_BACK_CACHE = 2;
 const PREPARED_FORWARD_EXTRA = 1;
-const OBJECT_STREAM_INTERVAL_MS = 120;
-const OBJECT_STREAM_NEAR_DISTANCE = 34;
-const OBJECT_STREAM_FAR_DISTANCE = 72;
-const PRICE_TAG_STREAM_DISTANCE = 28;
+const OBJECT_STREAM_INTERVAL_MS = 100;
+const OBJECT_STREAM_ALWAYS_DISTANCE = 10;
+const OBJECT_STREAM_NEAR_DISTANCE = 18;
+const OBJECT_STREAM_FAR_DISTANCE = 54;
+const PRICE_TAG_STREAM_DISTANCE = 20;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
@@ -1536,7 +1537,6 @@ function StreamableRoots(Chunk) {
   const Roots = [];
   for (const Object of Children) {
     if (IsStructuralStreamObject(Object)) continue;
-    if (IsPersistentCollisionRenderRoot(Object, Chunk)) continue;
     Roots.push(Object);
   }
 
@@ -1638,38 +1638,13 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
 
       if (
         VisibleNow ||
-        DistanceSq <= OBJECT_STREAM_NEAR_DISTANCE * OBJECT_STREAM_NEAR_DISTANCE
+        DistanceSq <= OBJECT_STREAM_ALWAYS_DISTANCE * OBJECT_STREAM_ALWAYS_DISTANCE
       ) {
         SetObjectStreamCulled(Object, false);
         continue;
       }
 
-      const Distance = Math.sqrt(Math.max(0.000001, DistanceSq));
-      const Dot = (
-        StreamToObject.x * StreamCameraForward.x +
-        StreamToObject.z * StreamCameraForward.z
-      ) / Distance;
-
-      const Culled = Boolean(Object.userData?.ObjectStreamCulledR101);
-      if (Culled) {
-        const PreView =
-          Dot > -0.28 ||
-          Distance <= OBJECT_STREAM_NEAR_DISTANCE + 12;
-
-        if (PreView) SetObjectStreamCulled(Object, false);
-        continue;
-      }
-
-      const DeepBehind =
-        Distance > OBJECT_STREAM_NEAR_DISTANCE + 12 &&
-        Dot < -0.48;
-      const FarOutsideView =
-        Distance > OBJECT_STREAM_FAR_DISTANCE &&
-        Dot < 0.06;
-
-      if (DeepBehind || FarOutsideView) {
-        SetObjectStreamCulled(Object, true);
-      }
+      SetObjectStreamCulled(Object, true);
     }
   }
 }
@@ -2160,8 +2135,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.37";
-window.__STORE_VERSION__ = "0.35.37";
+window.__STORE_GAME_BUILD__ = "V0.35.38";
+window.__STORE_VERSION__ = "0.35.38";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2186,6 +2161,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.37"
+  Version: "0.35.38"
 };
 Animate();
