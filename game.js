@@ -66,11 +66,10 @@ const VIEW_KEEP_DISTANCE = 120;
 const VIEW_KEEP_HOLD_MS = 2200;
 const PREPARED_BACK_CACHE = 2;
 const PREPARED_FORWARD_EXTRA = 1;
-const OBJECT_STREAM_INTERVAL_MS = 100;
-const OBJECT_STREAM_ALWAYS_DISTANCE = 10;
-const OBJECT_STREAM_NEAR_DISTANCE = 18;
-const OBJECT_STREAM_FAR_DISTANCE = 46;
-const PRICE_TAG_STREAM_DISTANCE = 20;
+const OBJECT_STREAM_INTERVAL_MS = 120;
+const OBJECT_STREAM_NEAR_DISTANCE = 34;
+const OBJECT_STREAM_FAR_DISTANCE = 72;
+const PRICE_TAG_STREAM_DISTANCE = 28;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
 const RESERVED_CLEARANCE = 0.035;
@@ -1537,6 +1536,7 @@ function StreamableRoots(Chunk) {
   const Roots = [];
   for (const Object of Children) {
     if (IsStructuralStreamObject(Object)) continue;
+    if (IsPersistentCollisionRenderRoot(Object, Chunk)) continue;
     Roots.push(Object);
   }
 
@@ -1635,18 +1635,41 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
       }
 
       const VisibleNow = StreamFrustum.intersectsBox(Bounds);
-      const WithinDrawDistance =
-        DistanceSq <= OBJECT_STREAM_FAR_DISTANCE * OBJECT_STREAM_FAR_DISTANCE;
 
       if (
-        DistanceSq <= OBJECT_STREAM_ALWAYS_DISTANCE * OBJECT_STREAM_ALWAYS_DISTANCE ||
-        (VisibleNow && WithinDrawDistance)
+        VisibleNow ||
+        DistanceSq <= OBJECT_STREAM_NEAR_DISTANCE * OBJECT_STREAM_NEAR_DISTANCE
       ) {
         SetObjectStreamCulled(Object, false);
         continue;
       }
 
-      SetObjectStreamCulled(Object, true);
+      const Distance = Math.sqrt(Math.max(0.000001, DistanceSq));
+      const Dot = (
+        StreamToObject.x * StreamCameraForward.x +
+        StreamToObject.z * StreamCameraForward.z
+      ) / Distance;
+
+      const Culled = Boolean(Object.userData?.ObjectStreamCulledR101);
+      if (Culled) {
+        const PreView =
+          Dot > -0.28 ||
+          Distance <= OBJECT_STREAM_NEAR_DISTANCE + 12;
+
+        if (PreView) SetObjectStreamCulled(Object, false);
+        continue;
+      }
+
+      const DeepBehind =
+        Distance > OBJECT_STREAM_NEAR_DISTANCE + 12 &&
+        Dot < -0.48;
+      const FarOutsideView =
+        Distance > OBJECT_STREAM_FAR_DISTANCE &&
+        Dot < 0.06;
+
+      if (DeepBehind || FarOutsideView) {
+        SetObjectStreamCulled(Object, true);
+      }
     }
   }
 }
@@ -1770,44 +1793,58 @@ function EnsureChunksAroundPlayer() {
 
 let BackgroundChunkBufferToken = 0;
 
-function StartBackgroundChunkBuffer(Token) {
-  let Index = 1;
-
-  const QueueNext = async () => {
-    if (Token !== BackgroundChunkBufferToken || Index > 3 || window.__STORE_GAMEPLAY_STARTED__) return;
-    const RequestedIndex = Index;
-    Index += 1;
-
-    try {
-      await RequestChunk(RequestedIndex);
-    } catch (Error) {
-      console.warn(`Background aisle ${RequestedIndex + 1} could not be prepared yet.`, Error);
+function ReportWorldBuffer(Ready, Total, Stage, Detail = "") {
+  window.dispatchEvent(new CustomEvent("store-world-buffer-progress", {
+    detail: {
+      ready: Math.max(0, Number(Ready) || 0),
+      total: Math.max(1, Number(Total) || 1),
+      stage: String(Stage || ""),
+      detail: String(Detail || "")
     }
+  }));
+}
 
-    if (Token !== BackgroundChunkBufferToken || window.__STORE_GAMEPLAY_STARTED__) return;
+async function PrepareBootBuffer(Count = 4) {
+  const Total = THREE.MathUtils.clamp(Math.trunc(Number(Count) || 4), 1, 6);
+  const Chunks = [];
+  const Token = ++BackgroundChunkBufferToken;
 
-    if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => QueueNext(), { timeout: 650 });
-    } else {
-      setTimeout(() => QueueNext(), 120);
+  for (let Index = 0; Index < Total; Index += 1) {
+    if (Token !== BackgroundChunkBufferToken) throw new Error("Boot buffer was replaced by a newer world.");
+
+    ReportWorldBuffer(
+      Index,
+      Total,
+      `Building aisle ${Index + 1} of ${Total}`,
+      "Loading geometry and required furniture"
+    );
+    window.__STORE_SET_BOOT_STAGE__?.(`Building aisle ${Index + 1}/${Total} geometry and furniture • seed ${WorldSeed}`);
+
+    const Chunk = await RequestChunk(Index);
+    if (!Chunk?.Ready || Chunk.Cancelled) {
+      throw new Error(`Aisle ${Index + 1} could not be prepared.`);
     }
-  };
+    Chunks.push(Chunk);
 
-  QueueNext();
+    ReportWorldBuffer(
+      Index,
+      Total,
+      `Aisle ${Index + 1} geometry ready`,
+      "Waiting for showroom, collision, prices, and GPU preparation"
+    );
+  }
+
+  return Chunks;
 }
 
 async function PrepareInitialWorld() {
-  const BufferToken = ++BackgroundChunkBufferToken;
-
   window.__STORE_SET_BOOT_STAGE__?.(`Building aisle 1 geometry and furniture • seed ${WorldSeed}`);
 
   const FirstChunk = await PrepareChunk(0);
   if (!FirstChunk) throw new Error("The first store aisle could not be prepared.");
   ActivateChunk(FirstChunk);
 
-  window.__STORE_SET_BOOT_STAGE__?.(`Aisle 1 ready • scheduling nearby aisle buffer • seed ${WorldSeed}`);
-
-  StartBackgroundChunkBuffer(BufferToken);
+  ReportWorldBuffer(0, 4, "Aisle 1 geometry ready", "Finishing required nearby aisles before entry");
 }
 
 function NormalizeWorldSeed(Value) {
@@ -2137,8 +2174,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.38";
-window.__STORE_VERSION__ = "0.35.38";
+window.__STORE_GAME_BUILD__ = "V0.35.39";
+window.__STORE_VERSION__ = "0.35.39";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2152,6 +2189,7 @@ window.__STORE_GAME__ = {
   ChunkIndexForZ,
   ChunkLength: CHUNK_LENGTH,
   PrepareChunk,
+  PrepareBootBuffer,
   TryActivateIndex,
   UpdateObjectStreaming,
   OptimizeChunkStaticRender,
@@ -2163,6 +2201,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.38"
+  Version: "0.35.39"
 };
 Animate();
