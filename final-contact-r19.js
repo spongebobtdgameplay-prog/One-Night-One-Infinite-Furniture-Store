@@ -426,6 +426,7 @@ Player.Render = function RenderWithForcedFullBodyContact(Renderer, Scene, Camera
 
       try {
         ResolveAllVisibleContacts(Pivot);
+        Player.ApplyCarpetRenderForce?.(Pivot);
         HideFirstPersonHead(Pivot);
         Renderer.render(RenderScene, RenderCamera);
       } finally {
@@ -444,4 +445,4 @@ window.__STORE_FINAL_CONTACT__ = {
   Apply: ResolveAllVisibleContacts
 };
 
-window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.27-RAY-BUDGET";
+window.__STORE_FINAL_CONTACT_BUILD__ = "V0.35.32-LAST-STAGE-CURB-FORCE";
