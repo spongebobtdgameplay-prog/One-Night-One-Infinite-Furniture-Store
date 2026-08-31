@@ -1,5 +1,5 @@
-const Cache = "20260831-v03540-strictboot1";
-const Version = "0.35.40";
+const Cache = "20260831-v03541-startauthority1";
+const Version = "0.35.41";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -31,6 +31,16 @@ const BootStageLabel = document.getElementById("BootStageLabel");
 const BootWorldPercent = document.getElementById("BootWorldPercent");
 const BootWorldProgressFill = document.getElementById("BootWorldProgressFill");
 const BootWorldCounts = document.getElementById("BootWorldCounts");
+
+const StartGate = {
+  Ready: false,
+  WorldReady: false,
+  CoreReady: false,
+  Generation: 0,
+  Reason: "Loading store"
+};
+
+window.__STORE_START_GATE__ = StartGate;
 
 function SetWorldProgress(Ready, Total, Stage = "", Detail = "") {
   const SafeTotal = Math.max(1, Number(Total) || 1);
@@ -81,6 +91,74 @@ function SetBootStage(Text) {
 }
 
 window.__STORE_SET_BOOT_STAGE__ = SetBootStage;
+
+function StartButtonNode() {
+  return document.getElementById("StartButton");
+}
+
+function RefreshStartGate() {
+  const CurrentGeneration = Number(window.__STORE_WORLD_GENERATION__) || 0;
+  StartGate.Ready = Boolean(
+    StartGate.CoreReady &&
+    StartGate.WorldReady &&
+    StartGate.Generation === CurrentGeneration
+  );
+
+  const Button = StartButtonNode();
+  if (Button) {
+    Button.disabled = !StartGate.Ready;
+    Button.setAttribute("aria-disabled", StartGate.Ready ? "false" : "true");
+    Button.dataset.StoreStartReady = StartGate.Ready ? "1" : "0";
+  }
+
+  return StartGate.Ready;
+}
+
+function LockStart(Reason = "World is still loading") {
+  StartGate.WorldReady = false;
+  StartGate.Ready = false;
+  StartGate.Generation = Number(window.__STORE_WORLD_GENERATION__) || 0;
+  StartGate.Reason = String(Reason || "World is still loading");
+  RefreshStartGate();
+
+  const BootScreen = document.getElementById("BootScreen");
+  const Hud = document.getElementById("Hud");
+  BootScreen?.classList.add("ScreenVisible");
+  Hud?.classList.add("Hidden");
+}
+
+function MarkWorldReady(Generation) {
+  const CurrentGeneration = Number(window.__STORE_WORLD_GENERATION__) || 0;
+  if (Number(Generation) !== CurrentGeneration) return false;
+  StartGate.Generation = CurrentGeneration;
+  StartGate.WorldReady = true;
+  StartGate.Reason = "";
+  return RefreshStartGate();
+}
+
+window.__STORE_LOCK_START__ = LockStart;
+
+document.addEventListener("click", Event => {
+  const Target = Event.target?.closest?.("#StartButton");
+  if (!Target || StartGate.Ready) return;
+  Event.preventDefault();
+  Event.stopImmediatePropagation();
+  RefreshStartGate();
+  SetBootStage(StartGate.Reason || "The store is still generating.");
+}, true);
+
+const StartButtonObserver = new MutationObserver(() => {
+  if (!StartGate.Ready) RefreshStartGate();
+});
+const InitialStartButton = StartButtonNode();
+if (InitialStartButton) {
+  StartButtonObserver.observe(InitialStartButton, {
+    attributes: true,
+    attributeFilter: ["disabled", "aria-disabled"]
+  });
+}
+
+LockStart("Generating the playable store before entry.");
 SetBootStage("Starting store services...");
 
 async function OptionalImport(Path, Label) {
@@ -100,6 +178,60 @@ function ShowBootError(Error) {
 }
 
 let CoreReady = false;
+
+async function EnsureCurrentWorldReady() {
+  const Game = window.__STORE_GAME__;
+  const Presentation = window.__STORE_PRESENTATION_READY_R83__;
+  if (!Game?.PrepareBootBuffer || !Presentation?.WaitForPresentationReady) {
+    throw new Error("World readiness systems are unavailable.");
+  }
+
+  const Generation = Number(window.__STORE_WORLD_GENERATION__) || 0;
+  LockStart("Finishing the current world before entry.");
+
+  const BootBufferCount = 4;
+  const BootChunks = await Game.PrepareBootBuffer(BootBufferCount);
+
+  for (let Index = 0; Index < BootChunks.length; Index += 1) {
+    if ((Number(window.__STORE_WORLD_GENERATION__) || 0) !== Generation) {
+      throw new Error("World changed while the start buffer was being prepared.");
+    }
+
+    const Chunk = BootChunks[Index];
+    SetWorldProgress(
+      Index,
+      BootBufferCount,
+      `Finishing aisle ${Index + 1}/${BootBufferCount}`,
+      "Generating actual merchandise, prices, collision, and GPU state"
+    );
+
+    const Ready = await Presentation.WaitForPresentationReady(Chunk, 30000);
+    if (!Ready) {
+      throw new Error(`Aisle ${Index + 1} did not finish before the boot deadline.`);
+    }
+
+    const Report = Presentation.StrictReadinessReport?.(Chunk);
+    if (!Report?.Ready) {
+      throw new Error(`Aisle ${Index + 1} failed strict generation verification.`);
+    }
+
+    SetWorldProgress(
+      Index + 1,
+      BootBufferCount,
+      `Aisle ${Index + 1}/${BootBufferCount} complete`,
+      `real objects ${Report.Placed}/${Report.Planned} • prices ${Report.Tags}/${Report.Sellable} • GPU ready`
+    );
+  }
+
+  if ((Number(window.__STORE_WORLD_GENERATION__) || 0) !== Generation) {
+    throw new Error("World changed before the start gate could unlock.");
+  }
+
+  MarkWorldReady(Generation);
+  return true;
+}
+
+window.__STORE_ENSURE_START_READY__ = EnsureCurrentWorldReady;
 
 try {
   SetBootStage("Loading account system...");
@@ -160,57 +292,26 @@ try {
   await OptionalImport("./presentation-ready-r83.js", "Stable off-screen chunk presentation gate");
   await OptionalImport("./stream-loading-cover-r83.js", "Opaque streamed-aisle loading cover");
 
-  const BootBufferCount = 4;
-  const BootChunks = await window.__STORE_GAME__.PrepareBootBuffer(BootBufferCount);
-  const Presentation = window.__STORE_PRESENTATION_READY_R83__;
-  if (!Presentation?.WaitForPresentationReady) {
-    throw new Error("Presentation readiness gate is unavailable.");
-  }
-
-  for (let Index = 0; Index < BootChunks.length; Index += 1) {
-    const Chunk = BootChunks[Index];
-    SetWorldProgress(
-      Index,
-      BootBufferCount,
-      `Finishing aisle ${Index + 1}/${BootBufferCount}`,
-      "Showroom, collision, prices, and GPU preparation"
-    );
-
-    const Ready = await Presentation.WaitForPresentationReady(Chunk, 30000);
-    if (!Ready) {
-      throw new Error(`Aisle ${Index + 1} did not finish before the boot deadline.`);
-    }
-
-    const Report = Presentation.StrictReadinessReport?.(Chunk);
-    if (!Report?.Ready) {
-      throw new Error(`Aisle ${Index + 1} reported ready without passing strict completeness checks.`);
-    }
-
-    SetWorldProgress(
-      Index + 1,
-      BootBufferCount,
-      `Aisle ${Index + 1}/${BootBufferCount} complete`,
-      `objects ${Report.Placed}/${Report.Planned} • prices ${Report.Tags}/${Report.Sellable} • GPU ready`
-    );
-  }
+  await EnsureCurrentWorldReady();
 
   SetBootStage("Finalizing movement contact and the main menu...");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await OptionalImport("./final-contact-r19.js", "Final limb contact");
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
   CoreReady = true;
+  StartGate.CoreReady = true;
+  RefreshStartGate();
 } catch (Error) {
   console.error("Core store boot failed.", Error);
   ShowBootError(Error);
 }
 
 const ReadyButton = document.getElementById("StartButton");
-if (ReadyButton && CoreReady) {
-  ReadyButton.disabled = false;
+if (ReadyButton && CoreReady && RefreshStartGate()) {
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
   const Seed = Number(window.__STORE_WORLD_SEED__) || 0;
-  SetWorldProgress(4, 4, `Ready to enter • four aisles fully generated • seed ${Seed}`, "All planned objects, prices, collision, presentation, and GPU prep passed");
+  SetWorldProgress(4, 4, `Ready to enter • current world fully generated • seed ${Seed}`, "Start authority verified the current world generation");
   window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
