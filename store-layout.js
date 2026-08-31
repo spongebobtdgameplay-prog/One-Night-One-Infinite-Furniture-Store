@@ -529,9 +529,12 @@ function AddAccentFurnitureScatter(Layout, Theme, Index, Seed) {
     if (Index === 0 && Z > 5.20) continue;
 
     const UseCabinet =
-      DenseStorage ||
-      Theme === "CLEARANCE" ||
-      SeedRoll(Seed, `AccentFurnitureType:${Added}`) > 0.55;
+      Theme !== "BATHROOMS" &&
+      (
+        DenseStorage ||
+        Theme === "CLEARANCE" ||
+        SeedRoll(Seed, `AccentFurnitureType:${Added}`) > 0.55
+      );
 
     const AssetKey = UseCabinet ? "AccentCabinet" : "FloorLamp";
     const Model = UseCabinet ? "RetailAccentCabinetR84" : "RetailFloorLampR84";
@@ -775,4 +778,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.34-REAL-ACCENT-FURNITURE";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.37-DEPARTMENT-POOLS";
