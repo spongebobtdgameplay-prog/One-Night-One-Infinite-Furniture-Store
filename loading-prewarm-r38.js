@@ -60,6 +60,7 @@ let NextAssetIndex = 0;
 let SkipResolver = null;
 let Finished = false;
 let StopPreload = false;
+let BackgroundMode = false;
 
 function Mix32(Value) {
   let NumberValue = Value >>> 0;
@@ -210,25 +211,47 @@ GLTFLoader.prototype.loadAsync = function(Url, ...Args) {
   return GetOrStartAsset(Url, this, Args);
 };
 
-async function Worker() {
+function BackgroundPreloadYield() {
+  return new Promise(Resolve => {
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(Deadline => {
+        if (Deadline.timeRemaining() >= 6) {
+          Resolve();
+          return;
+        }
+        requestAnimationFrame(() => BackgroundPreloadYield().then(Resolve));
+      });
+    } else {
+      setTimeout(Resolve, 32);
+    }
+  });
+}
+
+async function Worker(WorkerId) {
   const Loader = new GLTFLoader();
+
   while (!StopPreload && NextAssetIndex < AssetUrls.length) {
+    if (BackgroundMode && WorkerId !== 0) return;
+    if (BackgroundMode) await BackgroundPreloadYield();
+    if (StopPreload || NextAssetIndex >= AssetUrls.length) return;
+
     const AssetIndex = NextAssetIndex;
     NextAssetIndex += 1;
+
     try {
       await GetOrStartAsset(AssetUrls[AssetIndex], Loader);
     } catch {}
   }
 }
 
-const WorkersDone = Promise.all([Worker(), Worker(), Worker()]);
+const WorkersDone = Promise.all([Worker(0), Worker(1), Worker(2)]);
 const SkipPromise = new Promise(Resolve => { SkipResolver = Resolve; });
 const TimeoutPromise = new Promise(Resolve => setTimeout(() => Resolve("timeout"), LoadWindowMs));
 
 LoaderUi.SkipButton?.addEventListener("click", () => {
   LoaderUi.SkipButton.disabled = true;
   LoaderUi.SkipButton.textContent = "SKIPPING...";
-  StopPreload = true;
+  BackgroundMode = true;
   SkipResolver?.("skip");
 }, { once: true });
 
@@ -242,7 +265,7 @@ const Result = await Promise.race([
 ]);
 
 Finished = true;
-if (Result !== "ready") StopPreload = true;
+if (Result !== "ready") BackgroundMode = true;
 clearInterval(Timer);
 
 if (BootStatus) {
@@ -256,4 +279,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.35.34-EXACT-ACTIVE-ASSETS";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.34-BACKGROUND-IDLE-WARMUP";
