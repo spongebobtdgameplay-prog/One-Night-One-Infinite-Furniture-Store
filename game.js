@@ -889,6 +889,13 @@ function SpawnLayoutModel(Chunk, Entry) {
   const Pending = GetModelTemplate(Entry.Model)
     .then(Template => ScheduleGenerationWork(() => {
       if (Chunk.Cancelled) return null;
+
+      const Existing = (Chunk.Models || []).find(Model =>
+        Model?.parent &&
+        String(Model.userData?.LayoutSlot || "") === String(Entry.Slot || "")
+      );
+      if (Existing) return Existing;
+
       const Model = Template.clone(true);
       Model.position.x += Entry.X;
       Model.position.z += Entry.Z;
@@ -910,6 +917,48 @@ function SpawnLayoutModel(Chunk, Entry) {
     });
   Chunk.PendingLoads.push(Pending);
   return Pending;
+}
+
+function PlacedLayoutSlots(Chunk) {
+  const Slots = new Set();
+
+  Chunk.Group?.traverse?.(Object => {
+    const Slot = String(Object?.userData?.LayoutSlot || "");
+    if (Slot) Slots.add(Slot);
+  });
+
+  for (const Object of Chunk.TaskObjects || []) {
+    const Slot = String(Object?.userData?.LayoutSlot || "");
+    if (Slot) Slots.add(Slot);
+  }
+
+  return Slots;
+}
+
+async function EnsureBaseLayoutModels(Chunk, Attempts = 3) {
+  if (!Chunk?.Layout || Chunk.Cancelled) return false;
+
+  for (let Attempt = 0; Attempt < Math.max(1, Attempts); Attempt += 1) {
+    const Placed = PlacedLayoutSlots(Chunk);
+    const Missing = (Chunk.Layout.Base || []).filter(Entry => !Placed.has(String(Entry.Slot || "")));
+    if (!Missing.length) return true;
+
+    window.__STORE_SET_BOOT_DETAIL__?.(
+      `Aisle ${Chunk.Index + 1} • retrying ${Missing.length} missing required furniture item${Missing.length === 1 ? "" : "s"}`
+    );
+
+    const Results = await Promise.all(Missing.map(Entry => SpawnLayoutModel(Chunk, Entry)));
+    if (Results.every(Boolean)) {
+      const After = PlacedLayoutSlots(Chunk);
+      if (Missing.every(Entry => After.has(String(Entry.Slot || "")))) return true;
+    }
+
+    await new Promise(Resolve => setTimeout(Resolve, 120));
+  }
+
+  return (Chunk.Layout.Base || []).every(Entry =>
+    PlacedLayoutSlots(Chunk).has(String(Entry.Slot || ""))
+  );
 }
 
 function CreateRugTexture(Chunk, Entry) {
@@ -2174,8 +2223,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.39";
-window.__STORE_VERSION__ = "0.35.39";
+window.__STORE_GAME_BUILD__ = "V0.35.40";
+window.__STORE_VERSION__ = "0.35.40";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2190,6 +2239,7 @@ window.__STORE_GAME__ = {
   ChunkLength: CHUNK_LENGTH,
   PrepareChunk,
   PrepareBootBuffer,
+  EnsureBaseLayoutModels,
   TryActivateIndex,
   UpdateObjectStreaming,
   OptimizeChunkStaticRender,
@@ -2201,6 +2251,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.39"
+  Version: "0.35.40"
 };
 Animate();
