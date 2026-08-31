@@ -50,7 +50,9 @@ const AssetUrls = [
 const TrackedAssets = new Set(AssetUrls);
 const AssetPromises = new Map();
 const AssetStates = new Map();
+const ActiveAssets = new Set();
 let NextAssetIndex = 0;
+let LastAssetUrl = "";
 
 function Mix32(Value) {
   let NumberValue = Value >>> 0;
@@ -98,7 +100,30 @@ function ResolveWorldSeed() {
 const World = ResolveWorldSeed();
 window.__STORE_WORLD_SEED__ = World.Seed;
 window.__STORE_WORLD_SEED_SOURCE__ = World.Source;
-window.__STORE_WORLD_SEED_BUILD__ = "V0.35.35-SEED";
+window.__STORE_WORLD_SEED_BUILD__ = "V0.35.36-SEED";
+
+function AssetLabel(Url) {
+  if (!Url) return "";
+  let FileName = String(Url);
+  try {
+    const Parsed = new URL(Url, location.href);
+    FileName = decodeURIComponent(Parsed.pathname.split("/").pop() || Url);
+  } catch {
+    FileName = String(Url).split("/").pop() || String(Url);
+  }
+
+  const Value = String(Url);
+  if (/\/Bedroom\//i.test(Value)) return `Bedroom • ${FileName}`;
+  if (/\/Kitchen\//i.test(Value) || /Restaurant-Bits/i.test(Value)) return `Kitchen • ${FileName}`;
+  if (/\/Bathroom\//i.test(Value)) return `Bathroom • ${FileName}`;
+  if (/\/Lighting\//i.test(Value)) return `Lighting • ${FileName}`;
+  if (/\/Architecture\//i.test(Value)) return `Architecture • ${FileName}`;
+  if (/GlamVelvetSofa|ChairDamaskPurplegold|Furniture-Bits/i.test(Value)) return `Furniture • ${FileName}`;
+  if (/mini-market/i.test(Value)) return `Store fixture • ${FileName}`;
+  if (/worker\.glb/i.test(Value)) return `Player model • ${FileName}`;
+  if (/SB1\.glb/i.test(Value)) return `Storage shelf • ${FileName}`;
+  return FileName;
+}
 
 function DispatchProgress() {
   let Loaded = 0;
@@ -108,13 +133,42 @@ function DispatchProgress() {
     else if (State === "failed") Failed += 1;
   }
 
+  const Settled = Loaded + Failed;
+  const Total = AssetUrls.length;
+  const Percent = Total > 0 ? Math.round((Settled / Total) * 100) : 100;
+  const ActiveList = [...ActiveAssets];
+  const CurrentAsset = ActiveList.length ? ActiveList[ActiveList.length - 1] : "";
   const Detail = {
     loaded: Loaded,
     failed: Failed,
-    settled: Loaded + Failed,
-    total: AssetUrls.length,
+    settled: Settled,
+    total: Total,
+    percent: Percent,
+    currentAsset: CurrentAsset,
+    currentAssetLabel: AssetLabel(CurrentAsset),
+    lastAssetLabel: AssetLabel(LastAssetUrl),
     background: true
   };
+
+  const PercentNode = document.getElementById("BootAssetPercent");
+  const FillNode = document.getElementById("BootAssetProgressFill");
+  const AssetNode = document.getElementById("BootAssetName");
+  const CountNode = document.getElementById("BootAssetCounts");
+
+  if (PercentNode) PercentNode.textContent = `${Percent}%`;
+  if (FillNode) FillNode.style.width = `${Percent}%`;
+
+  if (AssetNode) {
+    if (Detail.currentAssetLabel) AssetNode.textContent = `Loading: ${Detail.currentAssetLabel}`;
+    else if (Settled >= Total) AssetNode.textContent = "Asset warm-up complete";
+    else AssetNode.textContent = LastAssetUrl ? `Processed: ${Detail.lastAssetLabel}` : "Preparing first asset...";
+  }
+
+  if (CountNode) {
+    CountNode.textContent =
+      `${Settled}/${Total} checked • ${Loaded} loaded` +
+      (Failed ? ` • ${Failed} skipped` : "");
+  }
 
   window.__STORE_PRELOAD_PROGRESS__ = Detail;
   window.dispatchEvent(new CustomEvent("store-preload-progress", { detail: Detail }));
@@ -138,21 +192,25 @@ function LoadWithTimeout(Url, Loader, Args) {
 function GetOrStartAsset(Url, Loader, Args = []) {
   if (AssetPromises.has(Url)) return AssetPromises.get(Url);
 
-  AssetStates.set(Url, "loading");
+  ActiveAssets.add(Url);
+  LastAssetUrl = Url;
+  if (!AssetStates.has(Url)) AssetStates.set(Url, "loading");
   DispatchProgress();
 
   const PromiseValue = LoadWithTimeout(Url, Loader, Args)
     .then(Result => {
       AssetStates.set(Url, "loaded");
-      DispatchProgress();
       return Result;
     })
     .catch(Error => {
       AssetStates.set(Url, "failed");
       AssetPromises.delete(Url);
-      DispatchProgress();
       console.warn(`Background warm-up skipped ${Url}`, Error);
       throw Error;
+    })
+    .finally(() => {
+      ActiveAssets.delete(Url);
+      DispatchProgress();
     });
 
   AssetPromises.set(Url, PromiseValue);
@@ -192,6 +250,6 @@ async function BackgroundWorker() {
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = "background";
-window.__STORE_PRELOAD_BUILD__ = "V0.35.35-NONBLOCKING";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.36-TRUTHFUL-PROGRESS";
 DispatchProgress();
 BackgroundWorker().catch(() => {});
