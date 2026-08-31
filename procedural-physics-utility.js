@@ -272,7 +272,12 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
     Entry: null
   };
 
-  if (Scene?.isScene && typeof Collision.ResolveRaycastHorizontalMove === "function") {
+  const ExactCollisionAuthorityReady = Boolean(window.__STORE_CORE_FIX_R86__);
+  if (
+    !ExactCollisionAuthorityReady &&
+    Scene?.isScene &&
+    typeof Collision.ResolveRaycastHorizontalMove === "function"
+  ) {
     RayResult = Collision.ResolveRaycastHorizontalMove(
       Start,
       EntryDelta,
@@ -459,4 +464,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.39-CACHED-COLLISION-RAY-BUDGET";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.41-ENTRY-COLLISION-NO-RAY-FLOOD";
