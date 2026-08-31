@@ -1,12 +1,7 @@
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-const StartButton = document.getElementById("StartButton");
-const BootStatus = document.getElementById("BootStatus");
-const BuildVersion = document.getElementById("BuildVersion");
-const BootCard = document.querySelector(".BootCard");
 const OriginalLoadAsync = GLTFLoader.prototype.loadAsync;
-const LoadWindowMs = 120000;
-const StartedAt = performance.now();
+const AssetTimeoutMs = 9000;
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
@@ -54,13 +49,8 @@ const AssetUrls = [
 
 const TrackedAssets = new Set(AssetUrls);
 const AssetPromises = new Map();
-let CompletedAssets = 0;
-let FailedAssets = 0;
+const AssetStates = new Map();
 let NextAssetIndex = 0;
-let SkipResolver = null;
-let Finished = false;
-let StopPreload = false;
-let BackgroundMode = false;
 
 function Mix32(Value) {
   let NumberValue = Value >>> 0;
@@ -104,101 +94,64 @@ function ResolveWorldSeed() {
   crypto.getRandomValues(Values);
   return { Seed: (Values[0] >>> 0) || 1, Source: "SOLO_RANDOM" };
 }
+
 const World = ResolveWorldSeed();
 window.__STORE_WORLD_SEED__ = World.Seed;
 window.__STORE_WORLD_SEED_SOURCE__ = World.Source;
-window.__STORE_WORLD_SEED_BUILD__ = "V0.35.16-SEED";
+window.__STORE_WORLD_SEED_BUILD__ = "V0.35.35-SEED";
 
-function CreateLoaderUi() {
-  if (!BootCard) return { SkipButton: null, Warning: null, Progress: null, SeedLabel: null };
-
-  const Wrapper = document.createElement("div");
-  Wrapper.id = "PreloadOptionsR38";
-  Wrapper.style.marginTop = "14px";
-  Wrapper.style.display = "grid";
-  Wrapper.style.gap = "8px";
-
-  const Progress = document.createElement("div");
-  Progress.style.height = "7px";
-  Progress.style.border = "1px solid rgba(255,255,255,.12)";
-  Progress.style.background = "rgba(0,0,0,.28)";
-  const Fill = document.createElement("div");
-  Fill.style.width = "0%";
-  Fill.style.height = "100%";
-  Fill.style.background = "#b77b43";
-  Fill.style.transition = "width .18s linear";
-  Progress.appendChild(Fill);
-  Progress.Fill = Fill;
-
-  const Warning = document.createElement("p");
-  Warning.id = "PreloadWarningR38";
-  Warning.style.margin = "0";
-  Warning.style.color = "#c7a889";
-  Warning.style.fontSize = ".72rem";
-  Warning.style.lineHeight = "1.45";
-  Warning.textContent = "Preloading can take up to 2 minutes. Skipping is safe, but the first rooms may lag or furniture may pop in while models finish loading.";
-
-  const SeedLabel = document.createElement("p");
-  SeedLabel.style.margin = "0";
-  SeedLabel.style.color = "#777d82";
-  SeedLabel.style.fontSize = ".66rem";
-  SeedLabel.style.letterSpacing = ".08em";
-  SeedLabel.textContent = `WORLD SEED ${World.Seed}`;
-
-  const SkipButton = document.createElement("button");
-  SkipButton.id = "SkipLoadingButton";
-  SkipButton.type = "button";
-  SkipButton.textContent = "SKIP PRELOAD";
-  SkipButton.style.minHeight = "42px";
-  SkipButton.style.padding = "0 18px";
-  SkipButton.style.border = "1px solid rgba(208,154,96,.65)";
-  SkipButton.style.background = "rgba(28,22,17,.9)";
-  SkipButton.style.color = "#d9b58e";
-  SkipButton.style.fontWeight = "850";
-  SkipButton.style.letterSpacing = ".08em";
-  SkipButton.style.cursor = "pointer";
-
-  Wrapper.append(Progress, Warning, SeedLabel, SkipButton);
-  const BuildNode = BuildVersion || BootCard.lastElementChild;
-  BootCard.insertBefore(Wrapper, BuildNode);
-  return { Wrapper, SkipButton, Warning, Progress, SeedLabel };
-}
-
-const LoaderUi = CreateLoaderUi();
-
-if (StartButton) {
-  StartButton.disabled = true;
-  StartButton.style.opacity = ".42";
-  StartButton.style.cursor = "wait";
-}
-
-function UpdateStatus() {
-  const Elapsed = performance.now() - StartedAt;
-  const RemainingMs = Math.max(0, LoadWindowMs - Elapsed);
-  const RemainingSeconds = Math.ceil(RemainingMs / 1000);
-  const Minutes = Math.floor(RemainingSeconds / 60);
-  const Seconds = RemainingSeconds % 60;
-  const Loaded = CompletedAssets + FailedAssets;
-  const Percent = AssetUrls.length ? Loaded / AssetUrls.length : 1;
-  if (LoaderUi.Progress?.Fill) LoaderUi.Progress.Fill.style.width = `${(Percent * 100).toFixed(1)}%`;
-  if (BootStatus && !Finished) {
-    BootStatus.textContent = `Preloading store ${Loaded}/${AssetUrls.length} • ${Minutes}:${String(Seconds).padStart(2, "0")} maximum`;
+function DispatchProgress() {
+  let Loaded = 0;
+  let Failed = 0;
+  for (const State of AssetStates.values()) {
+    if (State === "loaded") Loaded += 1;
+    else if (State === "failed") Failed += 1;
   }
+
+  const Detail = {
+    loaded: Loaded,
+    failed: Failed,
+    settled: Loaded + Failed,
+    total: AssetUrls.length,
+    background: true
+  };
+
+  window.__STORE_PRELOAD_PROGRESS__ = Detail;
+  window.dispatchEvent(new CustomEvent("store-preload-progress", { detail: Detail }));
+}
+
+function LoadWithTimeout(Url, Loader, Args) {
+  const SourcePromise = OriginalLoadAsync.call(Loader, Url, ...Args);
+  let TimeoutId = 0;
+
+  const TimeoutPromise = new Promise((_, Reject) => {
+    TimeoutId = setTimeout(() => {
+      Reject(new Error(`Asset load timed out after ${AssetTimeoutMs}ms: ${Url}`));
+    }, AssetTimeoutMs);
+  });
+
+  return Promise.race([SourcePromise, TimeoutPromise]).finally(() => {
+    clearTimeout(TimeoutId);
+  });
 }
 
 function GetOrStartAsset(Url, Loader, Args = []) {
   if (AssetPromises.has(Url)) return AssetPromises.get(Url);
 
-  const PromiseValue = OriginalLoadAsync.call(Loader, Url, ...Args)
+  AssetStates.set(Url, "loading");
+  DispatchProgress();
+
+  const PromiseValue = LoadWithTimeout(Url, Loader, Args)
     .then(Result => {
-      CompletedAssets += 1;
-      UpdateStatus();
+      AssetStates.set(Url, "loaded");
+      DispatchProgress();
       return Result;
     })
     .catch(Error => {
-      FailedAssets += 1;
-      UpdateStatus();
-      console.warn(`Preload failed for ${Url}`, Error);
+      AssetStates.set(Url, "failed");
+      AssetPromises.delete(Url);
+      DispatchProgress();
+      console.warn(`Background warm-up skipped ${Url}`, Error);
       throw Error;
     });
 
@@ -211,30 +164,21 @@ GLTFLoader.prototype.loadAsync = function(Url, ...Args) {
   return GetOrStartAsset(Url, this, Args);
 };
 
-function BackgroundPreloadYield() {
+function BackgroundYield() {
   return new Promise(Resolve => {
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(Deadline => {
-        if (Deadline.timeRemaining() >= 6) {
-          Resolve();
-          return;
-        }
-        requestAnimationFrame(() => BackgroundPreloadYield().then(Resolve));
-      });
+      requestIdleCallback(() => Resolve(), { timeout: 350 });
     } else {
-      setTimeout(Resolve, 32);
+      setTimeout(Resolve, 40);
     }
   });
 }
 
-async function Worker(WorkerId) {
+async function BackgroundWorker() {
   const Loader = new GLTFLoader();
 
-  while (!StopPreload && NextAssetIndex < AssetUrls.length) {
-    if (BackgroundMode && WorkerId !== 0) return;
-    if (BackgroundMode) await BackgroundPreloadYield();
-    if (StopPreload || NextAssetIndex >= AssetUrls.length) return;
-
+  while (NextAssetIndex < AssetUrls.length) {
+    await BackgroundYield();
     const AssetIndex = NextAssetIndex;
     NextAssetIndex += 1;
 
@@ -242,41 +186,12 @@ async function Worker(WorkerId) {
       await GetOrStartAsset(AssetUrls[AssetIndex], Loader);
     } catch {}
   }
+
+  window.__STORE_PRELOAD_RESULT__ = "finished";
 }
-
-const WorkersDone = Promise.all([Worker(0), Worker(1), Worker(2)]);
-const SkipPromise = new Promise(Resolve => { SkipResolver = Resolve; });
-const TimeoutPromise = new Promise(Resolve => setTimeout(() => Resolve("timeout"), LoadWindowMs));
-
-LoaderUi.SkipButton?.addEventListener("click", () => {
-  LoaderUi.SkipButton.disabled = true;
-  LoaderUi.SkipButton.textContent = "SKIPPING...";
-  BackgroundMode = true;
-  SkipResolver?.("skip");
-}, { once: true });
-
-const Timer = setInterval(UpdateStatus, 250);
-UpdateStatus();
-
-const Result = await Promise.race([
-  WorkersDone.then(() => "ready"),
-  SkipPromise,
-  TimeoutPromise
-]);
-
-Finished = true;
-if (Result !== "ready") BackgroundMode = true;
-clearInterval(Timer);
-
-if (BootStatus) {
-  if (Result === "ready") BootStatus.textContent = `Assets warmed • world seed ${World.Seed} • building store...`;
-  else if (Result === "skip") BootStatus.textContent = `Preload skipped • world seed ${World.Seed} • gameplay loading will continue only as needed...`;
-  else BootStatus.textContent = `2 minute preload limit reached • world seed ${World.Seed} • continuing...`;
-}
-
-if (LoaderUi.SkipButton) LoaderUi.SkipButton.style.display = "none";
-LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
-window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.35.34-BACKGROUND-IDLE-WARMUP";
+window.__STORE_PRELOAD_RESULT__ = "background";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.35-NONBLOCKING";
+DispatchProgress();
+BackgroundWorker().catch(() => {});
