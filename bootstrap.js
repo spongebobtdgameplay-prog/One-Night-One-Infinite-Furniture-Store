@@ -1,4 +1,4 @@
-const Cache = "20260830-v03534-boxperfclip2";
+const Cache = "20260830-v03534-boxperfclip3";
 const Version = "0.35.34";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
