@@ -888,6 +888,165 @@ function ResolveFootHullSweep(Target, PreviousSafe, Hull = null, Clearance = 0.0
   };
 }
 
+function ResolveFootBoxCurbForce(Min, Max, Reference = null, Target = null, Clearance = 0.006) {
+  const Out = Target?.isVector3 ? Target : new THREE.Vector3();
+  Out.set(0, 0, 0);
+
+  if (
+    !Min?.isVector3 ||
+    !Max?.isVector3
+  ) {
+    return {
+      Hit: false,
+      Depth: 0,
+      Separation: Out
+    };
+  }
+
+  const SafeClearance = THREE.MathUtils.clamp(
+    Number(Clearance) || 0.006,
+    0.002,
+    0.025
+  );
+
+  let BestDepth = 0;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    if (
+      Max.x <= Bounds.min.x - SafeClearance ||
+      Min.x >= Bounds.max.x + SafeClearance ||
+      Max.z <= Bounds.min.z - SafeClearance ||
+      Min.z >= Bounds.max.z + SafeClearance
+    ) continue;
+
+    if (Min.y >= Bounds.max.y + SafeClearance) continue;
+
+    const FullySupportedOnTop =
+      Min.y >= Bounds.max.y - 0.002 &&
+      Min.x >= Bounds.min.x + SafeClearance &&
+      Max.x <= Bounds.max.x - SafeClearance &&
+      Min.z >= Bounds.min.z + SafeClearance &&
+      Max.z <= Bounds.max.z - SafeClearance;
+
+    if (FullySupportedOnTop) continue;
+
+    const ReferenceInside = Boolean(
+      Reference?.isVector3 &&
+      Reference.x >= Bounds.min.x &&
+      Reference.x <= Bounds.max.x &&
+      Reference.z >= Bounds.min.z &&
+      Reference.z <= Bounds.max.z
+    );
+
+    if (ReferenceInside) {
+      const Width = Max.x - Min.x;
+      const Depth = Max.z - Min.z;
+      const AvailableWidth =
+        Bounds.max.x - Bounds.min.x - SafeClearance * 2;
+      const AvailableDepth =
+        Bounds.max.z - Bounds.min.z - SafeClearance * 2;
+
+      if (
+        Width <= AvailableWidth &&
+        Depth <= AvailableDepth
+      ) {
+        let PushX = 0;
+        let PushZ = 0;
+
+        if (Min.x < Bounds.min.x + SafeClearance) {
+          PushX = Bounds.min.x + SafeClearance - Min.x;
+        } else if (Max.x > Bounds.max.x - SafeClearance) {
+          PushX = Bounds.max.x - SafeClearance - Max.x;
+        }
+
+        if (Min.z < Bounds.min.z + SafeClearance) {
+          PushZ = Bounds.min.z + SafeClearance - Min.z;
+        } else if (Max.z > Bounds.max.z - SafeClearance) {
+          PushZ = Bounds.max.z - SafeClearance - Max.z;
+        }
+
+        const PushY = Math.max(
+          0,
+          Bounds.max.y + SafeClearance - Min.y
+        );
+
+        const DepthValue = Math.hypot(PushX, PushY, PushZ);
+        if (DepthValue > BestDepth) {
+          BestDepth = DepthValue;
+          Out.set(PushX, PushY, PushZ);
+        }
+        continue;
+      }
+    }
+
+    const Candidates = [
+      {
+        Side: "minX",
+        X: Bounds.min.x - SafeClearance - Max.x,
+        Z: 0
+      },
+      {
+        Side: "maxX",
+        X: Bounds.max.x + SafeClearance - Min.x,
+        Z: 0
+      },
+      {
+        Side: "minZ",
+        X: 0,
+        Z: Bounds.min.z - SafeClearance - Max.z
+      },
+      {
+        Side: "maxZ",
+        X: 0,
+        Z: Bounds.max.z + SafeClearance - Min.z
+      }
+    ];
+
+    let PreferredSide = "";
+
+    if (Reference?.isVector3) {
+      if (Reference.x < Bounds.min.x) PreferredSide = "minX";
+      else if (Reference.x > Bounds.max.x) PreferredSide = "maxX";
+      else if (Reference.z < Bounds.min.z) PreferredSide = "minZ";
+      else if (Reference.z > Bounds.max.z) PreferredSide = "maxZ";
+    }
+
+    let Candidate = PreferredSide
+      ? Candidates.find(Item => Item.Side === PreferredSide)
+      : null;
+
+    if (!Candidate) {
+      Candidates.sort((A, B) =>
+        Math.hypot(A.X, A.Z) - Math.hypot(B.X, B.Z)
+      );
+      Candidate = Candidates[0];
+    }
+
+    const DepthValue = Math.hypot(
+      Candidate?.X || 0,
+      Candidate?.Z || 0
+    );
+
+    if (DepthValue <= BestDepth) continue;
+
+    BestDepth = DepthValue;
+    Out.set(
+      Candidate?.X || 0,
+      0,
+      Candidate?.Z || 0
+    );
+  }
+
+  return {
+    Hit: BestDepth > 0,
+    Depth: BestDepth,
+    Separation: Out
+  };
+}
+
 function ResolveMeshPointCurbForce(Position, Target = null, Clearance = 0.004) {
   const Out = Target?.isVector3 ? Target : new THREE.Vector3();
   Out.set(0, 0, 0);
@@ -1134,9 +1293,10 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   IsFootHullSafe,
   ResolveFootHullConstraint,
   ResolveFootHullSweep,
+  ResolveFootBoxCurbForce,
   ResolveMeshPointCurbForce,
   ResolveBodyPartCurbForce,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.33-EXACT-MESH-CURB";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.34-FOOT-BOX-FORCE";
