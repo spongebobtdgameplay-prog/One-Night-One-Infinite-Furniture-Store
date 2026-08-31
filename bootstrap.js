@@ -1,4 +1,4 @@
-const Cache = "20260831-v03541-startauthority1";
+const Cache = "20260831-v03541-startauthority2";
 const Version = "0.35.41";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -106,9 +106,13 @@ function RefreshStartGate() {
 
   const Button = StartButtonNode();
   if (Button) {
-    Button.disabled = !StartGate.Ready;
-    Button.setAttribute("aria-disabled", StartGate.Ready ? "false" : "true");
-    Button.dataset.StoreStartReady = StartGate.Ready ? "1" : "0";
+    const ShouldDisable = !StartGate.Ready;
+    const AriaValue = StartGate.Ready ? "false" : "true";
+    const ReadyValue = StartGate.Ready ? "1" : "0";
+
+    if (Button.disabled !== ShouldDisable) Button.disabled = ShouldDisable;
+    if (Button.getAttribute("aria-disabled") !== AriaValue) Button.setAttribute("aria-disabled", AriaValue);
+    if (Button.dataset.StoreStartReady !== ReadyValue) Button.dataset.StoreStartReady = ReadyValue;
   }
 
   return StartGate.Ready;
