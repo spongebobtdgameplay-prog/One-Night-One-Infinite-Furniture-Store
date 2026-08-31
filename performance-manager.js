@@ -39,14 +39,10 @@ function Game() {
   return window.__STORE_GAME__ || null;
 }
 
-let AdaptiveResolutionScale = 1;
-let LowFpsWindows = 0;
-let HighFpsWindows = 0;
-
 function QualityProfile() {
-  if (Settings.Graphics === "performance") return { PixelRatio: 0.84, PointLights: 2, Anisotropy: 1, MinimumAdaptiveScale: 0.76 };
-  if (Settings.Graphics === "high") return { PixelRatio: 1.04, PointLights: 3, Anisotropy: 3, MinimumAdaptiveScale: 0.88 };
-  return { PixelRatio: 0.92, PointLights: 2, Anisotropy: 2, MinimumAdaptiveScale: 0.80 };
+  if (Settings.Graphics === "performance") return { PixelRatio: 0.88, PointLights: 2, Anisotropy: 1 };
+  if (Settings.Graphics === "high") return { PixelRatio: 1.10, PointLights: 4, Anisotropy: 4 };
+  return { PixelRatio: 0.96, PointLights: 3, Anisotropy: 2 };
 }
 
 const PerfState = {
@@ -81,7 +77,7 @@ function ApplyRenderer() {
   const CurrentGame = Game();
   if (!CurrentGame?.Renderer) return;
   const Profile = QualityProfile();
-  const Ratio = Math.min(devicePixelRatio || 1, Profile.PixelRatio * AdaptiveResolutionScale);
+  const Ratio = Math.min(devicePixelRatio || 1, Profile.PixelRatio);
   if (
     PerfState.Width === innerWidth &&
     PerfState.Height === innerHeight &&
@@ -408,35 +404,6 @@ function FpsFrame(Now) {
     const Average = Sum / Samples.length;
     const Fps = 1000 / Average;
     FpsCounter.innerHTML = `FPS <strong>${Math.round(Fps)}</strong><span>${Average.toFixed(1)} ms</span>`;
-
-    if (window.__STORE_GAMEPLAY_STARTED__) {
-      const Profile = QualityProfile();
-      if (Fps < 48) {
-        LowFpsWindows += 1;
-        HighFpsWindows = 0;
-      } else if (Fps > 59) {
-        HighFpsWindows += 1;
-        LowFpsWindows = 0;
-      } else {
-        LowFpsWindows = 0;
-        HighFpsWindows = 0;
-      }
-
-      if (LowFpsWindows >= 2) {
-        LowFpsWindows = 0;
-        const NextScale = Math.max(Profile.MinimumAdaptiveScale, AdaptiveResolutionScale - 0.06);
-        if (Math.abs(NextScale - AdaptiveResolutionScale) > 0.001) {
-          AdaptiveResolutionScale = NextScale;
-          PerfState.Ratio = -1;
-          ApplyRenderer();
-        }
-      } else if (HighFpsWindows >= 5 && AdaptiveResolutionScale < 1) {
-        HighFpsWindows = 0;
-        AdaptiveResolutionScale = Math.min(1, AdaptiveResolutionScale + 0.03);
-        PerfState.Ratio = -1;
-        ApplyRenderer();
-      }
-    }
   }
   FpsCounter.classList.toggle("R43Hidden", !Settings.ShowFps);
   requestAnimationFrame(FpsFrame);
@@ -451,5 +418,5 @@ setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
 window.__STORE_APPLY_PERFORMANCE__ = ApplyPerformance;
 window.__STORE_APPLY_TEXTURE_BUDGET_TO_CHUNK__ = ApplyTextureBudgetToChunk;
-window.__STORE_PERFORMANCE_BUILD__ = "V0.35.37-ADAPTIVE-FRAME-BUDGET-R2";
-window.__STORE_SETTINGS_BUILD__ = "V0.35.37-ADAPTIVE-FRAME-BUDGET-R2";
+window.__STORE_PERFORMANCE_BUILD__ = "V0.35.39-FIXED-QUALITY";
+window.__STORE_SETTINGS_BUILD__ = "V0.35.39-FIXED-QUALITY";
