@@ -221,7 +221,13 @@ async function PlacePlannedSaleAsset(Chunk, Entry, Index) {
 function PlacementYield() {
   return new Promise(Resolve => {
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => Resolve(), { timeout: 700 });
+      requestIdleCallback(Deadline => {
+        if (Deadline.timeRemaining() >= 4) {
+          Resolve();
+          return;
+        }
+        requestAnimationFrame(() => PlacementYield().then(Resolve));
+      });
     } else {
       requestAnimationFrame(() => Resolve());
     }
@@ -287,4 +293,4 @@ function Discover() {
 Discover();
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.34-REAL-ACCENTS-SHARED-MATERIALS";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.34-REAL-ACCENTS-IDLE";
