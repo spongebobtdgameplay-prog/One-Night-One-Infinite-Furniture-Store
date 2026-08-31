@@ -2136,6 +2136,76 @@ function RecordCarpetForceContact(Force, Depth) {
   Contact.LastHit = performance.now();
 }
 
+function FindBestCarpetRigForce(Pivot, SurfaceStep, Hull, Out) {
+  Out.set(0, 0, 0);
+  if (!Pivot || !SurfaceStep) return 0;
+
+  Pivot.updateMatrixWorld(true);
+
+  let BestDepth = 0;
+
+  for (const Proxy of CarpetBodyForceProxies) {
+    const Bone = State.Bones.get(Proxy.Bone);
+    if (!Bone) continue;
+
+    Bone.getWorldPosition(State.TempBodyPartPosition);
+    const Result = SurfaceStep.ResolveBodyPartCurbForce(
+      State.TempBodyPartPosition,
+      Proxy.Radius,
+      State.TempBodyForce,
+      CARPET_FORCE_CLEARANCE
+    );
+
+    const Depth = Number(Result?.Depth) || 0;
+    if (!Result?.Hit || Depth <= BestDepth) continue;
+
+    BestDepth = Depth;
+    Out.copy(Result.Separation);
+  }
+
+  for (const Side of [-1, 1]) {
+    const FootName = Side < 0 ? "FootL" : "FootR";
+    const Foot = State.Bones.get(FootName);
+    if (!Foot) continue;
+
+    Foot.getWorldPosition(State.TempBodyPartPosition);
+
+    if (
+      SurfaceStep.IsFootHullSafe?.(
+        State.TempBodyPartPosition,
+        Hull,
+        FOOT_CURB_CLEARANCE
+      ) !== false
+    ) continue;
+
+    State.TempFootForceCandidate.copy(State.TempBodyPartPosition);
+    const Reference = Side < 0
+      ? State.SafeFootLeft
+      : State.SafeFootRight;
+
+    SurfaceStep.ResolveFootHullConstraint?.(
+      State.TempFootForceCandidate,
+      Reference,
+      Hull,
+      FOOT_CURB_CLEARANCE
+    );
+
+    State.TempBodyForce
+      .copy(State.TempFootForceCandidate)
+      .sub(State.TempBodyPartPosition);
+    State.TempBodyForce.y = 0;
+
+    const Depth = State.TempBodyForce.length();
+    if (Depth <= BestDepth) continue;
+
+    BestDepth = Depth;
+    Out.copy(State.TempBodyForce);
+  }
+
+  Out.y = 0;
+  return BestDepth;
+}
+
 function ApplyCarpetInvisibleForce() {
   const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
   if (
@@ -2144,79 +2214,24 @@ function ApplyCarpetInvisibleForce() {
     !State.Camera ||
     typeof SurfaceStep.ResolveBodyPartCurbForce !== "function" ||
     !SurfaceStep.NearRug?.(State.Pivot.position, 0.95)
-  ) return;
+  ) return false;
 
   const Hull = UpdateFootHullOrientation();
   let TotalPush = 0;
+  let Changed = false;
 
   for (
     let Pass = 0;
     Pass < CARPET_FORCE_PASSES && TotalPush < CARPET_FORCE_MAX_TOTAL;
     Pass += 1
   ) {
-    State.Pivot.updateMatrixWorld(true);
-    State.TempBestBodyForce.set(0, 0, 0);
-    let BestDepth = 0;
+    const BestDepth = FindBestCarpetRigForce(
+      State.Pivot,
+      SurfaceStep,
+      Hull,
+      State.TempBestBodyForce
+    );
 
-    for (const Proxy of CarpetBodyForceProxies) {
-      const Bone = State.Bones.get(Proxy.Bone);
-      if (!Bone) continue;
-
-      Bone.getWorldPosition(State.TempBodyPartPosition);
-      const Result = SurfaceStep.ResolveBodyPartCurbForce(
-        State.TempBodyPartPosition,
-        Proxy.Radius,
-        State.TempBodyForce,
-        CARPET_FORCE_CLEARANCE
-      );
-
-      const Depth = Number(Result?.Depth) || 0;
-      if (!Result?.Hit || Depth <= BestDepth) continue;
-
-      BestDepth = Depth;
-      State.TempBestBodyForce.copy(Result.Separation);
-    }
-
-    for (const Side of [-1, 1]) {
-      const FootName = Side < 0 ? "FootL" : "FootR";
-      const Foot = State.Bones.get(FootName);
-      if (!Foot) continue;
-
-      Foot.getWorldPosition(State.TempBodyPartPosition);
-
-      if (
-        SurfaceStep.IsFootHullSafe?.(
-          State.TempBodyPartPosition,
-          Hull,
-          FOOT_CURB_CLEARANCE
-        ) !== false
-      ) continue;
-
-      State.TempFootForceCandidate.copy(State.TempBodyPartPosition);
-      const Reference = Side < 0
-        ? State.SafeFootLeft
-        : State.SafeFootRight;
-
-      SurfaceStep.ResolveFootHullConstraint?.(
-        State.TempFootForceCandidate,
-        Reference,
-        Hull,
-        FOOT_CURB_CLEARANCE
-      );
-
-      State.TempBodyForce
-        .copy(State.TempFootForceCandidate)
-        .sub(State.TempBodyPartPosition);
-      State.TempBodyForce.y = 0;
-
-      const Depth = State.TempBodyForce.length();
-      if (Depth <= BestDepth) continue;
-
-      BestDepth = Depth;
-      State.TempBestBodyForce.copy(State.TempBodyForce);
-    }
-
-    State.TempBestBodyForce.y = 0;
     const Length = State.TempBestBodyForce.length();
     if (Length <= 0.0002) break;
 
@@ -2244,9 +2259,62 @@ function ApplyCarpetInvisibleForce() {
     RecordCarpetForceContact(State.TempBestBodyForce, BestDepth);
 
     TotalPush += PushLength;
+    Changed = true;
     State.Pivot.updateMatrixWorld(true);
     State.Camera.updateMatrixWorld(true);
   }
+
+  return Changed;
+}
+
+function ApplyCarpetRenderForce(Pivot = State.Pivot) {
+  const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
+  if (
+    !SurfaceStep ||
+    !Pivot ||
+    typeof SurfaceStep.ResolveBodyPartCurbForce !== "function" ||
+    !SurfaceStep.NearRug?.(Pivot.position, 0.95)
+  ) return false;
+
+  const Hull = UpdateFootHullOrientation();
+  let TotalPush = 0;
+  let Changed = false;
+
+  for (
+    let Pass = 0;
+    Pass < CARPET_FORCE_PASSES && TotalPush < CARPET_FORCE_MAX_TOTAL;
+    Pass += 1
+  ) {
+    FindBestCarpetRigForce(
+      Pivot,
+      SurfaceStep,
+      Hull,
+      State.TempBestBodyForce
+    );
+
+    const Length = State.TempBestBodyForce.length();
+    if (Length <= 0.0002) break;
+
+    const Remaining = Math.max(
+      0,
+      CARPET_FORCE_MAX_TOTAL - TotalPush
+    );
+    const PushLength = Math.min(
+      Length,
+      CARPET_FORCE_MAX_SINGLE,
+      Remaining
+    );
+    if (PushLength <= 0.0002) break;
+
+    State.TempBestBodyForce.setLength(PushLength);
+    Pivot.position.add(State.TempBestBodyForce);
+
+    TotalPush += PushLength;
+    Changed = true;
+    Pivot.updateMatrixWorld(true);
+  }
+
+  return Changed;
 }
 
 function UpdatePhysicalContactReaction(Delta) {
@@ -2870,8 +2938,9 @@ window.__STORE_PLAYER__ = {
   GetPlayerRadius: () => PLAYER_RADIUS,
   IsSprinting: () => State.Sprinting,
   GetStamina: () => State.Stamina,
+  ApplyCarpetRenderForce,
   IsThirdPerson: () => State.ThirdPerson,
   GetThirdPersonDistance: () => State.Distance
 };
 
-window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.31-FULL-BODY-CURB-FORCE";
+window.__STORE_PLAYER_SYSTEM_BUILD__ = "V0.35.32-FINAL-RENDER-CURB-FORCE";
