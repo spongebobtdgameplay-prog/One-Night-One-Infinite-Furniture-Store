@@ -353,6 +353,7 @@ function BuildMenu() {
   const StartButton = document.getElementById("StartButton");
   const BootStatus = document.getElementById("BootStatus");
   const BuildVersion = document.getElementById("BuildVersion");
+  const BootLoadPanel = document.getElementById("BootLoadPanel");
   if (!Card || !StartButton || !BootStatus || !BuildVersion || Card.dataset.R43Built) return;
   Card.dataset.R43Built = "1";
   Card.className = "BootCard R43Menu";
@@ -380,6 +381,7 @@ function BuildMenu() {
   BootStatus.className = "R43Status";
   BootStatus.innerHTML = `<i></i>${BootStatus.textContent || "Store ready."}`;
   BuildVersion.className = "R43Build";
+  if (BootLoadPanel) Side.appendChild(BootLoadPanel);
   Side.append(BootStatus, BuildVersion);
   Card.replaceChildren(Hero, Side);
   SettingsButton.addEventListener("click", () => OpenSettings(true));
@@ -449,5 +451,5 @@ setTimeout(ApplyPerformance, 0);
 requestAnimationFrame(FpsFrame);
 window.__STORE_APPLY_PERFORMANCE__ = ApplyPerformance;
 window.__STORE_APPLY_TEXTURE_BUDGET_TO_CHUNK__ = ApplyTextureBudgetToChunk;
-window.__STORE_PERFORMANCE_BUILD__ = "V0.35.37-ADAPTIVE-FRAME-BUDGET";
-window.__STORE_SETTINGS_BUILD__ = "V0.35.37-ADAPTIVE-FRAME-BUDGET";
+window.__STORE_PERFORMANCE_BUILD__ = "V0.35.37-ADAPTIVE-FRAME-BUDGET-R2";
+window.__STORE_SETTINGS_BUILD__ = "V0.35.37-ADAPTIVE-FRAME-BUDGET-R2";
