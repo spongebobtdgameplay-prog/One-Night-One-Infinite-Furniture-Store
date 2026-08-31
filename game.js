@@ -1501,14 +1501,13 @@ function IsPersistentCollisionRenderRoot(Object, Chunk) {
     Data.RetailImportedR79 ||
     Data.RetailSellableR84 ||
     Data.ForceSolidCollisionR30 ||
-    Data.CardboardBoxStableR90 ||
     Data.RenderBatchR104 ||
     Data.SolidCollisionR83 ||
     Data.RayCollisionSolidR35
   ) return true;
 
   const Name = String(Object.name || "");
-  return /^(RetailArmchairR79|RetailLivingShelfR79|RetailBedroomCabinetR79|RetailBedroomChairR79|RetailStorageShelfR79|RetailStorageCabinetR79|RetailDisplayCabinetR79|RetailCoffeeTableR84|RetailSideTableR84|RetailDiningTableR84|RetailBoxShelfR84|RetailCardboardBoxR84|WarehouseBoxes|ShoppingCartR82|ShoppingBasketR82|BagShelfR82)/i.test(Name);
+  return /^(RetailArmchairR79|RetailLivingShelfR79|RetailBedroomCabinetR79|RetailBedroomChairR79|RetailStorageShelfR79|RetailStorageCabinetR79|RetailDisplayCabinetR79|RetailCoffeeTableR84|RetailSideTableR84|RetailDiningTableR84|RetailBoxShelfR84|RetailFloorLampR84|RetailAccentCabinetR84|WarehouseBoxes|ShoppingCartR82|ShoppingBasketR82|BagShelfR82)/i.test(Name);
 }
 
 function StreamableRoots(Chunk) {
