@@ -407,13 +407,13 @@ function PumpGenerationQueue() {
     requestIdleCallback(Deadline => {
       // requestIdleCallback can fire with almost no actual budget. Starting a
       // model clone/showroom build there is what caused visible frame spikes.
-      if (!Deadline.didTimeout && Deadline.timeRemaining() < 6) {
+      if (Deadline.timeRemaining() < 5) {
         GenerationRunning = false;
         requestAnimationFrame(PumpGenerationQueue);
         return;
       }
       Run();
-    }, { timeout: 1000 });
+    });
   } else {
     setTimeout(Run, 12);
   }
@@ -683,8 +683,8 @@ async function GetModelTemplate(Name) {
 
 async function PreloadBaseFurniture() {
   const Names = Object.keys(ModelDefinitions);
-  for (let Index = 0; Index < Names.length; Index += 4) {
-    const Batch = Names.slice(Index, Index + 4);
+  for (let Index = 0; Index < Names.length; Index += 2) {
+    const Batch = Names.slice(Index, Index + 2);
     await Promise.allSettled(Batch.map(Name => GetModelTemplate(Name)));
     await new Promise(Resolve => requestAnimationFrame(Resolve));
   }
@@ -699,7 +699,13 @@ function AddModelCollision(Chunk, Entry) {
 function RenderBatchYield() {
   return new Promise(Resolve => {
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => Resolve(), { timeout: 350 });
+      requestIdleCallback(Deadline => {
+        if (Deadline.timeRemaining() >= 4) {
+          Resolve();
+          return;
+        }
+        requestAnimationFrame(() => RenderBatchYield().then(Resolve));
+      });
     } else {
       requestAnimationFrame(() => Resolve());
     }
@@ -809,7 +815,7 @@ async function OptimizeChunkStaticRender(Chunk) {
       Group.Meshes.push(Mesh);
     });
 
-    if (RootIndex > 0 && RootIndex % 4 === 0) await RenderBatchYield();
+    if (RootIndex > 0 && RootIndex % 2 === 0) await RenderBatchYield();
   }
 
   let BatchIndex = 0;
@@ -852,12 +858,12 @@ async function OptimizeChunkStaticRender(Chunk) {
     Batch.matrixAutoUpdate = false;
     Chunk.Group.add(Batch);
 
-    if (GroupIndex % 4 === 0) await RenderBatchYield();
+    if (GroupIndex % 2 === 0) await RenderBatchYield();
   }
 
   for (let RootIndex = 0; RootIndex < Roots.length; RootIndex += 1) {
     FreezeStaticRoot(Roots[RootIndex]);
-    if (RootIndex > 0 && RootIndex % 8 === 0) await RenderBatchYield();
+    if (RootIndex > 0 && RootIndex % 4 === 0) await RenderBatchYield();
   }
 
   Chunk.Group.userData.StaticRenderBatchedR104 = true;
