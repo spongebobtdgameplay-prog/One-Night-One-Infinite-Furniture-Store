@@ -69,7 +69,7 @@ const PREPARED_FORWARD_EXTRA = 1;
 const OBJECT_STREAM_INTERVAL_MS = 100;
 const OBJECT_STREAM_ALWAYS_DISTANCE = 10;
 const OBJECT_STREAM_NEAR_DISTANCE = 18;
-const OBJECT_STREAM_FAR_DISTANCE = 54;
+const OBJECT_STREAM_FAR_DISTANCE = 46;
 const PRICE_TAG_STREAM_DISTANCE = 20;
 const TASK_DISTANCE = 1.85;
 const PLACEMENT_CLEARANCE = 0.10;
@@ -1635,10 +1635,12 @@ function UpdateObjectStreaming(Now = performance.now(), Force = false) {
       }
 
       const VisibleNow = StreamFrustum.intersectsBox(Bounds);
+      const WithinDrawDistance =
+        DistanceSq <= OBJECT_STREAM_FAR_DISTANCE * OBJECT_STREAM_FAR_DISTANCE;
 
       if (
-        VisibleNow ||
-        DistanceSq <= OBJECT_STREAM_ALWAYS_DISTANCE * OBJECT_STREAM_ALWAYS_DISTANCE
+        DistanceSq <= OBJECT_STREAM_ALWAYS_DISTANCE * OBJECT_STREAM_ALWAYS_DISTANCE ||
+        (VisibleNow && WithinDrawDistance)
       ) {
         SetObjectStreamCulled(Object, false);
         continue;
