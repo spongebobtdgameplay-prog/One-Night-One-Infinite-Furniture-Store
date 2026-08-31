@@ -1,4 +1,4 @@
-const Cache = "20260830-v03538-cullcam1";
+const Cache = "20260830-v03538-cullcam2";
 const Version = "0.35.38";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
