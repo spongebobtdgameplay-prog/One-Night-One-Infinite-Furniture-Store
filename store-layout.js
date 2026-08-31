@@ -34,7 +34,8 @@ const Footprints = Object.freeze({
   RetailSideTableR84: [0.95, 0.95],
   RetailDiningTableR84: [2.30, 1.25],
   RetailBoxShelfR84: [1.55, 0.95],
-  RetailCardboardBoxR84: [0.70, 0.62],
+  RetailFloorLampR84: [0.62, 0.62],
+  RetailAccentCabinetR84: [1.05, 0.70],
   Cart: [1.20, 1.55],
   Basket: [0.75, 0.75],
   BagShelf: [1.55, 0.95],
@@ -509,44 +510,51 @@ function AddDenseDepartmentSlots(Layout, Theme) {
   Layout.Base.push(...Extra);
 }
 
-function AddCardboardBoxScatter(Layout, Theme, Index, Seed) {
+function AddAccentFurnitureScatter(Layout, Theme, Index, Seed) {
   const DenseStorage = Theme === "WAREHOUSE" || Theme === "STORAGE";
   const Candidates = DenseStorage
     ? [
-        [-14.10, -3.05], [14.10, 3.05], [-14.10, 3.05], [14.10, -3.05],
-        [-7.85, -9.00], [7.85, 9.00]
+        [-14.00, -3.20], [14.00, 3.20], [-8.20, -8.80], [8.20, 8.80]
       ]
     : [
-        [-6.25, -8.90], [6.25, 8.90], [-6.25, 2.85], [6.25, -2.85],
-        [-6.25, -2.85], [6.25, 2.85]
+        [-6.40, -8.80], [6.40, 8.80], [-6.40, 2.95], [6.40, -2.95]
       ];
 
-  const Count = DenseStorage ? 6 : (Theme === "SHOWROOM" || Theme === "CLEARANCE" ? 4 : 3);
-  const RotationChoices = [-0.20, -0.08, 0.10, 0.22];
-  const Start = Math.floor(SeedRoll(Seed, "BoxScatterStart") * Candidates.length) % Candidates.length;
-  let Added = 0;
+  const Count = DenseStorage ? 3 : 2;
+  const Start = Math.floor(SeedRoll(Seed, "AccentFurnitureStart") * Candidates.length) % Candidates.length;
 
-  for (let CandidateIndex = 0; CandidateIndex < Candidates.length && Added < Count; CandidateIndex += 1) {
-    const SourceIndex = (Start + CandidateIndex) % Candidates.length;
+  for (let Added = 0; Added < Count; Added += 1) {
+    const SourceIndex = (Start + Added) % Candidates.length;
     const [X, Z] = Candidates[SourceIndex];
     if (Index === 0 && Z > 5.20) continue;
-    const Rotation = RotationChoices[Math.floor(SeedRoll(Seed, `BoxScatterRotation:${CandidateIndex}`) * RotationChoices.length)];
+
+    const UseCabinet =
+      DenseStorage ||
+      Theme === "CLEARANCE" ||
+      SeedRoll(Seed, `AccentFurnitureType:${Added}`) > 0.55;
+
+    const AssetKey = UseCabinet ? "AccentCabinet" : "FloorLamp";
+    const Model = UseCabinet ? "RetailAccentCabinetR84" : "RetailFloorLampR84";
+    const Footprint = UseCabinet ? [1.05, 0.70] : [0.62, 0.62];
+    const Rotation = UseCabinet
+      ? (X < 0 ? 0 : Math.PI)
+      : SeedRoll(Seed, `AccentFurnitureRotation:${Added}`) * Math.PI * 2;
+
     Layout.Sale.push(Slot(
-      `CardboardBox.${Added}`,
-      "RetailCardboardBoxR84",
+      `AccentFurniture.${Added}`,
+      Model,
       X,
       Z,
       Rotation,
       {
         Kind: "Sale",
-        AssetKey: "CardboardBox",
-        Name: "RetailCardboardBoxR84",
+        AssetKey,
+        Name: Model,
         Sellable: true,
         Required: false,
-        Footprint: [0.70, 0.62]
+        Footprint
       }
     ));
-    Added += 1;
   }
 }
 
@@ -643,12 +651,6 @@ function FinalizeLayout(Layout, Seed, CenterZ) {
   Layout.Base = FilterGroup(Layout.Base);
   Layout.Retail = FilterGroup(Layout.Retail);
   Layout.Sale = FilterGroup(Layout.Sale);
-  const CardboardBoxes = Layout.Sale.filter(Entry => Entry.AssetKey === "CardboardBox");
-  for (let Index = 0; Index < CardboardBoxes.length; Index += 1) {
-    const Entry = CardboardBoxes[Index];
-    Entry.Sellable = Index === 0;
-    if (Index > 0) delete Layout.PriceAnchors[Entry.Slot];
-  }
   Layout.Zones = FilterGroup(Layout.Zones);
   if (Layout.Task && !Layout.Slots[Layout.Task.Slot]) Layout.Task = null;
 
@@ -745,7 +747,7 @@ export function CreateChunkLayout({ Index, Seed, Theme, CenterZ }) {
 
   AddDenseDepartmentSlots(Layout, ThemeName);
   ReserveEntranceTransition(Layout, Index);
-  AddCardboardBoxScatter(Layout, ThemeName, Index, Seed);
+  AddAccentFurnitureScatter(Layout, ThemeName, Index, Seed);
   AddRetailZone(Layout, Index, Seed);
   AddTask(Layout, Index, Seed);
 
@@ -773,4 +775,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.28-KITCHEN-VIGNETTES";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.34-REAL-ACCENT-FURNITURE";
