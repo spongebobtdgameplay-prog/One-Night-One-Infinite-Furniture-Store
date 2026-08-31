@@ -165,11 +165,12 @@ try {
       throw new Error(`Aisle ${Index + 1} did not finish before the boot deadline.`);
     }
 
+    const Degraded = Boolean(Chunk.Group?.userData?.PresentationDegradedR83);
     SetWorldProgress(
       Index + 1,
       BootBufferCount,
       `Aisle ${Index + 1}/${BootBufferCount} ready`,
-      "Fully prepared before entry"
+      Degraded ? "Settled with optional content skipped" : "Presentation settled before entry"
     );
   }
 
