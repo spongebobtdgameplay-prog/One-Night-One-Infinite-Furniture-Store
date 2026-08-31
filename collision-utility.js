@@ -1133,4 +1133,4 @@ export {
   ResolveRaycastCapsuleSegment,
   ProbeVisibleGeometrySeparation
 };
-window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.27-SHARED-RAY-ROOTS";
+window.__STORE_COLLISION_UTILITY_BUILD__ = "V0.35.39-CACHED-FURNITURE-MOVEMENT";
