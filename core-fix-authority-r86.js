@@ -475,7 +475,13 @@ function ChunkSignature(Chunk) {
 function CollisionBudgetYield() {
   return new Promise(Resolve => {
     if ("requestIdleCallback" in window) {
-      requestIdleCallback(() => Resolve(), { timeout: 180 });
+      requestIdleCallback(Deadline => {
+        if (Deadline.timeRemaining() >= 4) {
+          Resolve();
+          return;
+        }
+        requestAnimationFrame(() => CollisionBudgetYield().then(Resolve));
+      });
     } else {
       requestAnimationFrame(() => Resolve());
     }
@@ -501,7 +507,7 @@ export async function ProcessChunkAsync(Chunk, Force = false) {
     const Root = Roots[Index];
     FixDarkMaterials(Root);
     InstallExactCollision(Chunk, Root);
-    if (Index > 0 && Index % 2 === 0) await CollisionBudgetYield();
+    if (Index < Roots.length - 1) await CollisionBudgetYield();
   }
 
   FixRetailZoneColors(Chunk);
@@ -555,4 +561,4 @@ ProcessAll();
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk, ProcessChunkAsync };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.26-BUDGETED-EXACT";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.34-IDLE-EXACT-COLLISION";
