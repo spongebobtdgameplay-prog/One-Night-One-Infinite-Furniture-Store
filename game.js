@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03535-fastboot2";
+import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03536-loadertruth1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -1817,17 +1817,13 @@ function StartBackgroundChunkBuffer(Token) {
 async function PrepareInitialWorld() {
   const BufferToken = ++BackgroundChunkBufferToken;
 
-  if (BootStatus) {
-    BootStatus.textContent = `Building first playable aisle • seed ${WorldSeed}`;
-  }
+  window.__STORE_SET_BOOT_STAGE__?.(`Building aisle 1 geometry and furniture • seed ${WorldSeed}`);
 
   const FirstChunk = await PrepareChunk(0);
   if (!FirstChunk) throw new Error("The first store aisle could not be prepared.");
   ActivateChunk(FirstChunk);
 
-  if (BootStatus) {
-    BootStatus.textContent = `First aisle ready • buffering nearby aisles • seed ${WorldSeed}`;
-  }
+  window.__STORE_SET_BOOT_STAGE__?.(`Aisle 1 ready • scheduling nearby aisle buffer • seed ${WorldSeed}`);
 
   StartBackgroundChunkBuffer(BufferToken);
 }
@@ -2079,11 +2075,12 @@ const FillLight = new THREE.DirectionalLight(0xffe6c2, 0.40);
 FillLight.position.set(-7, 9, 6);
 Scene.add(FillLight);
 
-if (BootStatus) BootStatus.textContent = "Building the first playable aisle...";
+window.__STORE_SET_BOOT_STAGE__?.("Building the first playable aisle...");
 await PrepareInitialWorld();
+window.__STORE_SET_BOOT_STAGE__?.("Attaching player controls to the world...");
 PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
 window.__STORE_APPLY_PERFORMANCE__?.();
-if (BootStatus) BootStatus.textContent = `First aisle ready • finalizing store systems • seed ${WorldSeed}`;
+window.__STORE_SET_BOOT_STAGE__?.(`First aisle playable • finalizing store systems • seed ${WorldSeed}`);
 
 function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
@@ -2156,8 +2153,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.35";
-window.__STORE_VERSION__ = "0.35.35";
+window.__STORE_GAME_BUILD__ = "V0.35.36";
+window.__STORE_VERSION__ = "0.35.36";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2182,6 +2179,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.35"
+  Version: "0.35.36"
 };
 Animate();
