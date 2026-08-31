@@ -15,6 +15,8 @@ const Assets = Object.freeze({
   CoffeeTable: { Url: `${KayKitBase}table_low.gltf`, Label: "COFFEE TABLE", Price: "149.99", Height: 0.48, MaxWidth: 1.70, MaxDepth: 1.15, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   SideTable: { Url: `${KayKitBase}table_small.gltf`, Label: "SIDE TABLE", Price: "89.99", Height: 0.62, MaxWidth: 0.95, MaxDepth: 0.95, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   DiningTable: { Url: `${KayKitBase}table_medium_long.gltf`, Label: "DINING TABLE", Price: "329.99", Height: 0.76, MaxWidth: 2.30, MaxDepth: 1.25, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  FloorLamp: { Url: `${KayKitBase}lamp_standing.gltf`, Label: "FLOOR LAMP", Price: "119.99", Height: 1.58, MaxWidth: 0.62, MaxDepth: 0.62, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
+  AccentCabinet: { Url: `${KayKitBase}cabinet_small_decorated.gltf`, Label: "ACCENT CABINET", Price: "219.99", Height: 0.92, MaxWidth: 1.05, MaxDepth: 0.70, Source: "https://github.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0" },
   BoxShelf: { Url: `${KenneyBase}shelf-boxes.glb`, Label: "FLAT-PACK BOXES", Price: "129.99", Height: 1.48, MaxWidth: 1.55, MaxDepth: 0.95, Source: "https://kenney.nl/assets/mini-market" },
   CardboardBox: {
     Urls: [MicrosoftCardboardBox],
@@ -139,8 +141,16 @@ async function LoadTemplate(Key) {
 async function CloneAsset(Key) {
   const Template = await LoadTemplate(Key);
   if (!Template) return null;
+
   const Clone = Template.clone(true);
-  CloneMaterials(Clone);
+
+  Clone.traverse(Object => {
+    if (!Object?.isMesh) return;
+    Object.castShadow = false;
+    Object.receiveShadow = false;
+    Object.frustumCulled = true;
+  });
+
   return Clone;
 }
 
@@ -277,4 +287,4 @@ function Discover() {
 Discover();
 
 window.__STORE_RETAIL_SALE_DISPLAYS_R84__ = { ProcessChunk, Ready, Preload, Discover };
-window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.24-FRUSTUM";
+window.__STORE_RETAIL_SALE_DISPLAYS_BUILD__ = "V0.35.34-REAL-ACCENTS-SHARED-MATERIALS";
