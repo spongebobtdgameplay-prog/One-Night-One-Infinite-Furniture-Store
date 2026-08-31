@@ -32,7 +32,9 @@ const CAMERA_TARGET_HEIGHT = 1.26;
 const CAMERA_SHOULDER = 0.26;
 const CAMERA_FLOOR = 0.34;
 const CAMERA_CEILING = 3.48;
-const CAMERA_PADDING = 0.10;
+const CAMERA_PADDING = 0.22;
+const CAMERA_VOLUME_RADIUS = 0.20;
+const CAMERA_VOLUME_HEIGHT = 0.16;
 const FIRST_PERSON_NEAR = 0.012;
 const FIRST_PERSON_FACE_OFFSET = 0.085;
 const FIRST_PERSON_EYE_LIFT = 0.022;
@@ -192,6 +194,9 @@ const State = {
   TempTarget: new THREE.Vector3(),
   TempDesired: new THREE.Vector3(),
   TempOffset: new THREE.Vector3(),
+  TempCameraProbeOffset: new THREE.Vector3(),
+  TempCameraProbeStart: new THREE.Vector3(),
+  TempCameraProbeEnd: new THREE.Vector3(),
   TempStart: new THREE.Vector3(),
   TempEnd: new THREE.Vector3(),
   TempCurrentDirection: new THREE.Vector3(),
@@ -2853,15 +2858,49 @@ function CameraDistance(Target, Desired) {
   const SegmentLength = Math.max(Target.distanceTo(Desired), 0.001);
   if (!State.Scene || typeof Collision?.RaycastVisibleSegment !== "function") return SegmentLength;
 
-  const Hit = Collision.RaycastVisibleSegment(Target, Desired, {
-    Scene: State.Scene,
-    Center: Target,
-    Range: SegmentLength + 1.2,
-    Mode: "camera"
-  });
-  if (!Hit) return SegmentLength;
+  let Allowed = SegmentLength;
+  const Probes = [
+    [0, 0],
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [0.72, 0.72],
+    [-0.72, 0.72],
+    [0.72, -0.72],
+    [-0.72, -0.72]
+  ];
 
-  return Math.max(0.36, Hit.Distance - CAMERA_PADDING);
+  State.TempUp.set(0, 1, 0);
+
+  for (const [Side, Vertical] of Probes) {
+    State.TempCameraProbeOffset
+      .copy(State.TempRight)
+      .multiplyScalar(Side * CAMERA_VOLUME_RADIUS)
+      .addScaledVector(State.TempUp, Vertical * CAMERA_VOLUME_HEIGHT);
+
+    State.TempCameraProbeStart.copy(Target).add(State.TempCameraProbeOffset);
+    State.TempCameraProbeEnd.copy(Desired).add(State.TempCameraProbeOffset);
+
+    const Hit = Collision.RaycastVisibleSegment(
+      State.TempCameraProbeStart,
+      State.TempCameraProbeEnd,
+      {
+        Scene: State.Scene,
+        Center: Target,
+        Range: SegmentLength + CAMERA_VOLUME_RADIUS + 1.5,
+        Mode: "camera"
+      }
+    );
+
+    if (!Hit) continue;
+    Allowed = Math.min(
+      Allowed,
+      Math.max(0.42, Hit.Distance - CAMERA_PADDING)
+    );
+  }
+
+  return Allowed;
 }
 
 function RenderThirdPerson(Renderer, Scene, Camera) {
