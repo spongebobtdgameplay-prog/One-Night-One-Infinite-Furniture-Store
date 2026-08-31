@@ -53,6 +53,11 @@ const AssetStates = new Map();
 const ActiveAssets = new Set();
 let NextAssetIndex = 0;
 let LastAssetUrl = "";
+let BackgroundWarmupStopped = false;
+
+window.addEventListener("store-gameplay-started", () => {
+  BackgroundWarmupStopped = true;
+}, { once: true });
 
 function Mix32(Value) {
   let NumberValue = Value >>> 0;
@@ -235,8 +240,9 @@ function BackgroundYield() {
 async function BackgroundWorker() {
   const Loader = new GLTFLoader();
 
-  while (NextAssetIndex < AssetUrls.length) {
+  while (!BackgroundWarmupStopped && NextAssetIndex < AssetUrls.length) {
     await BackgroundYield();
+    if (BackgroundWarmupStopped || window.__STORE_GAMEPLAY_STARTED__) break;
     const AssetIndex = NextAssetIndex;
     NextAssetIndex += 1;
 
@@ -245,11 +251,12 @@ async function BackgroundWorker() {
     } catch {}
   }
 
-  window.__STORE_PRELOAD_RESULT__ = "finished";
+  window.__STORE_PRELOAD_RESULT__ =
+    NextAssetIndex >= AssetUrls.length ? "finished" : "paused-gameplay";
 }
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = "background";
-window.__STORE_PRELOAD_BUILD__ = "V0.35.36-TRUTHFUL-PROGRESS";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.37-GAMEPLAY-BUDGET";
 DispatchProgress();
 BackgroundWorker().catch(() => {});
