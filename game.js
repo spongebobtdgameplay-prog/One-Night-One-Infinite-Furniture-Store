@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260830-v03537-fps2";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03541-startauthority1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -57,7 +57,7 @@ const STORE_HALF_WIDTH = 17;
 const CEILING_HEIGHT = 3.72;
 const CHUNK_LENGTH = 30;
 const FIRST_CHUNK_TOP_Z = 10;
-const CHUNKS_AHEAD = 2;
+const CHUNKS_AHEAD = 1;
 const CHUNKS_BEHIND = 1;
 const PREFETCH_CHUNKS = 1;
 const STREAM_PROMOTION_DISTANCE = 12;
@@ -82,6 +82,9 @@ let WorldSeed = Number.isFinite(window.__STORE_WORLD_SEED__)
       crypto.getRandomValues(Values);
       return (Values[0] >>> 0) || 1;
     })();
+
+let WorldGeneration = 1;
+window.__STORE_WORLD_GENERATION__ = WorldGeneration;
 
 let StoreSeconds = 23 * 60 * 60 + 57 * 60;
 let Started = false;
@@ -1916,6 +1919,9 @@ async function SetWorldSeed(Value) {
   SeedResetFlight = (async () => {
     const WasStarted = Started;
     Started = false;
+    WorldGeneration += 1;
+    window.__STORE_WORLD_GENERATION__ = WorldGeneration;
+    window.__STORE_LOCK_START__?.(`Synchronizing world seed ${NextSeed} before entry.`);
     try {
       await Promise.allSettled([...PreparingChunks.values()]);
 
@@ -1944,10 +1950,15 @@ async function SetWorldSeed(Value) {
       window.__STORE_RETAIL_SHOWROOM_R79__?.Discover?.();
       window.__STORE_PRESENTATION_READY_R83__?.Discover?.();
 
+      if (typeof window.__STORE_ENSURE_START_READY__ === "function") {
+        const Ready = await window.__STORE_ENSURE_START_READY__();
+        if (!Ready || window.__STORE_START_GATE__?.Ready !== true) return false;
+      }
+
       if (BootStatus) BootStatus.textContent = `Store ready — synchronized seed ${WorldSeed}.`;
       return true;
     } finally {
-      Started = WasStarted;
+      Started = Boolean(WasStarted && window.__STORE_START_GATE__?.Ready);
     }
   })().finally(() => {
     SeedResetFlight = null;
@@ -2165,7 +2176,16 @@ function Animate() {
   requestAnimationFrame(Animate);
 }
 
-StartButton.addEventListener("click", () => {
+StartButton.addEventListener("click", Event => {
+  if (window.__STORE_START_GATE__?.Ready !== true) {
+    Event.preventDefault();
+    Event.stopImmediatePropagation();
+    window.__STORE_SET_BOOT_STAGE__?.(
+      window.__STORE_START_GATE__?.Reason || "The current world is still generating."
+    );
+    return;
+  }
+
   Started = true;
   window.__STORE_GAMEPLAY_STARTED__ = true;
   window.dispatchEvent(new CustomEvent("store-gameplay-started"));
@@ -2223,8 +2243,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.40";
-window.__STORE_VERSION__ = "0.35.40";
+window.__STORE_GAME_BUILD__ = "V0.35.41";
+window.__STORE_VERSION__ = "0.35.41";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2251,6 +2271,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.40"
+  Version: "0.35.41"
 };
 Animate();
