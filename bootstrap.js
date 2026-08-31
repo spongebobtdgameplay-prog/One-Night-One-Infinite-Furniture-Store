@@ -1,5 +1,5 @@
-const Cache = "20260830-v03533-exactshoe1";
-const Version = "0.35.33";
+const Cache = "20260830-v03534-boxperfclip1";
+const Version = "0.35.34";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
