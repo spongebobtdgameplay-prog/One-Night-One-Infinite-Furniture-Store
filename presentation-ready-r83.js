@@ -420,14 +420,36 @@ function Discover() {
   return DiscoverFlight;
 }
 
+export async function WaitForPresentationReady(Chunk, TimeoutMs = 18000) {
+  if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
+  const StartedAt = performance.now();
+  let LastFinalizeAt = -Infinity;
+
+  while (!Chunk.Cancelled && Chunk.Group) {
+    if (Chunk.Group.userData?.PresentationReadyR83) return true;
+    const Now = performance.now();
+    if (Now - StartedAt >= Math.max(1000, Number(TimeoutMs) || 18000)) return false;
+
+    if (Now - LastFinalizeAt >= 250) {
+      LastFinalizeAt = Now;
+      await FinalizeChunk(Chunk);
+    }
+
+    await Delay(45);
+  }
+
+  return false;
+}
+
 Discover();
 const Interval = setInterval(Discover, 1800);
 addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_PRESENTATION_READY_R83__ = {
   FinalizeChunk,
+  WaitForPresentationReady,
   TraversalReady,
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.26-IDLE-COLLISION";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.39-BOOT-BUFFER-GATE";
