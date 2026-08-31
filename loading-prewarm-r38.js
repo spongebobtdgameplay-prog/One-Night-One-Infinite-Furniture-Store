@@ -9,22 +9,24 @@ const LoadWindowMs = 120000;
 const StartedAt = performance.now();
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
+const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
+const KhronosSampleBase = "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/";
 const KenneyBase = "https://raw.githubusercontent.com/dennisorlando/junction-2025/f78a38d01f3a47697ff144bfed0301df7f25c784/models/mini-market/GLB%20format/";
 const IndustrialShelfUrl = "https://raw.githubusercontent.com/danielrosehill/storage-box-3d-models/main/models/SB1/SB1.glb";
 
 const AssetUrls = [
   "https://raw.githubusercontent.com/euuuuuuan/fatal-funnel-public/main/packages/renderer/assets/models/quaternius-men/worker.glb",
-  "Models/LivingRoom/GLB/Couch_Large1.glb",
-  "Models/LivingRoom/GLB/Couch_L.glb",
-  "Models/LivingRoom/GLB/Chair_2.glb",
-  "Models/LivingRoom/GLB/Table_RoundLarge.glb",
+  `${KhronosSampleBase}GlamVelvetSofa/glTF-Binary/GlamVelvetSofa.glb`,
+  `${KhronosSampleBase}ChairDamaskPurplegold/glTF-Binary/ChairDamaskPurplegold.glb`,
+  `${KayKitBase}table_medium.gltf`,
   "Models/Bedroom/GLB/Bed_King.glb",
   "Models/Bedroom/GLB/Bed_Single.glb",
   "Models/Bedroom/GLB/NightStand_2.glb",
   "Models/Kitchen/GLB/Kitchen_Cabinet1.glb",
   "Models/Kitchen/GLB/Kitchen_Fridge.glb",
-  "Models/Kitchen/GLB/Kitchen_Oven.glb",
-  "Models/Kitchen/GLB/Kitchen_Sink.glb",
+  `${KayKitRestaurantBase}stove_multi_decorated.gltf`,
+  `${KayKitRestaurantBase}kitchencounter_sink.gltf`,
+  `${KayKitRestaurantBase}kitchentable_sink.gltf`,
   "Models/Bathroom/GLB/Bathroom_Bathtub.glb",
   "Models/Bathroom/GLB/Bathroom_Toilet.glb",
   "Models/Lighting/GLB/Light_Floor1.glb",
@@ -254,4 +256,4 @@ LoaderUi.Wrapper?.remove();
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = Result;
-window.__STORE_PRELOAD_BUILD__ = "V0.35.34-REAL-ACCENTS";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.34-EXACT-ACTIVE-ASSETS";
