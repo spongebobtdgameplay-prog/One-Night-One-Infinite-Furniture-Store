@@ -160,9 +160,6 @@ const State = {
   SafeFootRight: new THREE.Vector3(),
   SafeFootLeftReady: false,
   SafeFootRightReady: false,
-  ExactFootMeshSamplesLeft: [],
-  ExactFootMeshSamplesRight: [],
-  ExactFootUpdatedMeshes: new Set(),
   FootLocalBoxLeft: new THREE.Box3(),
   FootLocalBoxRight: new THREE.Box3(),
   FootLocalBoxLeftReady: false,
@@ -209,7 +206,6 @@ const State = {
   TempFootWorldCorner: new THREE.Vector3(),
   TempFootWorldBox: new THREE.Box3(),
   TempFootInverseMatrix: new THREE.Matrix4(),
-  TempExactFootForce: new THREE.Vector3(),
   TempExactFootTarget: new THREE.Vector3(),
   TempFootBonePosition: new THREE.Vector3(),
   TempFootMeasureDelta: new THREE.Vector3(),
@@ -490,8 +486,6 @@ function UpdateFootHullOrientation() {
 function MeasureFootHullFromRig() {
   if (!State.Pivot) return;
 
-  State.ExactFootMeshSamplesLeft.length = 0;
-  State.ExactFootMeshSamplesRight.length = 0;
   State.FootLocalBoxLeft.makeEmpty();
   State.FootLocalBoxRight.makeEmpty();
   State.FootLocalBoxLeftReady = false;
@@ -513,9 +507,6 @@ function MeasureFootHullFromRig() {
     const FootBone = State.Bones.get(FootName);
     if (!FootBone) continue;
 
-    const ExactSamples = FootName === "FootL"
-      ? State.ExactFootMeshSamplesLeft
-      : State.ExactFootMeshSamplesRight;
     const LocalBox = FootName === "FootL"
       ? State.FootLocalBoxLeft
       : State.FootLocalBoxRight;
@@ -610,11 +601,6 @@ function MeasureFootHullFromRig() {
         ) continue;
 
         if (FootWeight < 0.02 && Forward > 0.34) continue;
-
-        ExactSamples.push({
-          Mesh,
-          VertexIndex
-        });
 
         State.TempFootLocal
           .copy(State.TempFootVertex)
@@ -2498,174 +2484,6 @@ function ApplyCarpetShoeBoxGuard(Pivot = State.Pivot) {
     const Length = State.TempBestBodyForce.length();
     if (Length > 0.10) {
       State.TempBestBodyForce.multiplyScalar(0.10 / Length);
-    }
-
-    Pivot.position.add(State.TempBestBodyForce);
-    Pivot.updateMatrixWorld(true);
-    Changed = true;
-  }
-
-  return Changed;
-}
-
-function SampleExactFootVertexWorld(Sample, Out) {
-  const Mesh = Sample?.Mesh;
-  const VertexIndex = Number(Sample?.VertexIndex);
-  const Position = Mesh?.geometry?.attributes?.position;
-
-  if (
-    !Mesh?.isSkinnedMesh ||
-    !Mesh.parent ||
-    !Position ||
-    !Number.isInteger(VertexIndex) ||
-    VertexIndex < 0 ||
-    VertexIndex >= Position.count
-  ) return false;
-
-  if (!State.ExactFootUpdatedMeshes.has(Mesh)) {
-    Mesh.updateWorldMatrix(true, false);
-    Mesh.skeleton?.update?.();
-    State.ExactFootUpdatedMeshes.add(Mesh);
-  }
-
-  Out.fromBufferAttribute(Position, VertexIndex);
-
-  if (typeof Mesh.applyBoneTransform === "function") {
-    Mesh.applyBoneTransform(VertexIndex, Out);
-  } else if (typeof Mesh.boneTransform === "function") {
-    Mesh.boneTransform(VertexIndex, Out);
-  } else {
-    return false;
-  }
-
-  Out.applyMatrix4(Mesh.matrixWorld);
-  return true;
-}
-
-function FindExactFootMeshForce(Side, SurfaceStep, Out) {
-  Out.set(0, 0, 0);
-
-  if (
-    !SurfaceStep ||
-    typeof SurfaceStep.ResolveMeshPointCurbForce !== "function"
-  ) return 0;
-
-  const Samples = Side < 0
-    ? State.ExactFootMeshSamplesLeft
-    : State.ExactFootMeshSamplesRight;
-
-  if (!Samples?.length) return 0;
-
-  State.ExactFootUpdatedMeshes.clear();
-  let BestDepth = 0;
-
-  for (const Sample of Samples) {
-    if (!SampleExactFootVertexWorld(
-      Sample,
-      State.TempFootVertex
-    )) continue;
-
-    const Result = SurfaceStep.ResolveMeshPointCurbForce(
-      State.TempFootVertex,
-      State.TempExactFootForce,
-      0.004
-    );
-
-    const Depth = Number(Result?.Depth) || 0;
-    if (!Result?.Hit || Depth <= BestDepth) continue;
-
-    BestDepth = Depth;
-    Out.copy(Result.Separation);
-  }
-
-  return BestDepth;
-}
-
-function ExactFootLegNames(Side) {
-  return Side < 0
-    ? {
-        Upper: "UpperLegL",
-        Lower: "LowerLegL",
-        Foot: "FootL"
-      }
-    : {
-        Upper: "UpperLegR",
-        Lower: "LowerLegR",
-        Foot: "FootR"
-      };
-}
-
-function ApplyExactCarpetMeshGuard(Pivot = State.Pivot) {
-  const SurfaceStep = window.__STORE_SURFACE_STEP_ANIMATION_R87__ || null;
-
-  if (
-    !SurfaceStep ||
-    !Pivot ||
-    typeof SurfaceStep.ResolveMeshPointCurbForce !== "function" ||
-    !SurfaceStep.NearRug?.(Pivot.position, 1.25)
-  ) return false;
-
-  let Changed = false;
-
-  for (const Side of [-1, 1]) {
-    const Names = ExactFootLegNames(Side);
-    const FootBone = State.Bones.get(Names.Foot);
-    if (!FootBone) continue;
-
-    for (let Pass = 0; Pass < 8; Pass += 1) {
-      const Depth = FindExactFootMeshForce(
-        Side,
-        SurfaceStep,
-        State.TempBestBodyForce
-      );
-
-      if (
-        Depth <= 0.00015 ||
-        State.TempBestBodyForce.lengthSq() <= 0.00000002
-      ) break;
-
-      FootBone.getWorldPosition(State.TempFoot);
-      State.TempExactFootTarget
-        .copy(State.TempFoot)
-        .add(State.TempBestBodyForce);
-
-      SolveTwoBoneLeg(
-        Names.Upper,
-        Names.Lower,
-        Names.Foot,
-        State.TempExactFootTarget,
-        Side
-      );
-
-      Pivot.updateMatrixWorld(true);
-      Changed = true;
-    }
-  }
-
-  for (let Pass = 0; Pass < 4; Pass += 1) {
-    let BestDepth = 0;
-    State.TempBestBodyForce.set(0, 0, 0);
-
-    for (const Side of [-1, 1]) {
-      const Depth = FindExactFootMeshForce(
-        Side,
-        SurfaceStep,
-        State.TempBodyForce
-      );
-
-      if (Depth <= BestDepth) continue;
-      BestDepth = Depth;
-      State.TempBestBodyForce.copy(State.TempBodyForce);
-    }
-
-    if (
-      BestDepth <= 0.00015 ||
-      State.TempBestBodyForce.lengthSq() <= 0.00000002
-    ) break;
-
-    const Length = State.TempBestBodyForce.length();
-    if (Length > 0.12) {
-      State.TempBestBodyForce.multiplyScalar(0.12 / Length);
     }
 
     Pivot.position.add(State.TempBestBodyForce);
