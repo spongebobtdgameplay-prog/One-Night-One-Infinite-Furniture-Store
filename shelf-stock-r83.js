@@ -67,8 +67,17 @@ function PlansFor(Chunk, Target) {
 
 async function Yield() {
   await new Promise(Resolve => {
-    if ("requestIdleCallback" in window) requestIdleCallback(() => Resolve(), { timeout: 550 });
-    else setTimeout(Resolve, 12);
+    if ("requestIdleCallback" in window) {
+      requestIdleCallback(Deadline => {
+        if (Deadline.timeRemaining() >= 4) {
+          Resolve();
+          return;
+        }
+        requestAnimationFrame(() => Yield().then(Resolve));
+      });
+    } else {
+      requestAnimationFrame(() => Resolve());
+    }
   });
 }
 
@@ -182,4 +191,4 @@ function Discover() {
 Discover();
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.16-BUDGET";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.34-IDLE-BUDGET";
