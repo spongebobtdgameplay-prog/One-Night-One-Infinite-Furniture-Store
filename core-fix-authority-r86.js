@@ -24,6 +24,7 @@ const RetailNames = new Set([
 const RemovedGeometryNames = new Set(["Window_Large1"]);
 const ProcessedCollision = new WeakMap();
 const ProcessedChunks = new WeakMap();
+const ExactShapeCache = new Map();
 const TempA = new THREE.Vector3();
 const TempB = new THREE.Vector3();
 const TempC = new THREE.Vector3();
@@ -184,12 +185,29 @@ function AddTriangleToGrid(Grid, Triangle, Index) {
   }
 }
 
-function BuildExactFootprint(Model) {
+function ExactShapeKey(Model) {
+  Model.updateWorldMatrix(true, true);
+  const E = Model.matrixWorld.elements;
+  const GeometryIds = [];
+  Model.traverse(Object => {
+    if (!Object?.isMesh || !Object.visible || !Object.geometry?.attributes?.position) return;
+    if (/Text|Label|Glow/i.test(String(Object.name || ""))) return;
+    GeometryIds.push(Object.geometry.uuid);
+  });
+  return [
+    String(Model.name || "Furniture").replace(/-\d+$/, ""),
+    E[0].toFixed(4), E[1].toFixed(4), E[2].toFixed(4),
+    E[4].toFixed(4), E[5].toFixed(4), E[6].toFixed(4),
+    E[8].toFixed(4), E[9].toFixed(4), E[10].toFixed(4),
+    GeometryIds.join(",")
+  ].join("|");
+}
+
+function BuildExactFootprint(Model, Origin) {
   Model.updateWorldMatrix(true, true);
   const Triangles = [];
   const Grid = new Map();
   const Bounds2 = new THREE.Box2().makeEmpty();
-  const WorldBox = BoundsOf(Model);
 
   Model.traverse(Object => {
     if (!Object?.isMesh || !Object.visible || !Object.geometry?.attributes?.position) return;
@@ -217,9 +235,9 @@ function BuildExactFootprint(Model) {
       if (Area < MIN_TRIANGLE_AREA) continue;
 
       const Triangle = {
-        A: new THREE.Vector2(TempA.x, TempA.z),
-        B: new THREE.Vector2(TempB.x, TempB.z),
-        C: new THREE.Vector2(TempC.x, TempC.z)
+        A: new THREE.Vector2(TempA.x - Origin.x, TempA.z - Origin.z),
+        B: new THREE.Vector2(TempB.x - Origin.x, TempB.z - Origin.z),
+        C: new THREE.Vector2(TempC.x - Origin.x, TempC.z - Origin.z)
       };
       const NewIndex = Triangles.length;
       Triangles.push(Triangle);
@@ -230,7 +248,16 @@ function BuildExactFootprint(Model) {
     }
   });
 
-  return { Triangles, Grid, Bounds2, WorldBox };
+  return { Triangles, Grid, Bounds2 };
+}
+
+function GetExactFootprint(Model, Origin) {
+  const Key = ExactShapeKey(Model);
+  const Cached = ExactShapeCache.get(Key);
+  if (Cached) return Cached;
+  const Geometry = BuildExactFootprint(Model, Origin);
+  ExactShapeCache.set(Key, Geometry);
+  return Geometry;
 }
 
 function BuildOrientedFallback(Model) {
@@ -265,19 +292,26 @@ function CircleHitsOrientedPiece(Position, Radius, Piece) {
   return DX * DX + DZ * DZ <= Radius * Radius;
 }
 
-function CircleHitsExact(Position, Radius, Geometry, FallbackPieces) {
+function CircleHitsExact(Position, Radius, Geometry, FallbackPieces, Origin, StableBox) {
   const FeetY = Position.y - PlayerEyeHeight;
   const HeadY = Position.y + 0.12;
-  const WorldBox = Geometry.WorldBox;
-  if (WorldBox.max.y < FeetY + 0.03 || WorldBox.min.y > HeadY) return false;
+  if (StableBox.max.y < FeetY + 0.03 || StableBox.min.y > HeadY) return false;
+  if (
+    Position.x + Radius < StableBox.min.x ||
+    Position.x - Radius > StableBox.max.x ||
+    Position.z + Radius < StableBox.min.z ||
+    Position.z - Radius > StableBox.max.z
+  ) return false;
 
   if (Geometry.Triangles.length) {
+    const LocalX = Position.x - Origin.x;
+    const LocalZ = Position.z - Origin.z;
     const Bounds = Geometry.Bounds2;
-    if (Position.x + Radius < Bounds.min.x || Position.x - Radius > Bounds.max.x || Position.z + Radius < Bounds.min.y || Position.z - Radius > Bounds.max.y) return false;
-    const MinCellX = Math.floor((Position.x - Radius) / CELL_SIZE);
-    const MaxCellX = Math.floor((Position.x + Radius) / CELL_SIZE);
-    const MinCellZ = Math.floor((Position.z - Radius) / CELL_SIZE);
-    const MaxCellZ = Math.floor((Position.z + Radius) / CELL_SIZE);
+    if (LocalX + Radius < Bounds.min.x || LocalX - Radius > Bounds.max.x || LocalZ + Radius < Bounds.min.y || LocalZ - Radius > Bounds.max.y) return false;
+    const MinCellX = Math.floor((LocalX - Radius) / CELL_SIZE);
+    const MaxCellX = Math.floor((LocalX + Radius) / CELL_SIZE);
+    const MinCellZ = Math.floor((LocalZ - Radius) / CELL_SIZE);
+    const MaxCellZ = Math.floor((LocalZ + Radius) / CELL_SIZE);
     const RadiusSquared = Radius * Radius;
     const Seen = new Set();
     for (let X = MinCellX; X <= MaxCellX; X += 1) {
@@ -285,7 +319,7 @@ function CircleHitsExact(Position, Radius, Geometry, FallbackPieces) {
         for (const Index of Geometry.Grid.get(CellKey(X, Z)) || []) {
           if (Seen.has(Index)) continue;
           Seen.add(Index);
-          if (CircleHitsTriangle(Position.x, Position.z, RadiusSquared, Geometry.Triangles[Index])) return true;
+          if (CircleHitsTriangle(LocalX, LocalZ, RadiusSquared, Geometry.Triangles[Index])) return true;
         }
       }
     }
@@ -330,9 +364,11 @@ function InstallExactCollision(Chunk, Model) {
 
   RemoveExistingCoreEntry(Chunk, Model);
 
-  const Geometry = BuildExactFootprint(Model);
-  const FallbackPieces = BuildOrientedFallback(Model);
-  const StableBox = Geometry.WorldBox.clone();
+  const Origin = new THREE.Vector3();
+  Model.getWorldPosition(Origin);
+  const Geometry = GetExactFootprint(Model, Origin);
+  const FallbackPieces = Geometry.Triangles.length ? [] : BuildOrientedFallback(Model);
+  const StableBox = BoundsOf(Model);
 
   const Entry = {
     Box: StableBox.clone(),
@@ -347,7 +383,7 @@ function InstallExactCollision(Chunk, Model) {
     LegacyCollisionDisabled: true,
     CollisionObject: Model,
     TestPlayerCollision(Position, Radius = 0.28) {
-      return CircleHitsExact(Position, Radius, Geometry, FallbackPieces);
+      return CircleHitsExact(Position, Radius, Geometry, FallbackPieces, Origin, StableBox);
     }
   };
 
@@ -561,4 +597,4 @@ ProcessAll();
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk, ProcessChunkAsync };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.34-IDLE-EXACT-COLLISION";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.37-CACHED-EXACT-COLLISION";
