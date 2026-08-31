@@ -1384,11 +1384,10 @@ function StartGameFromRoom() {
     const SeedResult = await SyncRoomSeed(CurrentRoom);
     if (!SeedResult?.ok) return;
 
-    if (typeof window.__STORE_ENSURE_START_READY__ === "function") {
+    if (window.__STORE_START_GATE__?.Ready !== true) {
+      if (typeof window.__STORE_ENSURE_START_READY__ !== "function") return;
       const Ready = await window.__STORE_ENSURE_START_READY__();
       if (!Ready || window.__STORE_START_GATE__?.Ready !== true) return;
-    } else if (window.__STORE_START_GATE__?.Ready !== true) {
-      return;
     }
 
     ApplyCompletedTasks(CurrentRoom?.completedTasks || []);
