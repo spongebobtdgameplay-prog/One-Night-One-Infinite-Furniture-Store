@@ -888,6 +888,87 @@ function ResolveFootHullSweep(Target, PreviousSafe, Hull = null, Clearance = 0.0
   };
 }
 
+function ResolveMeshPointCurbForce(Position, Target = null, Clearance = 0.004) {
+  const Out = Target?.isVector3 ? Target : new THREE.Vector3();
+  Out.set(0, 0, 0);
+
+  if (!Position?.isVector3) {
+    return {
+      Hit: false,
+      Depth: 0,
+      Separation: Out
+    };
+  }
+
+  const SafeClearance = THREE.MathUtils.clamp(
+    Number(Clearance) || 0.004,
+    0.001,
+    0.020
+  );
+
+  let BestDepth = 0;
+
+  for (const Record of Rugs.values()) {
+    const Bounds = Record.Bounds;
+    if (!FiniteBounds(Bounds)) continue;
+
+    const MinX = Bounds.min.x - SafeClearance;
+    const MaxX = Bounds.max.x + SafeClearance;
+    const MinZ = Bounds.min.z - SafeClearance;
+    const MaxZ = Bounds.max.z + SafeClearance;
+    const TopY = Bounds.max.y + SafeClearance;
+
+    if (
+      Position.x <= MinX ||
+      Position.x >= MaxX ||
+      Position.z <= MinZ ||
+      Position.z >= MaxZ ||
+      Position.y >= TopY
+    ) continue;
+
+    const Left = Position.x - MinX;
+    const Right = MaxX - Position.x;
+    const Back = Position.z - MinZ;
+    const Front = MaxZ - Position.z;
+    const Up = TopY - Position.y;
+
+    let Depth = Left;
+    let Axis = "left";
+
+    if (Right < Depth) {
+      Depth = Right;
+      Axis = "right";
+    }
+    if (Back < Depth) {
+      Depth = Back;
+      Axis = "back";
+    }
+    if (Front < Depth) {
+      Depth = Front;
+      Axis = "front";
+    }
+    if (Up < Depth) {
+      Depth = Up;
+      Axis = "up";
+    }
+
+    if (Depth <= BestDepth) continue;
+    BestDepth = Depth;
+
+    if (Axis === "left") Out.set(-Depth, 0, 0);
+    else if (Axis === "right") Out.set(Depth, 0, 0);
+    else if (Axis === "back") Out.set(0, 0, -Depth);
+    else if (Axis === "front") Out.set(0, 0, Depth);
+    else Out.set(0, Depth, 0);
+  }
+
+  return {
+    Hit: BestDepth > 0,
+    Depth: BestDepth,
+    Separation: Out
+  };
+}
+
 function ResolveBodyPartCurbForce(Position, Radius = 0.10, Target = null, Clearance = 0.010) {
   const Out = Target?.isVector3 ? Target : new THREE.Vector3();
   Out.set(0, 0, 0);
@@ -1053,8 +1134,9 @@ window.__STORE_SURFACE_STEP_ANIMATION_R87__ = {
   IsFootHullSafe,
   ResolveFootHullConstraint,
   ResolveFootHullSweep,
+  ResolveMeshPointCurbForce,
   ResolveBodyPartCurbForce,
   GetRegisteredCount: () => Rugs.size
 };
 
-window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.31-FULL-BODY-CURB-FORCE";
+window.__STORE_SURFACE_STEP_ANIMATION_BUILD__ = "V0.35.33-EXACT-MESH-CURB";
