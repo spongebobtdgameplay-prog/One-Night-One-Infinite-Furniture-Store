@@ -40,9 +40,7 @@ function SellableItems(Chunk) {
     Items.push(Item);
   };
 
-  for (const Model of Chunk.Models || []) {
-    if (FurnitureNames.has(Model?.name)) Add(Model);
-  }
+  for (const Model of Chunk.Models || []) Add(Model);
   for (const Object of Chunk.Group?.children || []) {
     if (Object?.parent !== Chunk.Group) continue;
     const ExistingRetail = Boolean(Object.userData?.RetailImportedR79 && RetailLabels.has(Object.name));
@@ -170,4 +168,4 @@ function Discover() {
 Discover();
 
 window.__STORE_COMPACT_PRICE_TAGS_R83__ = { RebuildChunk, CountTags, CountSellable, Discover };
-window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.35.16-PIPELINE";
+window.__STORE_COMPACT_PRICE_TAGS_BUILD__ = "V0.35.37-LAYOUT-SELLABLES";
