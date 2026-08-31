@@ -90,25 +90,41 @@ function RemoveTerminalBeacons(Chunk) {
   }
 }
 
-function LayoutOccupancyReady(Chunk) {
+function PlacedLayoutSlots(Chunk) {
   const Placed = new Set();
-  for (const Object of Chunk.Group?.children || []) {
+
+  Chunk.Group?.traverse?.(Object => {
     const Slot = String(Object?.userData?.LayoutSlot || "");
     if (Slot) Placed.add(Slot);
-  }
+  });
+
   for (const Object of Chunk.TaskObjects || []) {
     const Slot = String(Object?.userData?.LayoutSlot || "");
     if (Slot) Placed.add(Slot);
   }
 
+  return Placed;
+}
+
+function PlannedLayoutEntries(Chunk) {
+  const Entries = [];
+  for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
+    for (const Entry of Chunk.Layout?.[GroupName] || []) Entries.push(Entry);
+  }
+  if (Chunk.Layout?.Task) Entries.push(Chunk.Layout.Task);
+  return Entries;
+}
+
+function LayoutOccupancyReady(Chunk) {
+  const Placed = PlacedLayoutSlots(Chunk);
+
   for (const GroupName of ["Base", "Rugs", "Retail", "Sale", "Zones", "Partitions"]) {
     for (const Entry of Chunk.Layout?.[GroupName] || []) {
-      // Optional density/merchandising is allowed to fail or be rejected by
-      // placement validation. It must never deadlock the streaming frontier.
       if (Entry?.Required === false) continue;
       if (!Placed.has(Entry.Slot)) return false;
     }
   }
+
   if (
     Chunk.Layout?.Task &&
     Chunk.Layout.Task.Required !== false &&
@@ -116,6 +132,47 @@ function LayoutOccupancyReady(Chunk) {
   ) return false;
 
   return true;
+}
+
+function FullLayoutOccupancyReady(Chunk) {
+  const Placed = PlacedLayoutSlots(Chunk);
+  return PlannedLayoutEntries(Chunk).every(Entry =>
+    Placed.has(String(Entry?.Slot || ""))
+  );
+}
+
+function StrictReadinessReport(Chunk) {
+  const Planned = PlannedLayoutEntries(Chunk);
+  const Placed = PlacedLayoutSlots(Chunk);
+  const Missing = Planned
+    .filter(Entry => !Placed.has(String(Entry?.Slot || "")))
+    .map(Entry => String(Entry?.Slot || Entry?.Model || "unknown"));
+
+  const Sellable = SellableCount(Chunk);
+  const Tags = CompactTagCount(Chunk);
+  const Core = CoreReady(Chunk);
+  const Gpu = Boolean(Chunk.Group?.userData?.GpuWarmReadyR92);
+  const Degraded = Boolean(Chunk.Group?.userData?.PresentationDegradedR83);
+  const Presentation = Boolean(Chunk.Group?.userData?.PresentationReadyR83);
+
+  return {
+    Planned: Planned.length,
+    Placed: Planned.length - Missing.length,
+    Missing,
+    Sellable,
+    Tags,
+    Core,
+    Gpu,
+    Degraded,
+    Presentation,
+    Ready: Boolean(
+      !Missing.length &&
+      Core &&
+      Gpu &&
+      Presentation &&
+      !Degraded
+    )
+  };
 }
 
 function TraversalReady(Chunk) {
@@ -227,23 +284,33 @@ async function RunPolishPasses(Chunk) {
     CoreFix?.ProcessChunk?.(Chunk);
   }
 
-  const Ready = CoreReady(Chunk);
+  const Ready = CoreReady(Chunk) && FullLayoutOccupancyReady(Chunk);
+
+  if (!Ready) {
+    delete Chunk.Group.userData.PresentationReadyR83;
+    delete Chunk.Group.userData.PresentationReadyR82;
+    delete Chunk.Group.userData.PresentationReadyAt;
+    Chunk.Group.userData.PresentationDegradedR83 = true;
+    Chunk.Group.userData.PresentationRetryAfter = performance.now() + 220;
+    return false;
+  }
+
   Chunk.Group.userData.PresentationReadyR83 = true;
   Chunk.Group.userData.PresentationReadyR82 = true;
   Chunk.Group.userData.PresentationReadyAt = performance.now();
-
-  if (!Ready) {
-    Chunk.Group.userData.PresentationDegradedR83 = true;
-  } else {
-    delete Chunk.Group.userData.PresentationDegradedR83;
-  }
+  delete Chunk.Group.userData.PresentationDegradedR83;
+  delete Chunk.Group.userData.PresentationRetryAfter;
+  return true;
 }
 
 function SchedulePolish(Chunk) {
   if (
     !Chunk?.Group ||
     Chunk.Cancelled ||
-    Chunk.Group.userData?.PresentationReadyR83 ||
+    (
+      Chunk.Group.userData?.PresentationReadyR83 &&
+      !Chunk.Group.userData?.PresentationDegradedR83
+    ) ||
     PolishPending.has(Chunk)
   ) return;
 
@@ -254,9 +321,10 @@ function SchedulePolish(Chunk) {
     } catch (Error) {
       console.warn("Deferred showroom polish failed", Error);
       if (Chunk?.Group && !Chunk.Cancelled) {
-        // Do not retry forever or block streaming for cosmetic work.
-        Chunk.Group.userData.PresentationReadyR83 = true;
+        delete Chunk.Group.userData.PresentationReadyR83;
+        delete Chunk.Group.userData.PresentationReadyR82;
         Chunk.Group.userData.PresentationDegradedR83 = true;
+        Chunk.Group.userData.PresentationRetryAfter = performance.now() + 450;
       }
     } finally {
       PolishPending.delete(Chunk);
@@ -395,7 +463,6 @@ function NextFinalizeCandidate() {
     if (
       !Chunk?.Ready ||
       Chunk.Cancelled ||
-      Chunk.Group?.userData?.TraversalReadyR83 ||
       Chunk.Group?.userData?.PresentationReadyR83
     ) continue;
     if (PendingFinalization.has(Chunk) || Finalizing.has(Chunk)) continue;
@@ -420,22 +487,45 @@ function Discover() {
   return DiscoverFlight;
 }
 
-export async function WaitForPresentationReady(Chunk, TimeoutMs = 18000) {
+export async function WaitForPresentationReady(Chunk, TimeoutMs = 30000) {
   if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
   const StartedAt = performance.now();
-  let LastFinalizeAt = -Infinity;
+  let LastRepairAt = -Infinity;
 
   while (!Chunk.Cancelled && Chunk.Group) {
-    if (Chunk.Group.userData?.PresentationReadyR83) return true;
-    const Now = performance.now();
-    if (Now - StartedAt >= Math.max(1000, Number(TimeoutMs) || 18000)) return false;
+    let Report = StrictReadinessReport(Chunk);
 
-    if (Now - LastFinalizeAt >= 250) {
-      LastFinalizeAt = Now;
-      await FinalizeChunk(Chunk);
+    window.__STORE_SET_BOOT_DETAIL__?.(
+      `Aisle ${Chunk.Index + 1} • objects ${Report.Placed}/${Report.Planned} • prices ${Report.Tags}/${Report.Sellable} • ${Report.Gpu ? "GPU ready" : "GPU preparing"}`
+    );
+
+    if (Report.Ready) return true;
+
+    const Now = performance.now();
+    if (Now - StartedAt >= Math.max(3000, Number(TimeoutMs) || 30000)) {
+      console.error(`Strict aisle readiness timed out for ${Chunk.Id}`, Report);
+      return false;
     }
 
-    await Delay(45);
+    if (Now - LastRepairAt >= 220) {
+      LastRepairAt = Now;
+
+      await Game.EnsureBaseLayoutModels?.(Chunk, 2);
+
+      if (!TraversalReady(Chunk) || !FullLayoutOccupancyReady(Chunk)) {
+        await RunContentPasses(Chunk);
+      }
+
+      if (!Chunk.Group.userData?.GpuWarmReadyR92) {
+        await Game.WarmChunkGpu?.(Chunk);
+      }
+
+      await RunPolishPasses(Chunk);
+      Report = StrictReadinessReport(Chunk);
+      if (Report.Ready) return true;
+    }
+
+    await Delay(55);
   }
 
   return false;
@@ -448,8 +538,9 @@ addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 window.__STORE_PRESENTATION_READY_R83__ = {
   FinalizeChunk,
   WaitForPresentationReady,
+  StrictReadinessReport,
   TraversalReady,
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.39-BOOT-BUFFER-GATE";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.40-STRICT-COMPLETE-GATE";
