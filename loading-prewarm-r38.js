@@ -139,6 +139,11 @@ function DispatchProgress() {
   const Percent = Total > 0 ? Math.round((Loaded / Total) * 100) : 100;
   const ActiveList = [...ActiveAssets];
   const CurrentAsset = ActiveList.length ? ActiveList[ActiveList.length - 1] : "";
+  const FailedAssetLabels = [];
+  for (const [Url, State] of AssetStates) {
+    if (State === "failed") FailedAssetLabels.push(AssetLabel(Url));
+  }
+
   const Detail = {
     loaded: Loaded,
     failed: Failed,
@@ -148,6 +153,7 @@ function DispatchProgress() {
     currentAsset: CurrentAsset,
     currentAssetLabel: AssetLabel(CurrentAsset),
     lastAssetLabel: AssetLabel(LastAssetUrl),
+    failedAssetLabels: FailedAssetLabels,
     background: true
   };
 
@@ -161,7 +167,9 @@ function DispatchProgress() {
 
   if (AssetNode) {
     if (Detail.currentAssetLabel) AssetNode.textContent = `Loading: ${Detail.currentAssetLabel}`;
-    else if (Settled >= Total) AssetNode.textContent = "Asset warm-up complete";
+    else if (Failed > 0 && Settled >= Total) {
+      AssetNode.textContent = `Asset warm-up failed: ${Detail.failedAssetLabels.join(", ")}`;
+    } else if (Settled >= Total) AssetNode.textContent = "Asset warm-up complete";
     else AssetNode.textContent = LastAssetUrl ? `Processed: ${Detail.lastAssetLabel}` : "Preparing first asset...";
   }
 
