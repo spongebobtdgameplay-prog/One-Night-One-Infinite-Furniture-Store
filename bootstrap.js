@@ -1,5 +1,5 @@
-const Cache = "20260831-v03541-startauthority2";
-const Version = "0.35.41";
+const Cache = "20260831-v03542-chunkrace1";
+const Version = "0.35.42";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -112,7 +112,7 @@ function RefreshStartGate() {
 
     if (Button.disabled !== ShouldDisable) Button.disabled = ShouldDisable;
     if (Button.getAttribute("aria-disabled") !== AriaValue) Button.setAttribute("aria-disabled", AriaValue);
-    if (Button.dataset.StoreStartReady !== ReadyValue) Button.dataset.StoreStartReady = ReadyValue;
+    if (Button.dataset.storeStartReady !== ReadyValue) Button.dataset.storeStartReady = ReadyValue;
   }
 
   return StartGate.Ready;
@@ -175,9 +175,26 @@ async function OptionalImport(Path, Label) {
 }
 
 function ShowBootError(Error) {
+  const Message = String(Error?.message || Error || "Unknown boot error.");
+  LockStart("Store load failed. Refresh to retry.");
+  StartGate.CoreReady = false;
+  StartGate.WorldReady = false;
+  StartGate.Ready = false;
+  RefreshStartGate();
+
+  const Button = StartButtonNode();
+  if (Button) {
+    Button.textContent = "LOAD FAILED";
+    Button.disabled = true;
+    Button.setAttribute("aria-disabled", "true");
+    Button.dataset.storeLoadFailed = "1";
+  }
+
+  SetBootStage(`Load failed • ${Message}`);
+
   const Panel = document.getElementById("ErrorPanel");
   const Text = document.getElementById("ErrorText");
-  if (Text) Text.textContent = String(Error?.message || Error || "Unknown boot error.");
+  if (Text) Text.textContent = Message;
   if (Panel) Panel.classList.remove("Hidden");
 }
 
