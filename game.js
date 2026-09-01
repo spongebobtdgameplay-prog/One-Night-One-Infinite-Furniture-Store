@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03543-densecollision1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03541-startauthority2";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -340,7 +340,7 @@ const ModelDefinitions = {
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
   Shelf_Large: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.08, PreserveMaterials: true },
   Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
-  Kitchen_Cabinet1: { Url: `${KayKitFurnitureBase}cabinet_medium.gltf`, Axis: "y", Target: 0.91, PreserveMaterials: true },
+  Kitchen_Cabinet1: { Url: "Models/Kitchen/GLB/Kitchen_Cabinet1.glb", Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
   Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf`, Axis: "y", Target: 0.90, PreserveMaterials: true },
@@ -706,34 +706,10 @@ async function GetModelTemplate(Name) {
   return ModelCache.get(Name);
 }
 
-function AddModelCollision(Chunk, Entry, Model) {
-  if (!Chunk || !Entry || !Model?.isObject3D) return null;
-
-  Model.updateWorldMatrix(true, true);
-  const Box = new THREE.Box3().setFromObject(Model);
-  if (Box.isEmpty()) return null;
-
-  const Existing = (Chunk.CollisionEntries || []).find(Value =>
-    Value?.BootstrapModelCollisionR43 === true &&
-    Value.CollisionObject === Model
-  );
-  if (Existing) return Existing;
-
-  const Collision = {
-    Box: Box.clone(),
-    OriginalBox: Box.clone(),
-    OriginalLegacyBox: Box.clone(),
-    ChunkId: Chunk.Id,
-    Type: `${Entry.Model}BootstrapSolidR43`,
-    Active: Boolean(Chunk.Active),
-    BootstrapModelCollisionR43: true,
-    CollisionObject: Model,
-    LayoutSlot: Entry.Slot
-  };
-
-  Chunk.CollisionEntries.push(Collision);
-  if (Chunk.Active && !CollisionBoxes.includes(Collision)) CollisionBoxes.push(Collision);
-  return Collision;
+function AddModelCollision(Chunk, Entry) {
+  void Chunk;
+  void Entry;
+  return null;
 }
 
 function RenderBatchYield() {
@@ -934,7 +910,7 @@ function SpawnLayoutModel(Chunk, Entry) {
       Model.userData.SpawnShapeChecked = true;
       Chunk.Group.add(Model);
       Chunk.Models.push(Model);
-      AddModelCollision(Chunk, Entry, Model);
+      AddModelCollision(Chunk, Entry);
       LoadedDisplays += 1;
       return Model;
     }))
@@ -1231,51 +1207,28 @@ function CreatePreparedChunk(Index) {
 }
 
 function PrepareChunk(Index) {
-  const Active = ActiveChunks.get(Index);
-  if (Active?.Ready && !Active.Cancelled) return Promise.resolve(Active);
-
-  const InFlight = PreparingChunks.get(Index);
-  if (InFlight) return InFlight;
-
-  const Prepared = PreparedChunks.get(Index);
-  if (Prepared?.Ready && !Prepared.Cancelled) return Promise.resolve(Prepared);
-
-  if (Prepared && (!Prepared.Group || Prepared.Cancelled || !Prepared.Ready)) {
-    PreparedChunks.delete(Index);
-    if (Prepared.Cancelled || !Prepared.Group) ReleaseChunkReferences(Prepared);
-  }
-
+  if (ActiveChunks.has(Index)) return Promise.resolve(ActiveChunks.get(Index));
+  if (PreparedChunks.has(Index)) return Promise.resolve(PreparedChunks.get(Index));
+  if (PreparingChunks.has(Index)) return PreparingChunks.get(Index);
   const PromiseValue = ScheduleGenerationWork(() => CreatePreparedChunk(Index))
     .then(async Chunk => {
-      if (!Chunk || Chunk.Cancelled) return null;
-
       PreparedChunks.set(Index, Chunk);
-
-      const Results = await Promise.allSettled(Chunk.PendingLoads);
+      await Promise.allSettled(Chunk.PendingLoads);
       if (Chunk.Cancelled) {
-        if (PreparedChunks.get(Index) === Chunk) PreparedChunks.delete(Index);
+        PreparedChunks.delete(Index);
         return null;
       }
-
-      Chunk.LoadFailures = Results.filter(Result => Result.status === "rejected").length;
       Chunk.Ready = true;
 
+      // Runtime chunks finalize immediately when their assets settle. The
+      // presentation poller is only a fallback now.
       queueMicrotask(() => {
         window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk?.(Chunk);
       });
 
       return Chunk;
     })
-    .catch(Error => {
-      const PreparedNow = PreparedChunks.get(Index);
-      if (PreparedNow && !PreparedNow.Ready) {
-        PreparedChunks.delete(Index);
-        ReleaseChunkReferences(PreparedNow);
-      }
-      throw Error;
-    })
     .finally(() => PreparingChunks.delete(Index));
-
   PreparingChunks.set(Index, PromiseValue);
   return PromiseValue;
 }
@@ -1919,34 +1872,10 @@ async function PrepareBootBuffer(Count = 4) {
     );
     window.__STORE_SET_BOOT_STAGE__?.(`Building aisle ${Index + 1}/${Total} geometry and furniture • seed ${WorldSeed}`);
 
-    let Chunk = null;
-    let LastError = null;
-
-    for (let Attempt = 1; Attempt <= 3; Attempt += 1) {
-      try {
-        Chunk = await RequestChunk(Index);
-      } catch (Error) {
-        LastError = Error;
-        Chunk = null;
-      }
-
-      if (Chunk?.Ready && !Chunk.Cancelled) break;
-
-      if (PreparedChunks.get(Index) === Chunk) PreparedChunks.delete(Index);
-      if (Chunk && !Chunk.Active) ReleaseChunkReferences(Chunk);
-      Chunk = null;
-
-      window.__STORE_SET_BOOT_DETAIL__?.(
-        `Aisle ${Index + 1} • generation retry ${Attempt}/3`
-      );
-      await new Promise(Resolve => setTimeout(Resolve, 90 * Attempt));
-    }
-
+    const Chunk = await RequestChunk(Index);
     if (!Chunk?.Ready || Chunk.Cancelled) {
-      const Detail = LastError?.message ? ` • ${LastError.message}` : "";
-      throw new Error(`Aisle ${Index + 1} generation failed after 3 attempts${Detail}`);
+      throw new Error(`Aisle ${Index + 1} could not be prepared.`);
     }
-
     Chunks.push(Chunk);
 
     ReportWorldBuffer(
@@ -2232,29 +2161,19 @@ PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
 window.__STORE_APPLY_PERFORMANCE__?.();
 window.__STORE_SET_BOOT_STAGE__?.(`First aisle playable • finalizing store systems • seed ${WorldSeed}`);
 
-let LastBootRenderAt = -Infinity;
-const BOOT_RENDER_INTERVAL_MS = 100;
-
-function Animate(Now = performance.now()) {
-  requestAnimationFrame(Animate);
-
-  if (!Started) {
-    if (Now - LastBootRenderAt < BOOT_RENDER_INTERVAL_MS) return;
-    LastBootRenderAt = Now;
-    Renderer.render(Scene, Camera);
-    return;
-  }
-
+function Animate() {
   const Delta = Math.min(GameTimer.getDelta(), 0.05);
-  UpdateMovement(Delta);
-  EnsureChunksAroundPlayer();
-  UpdateChunkVisibility();
-  UpdateClock(Delta);
-  UpdateObjective();
-  UpdateInteractionPrompt();
-
+  if (Started) {
+    UpdateMovement(Delta);
+    EnsureChunksAroundPlayer();
+    UpdateChunkVisibility();
+    UpdateClock(Delta);
+    UpdateObjective();
+    UpdateInteractionPrompt();
+  }
   if (PlayerApi?.Render) PlayerApi.Render(Renderer, Scene, Camera);
   else Renderer.render(Scene, Camera);
+  requestAnimationFrame(Animate);
 }
 
 StartButton.addEventListener("click", Event => {
@@ -2324,8 +2243,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.43";
-window.__STORE_VERSION__ = "0.35.43";
+window.__STORE_GAME_BUILD__ = "V0.35.41";
+window.__STORE_VERSION__ = "0.35.41";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2352,6 +2271,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.43"
+  Version: "0.35.41"
 };
 Animate();
