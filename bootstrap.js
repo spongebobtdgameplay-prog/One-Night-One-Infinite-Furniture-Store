@@ -1,5 +1,5 @@
-const Cache = "20260831-v03544-cleanretry1";
-const Version = "0.35.44";
+const Cache = "20260831-v03545-hardready1";
+const Version = "0.35.45";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -35,6 +35,7 @@ const BootWorldCounts = document.getElementById("BootWorldCounts");
 const StartGate = {
   Ready: false,
   WorldReady: false,
+  AssetsReady: false,
   CoreReady: false,
   Generation: 0,
   Reason: "Loading store"
@@ -96,11 +97,42 @@ function StartButtonNode() {
   return document.getElementById("StartButton");
 }
 
+function AssetsActuallyReady() {
+  const Progress = window.__STORE_PRELOAD_PROGRESS__;
+  return Boolean(
+    Progress &&
+    Number(Progress.total) > 0 &&
+    Number(Progress.loaded) === Number(Progress.total) &&
+    Number(Progress.failed) === 0
+  );
+}
+
+function CurrentWorldActuallyReady() {
+  if (!StartGate.WorldReady) return false;
+
+  const Game = window.__STORE_GAME__;
+  const Presentation = window.__STORE_PRESENTATION_READY_R83__;
+  if (!Game?.ActiveChunks || !Game?.PreparedChunks || !Presentation?.StrictReadinessReport) return false;
+
+  for (let Index = 0; Index < 4; Index += 1) {
+    const Chunk = Game.ActiveChunks.get(Index) || Game.PreparedChunks.get(Index);
+    if (!Chunk?.Ready || Chunk.Cancelled || !Chunk.Group) return false;
+    const Report = Presentation.StrictReadinessReport(Chunk);
+    if (!Report?.Ready) return false;
+  }
+
+  return true;
+}
+
 function RefreshStartGate() {
   const CurrentGeneration = Number(window.__STORE_WORLD_GENERATION__) || 0;
+  const AssetsReadyNow = StartGate.AssetsReady && AssetsActuallyReady();
+  const WorldReadyNow = CurrentWorldActuallyReady();
+
   StartGate.Ready = Boolean(
     StartGate.CoreReady &&
-    StartGate.WorldReady &&
+    AssetsReadyNow &&
+    WorldReadyNow &&
     StartGate.Generation === CurrentGeneration
   );
 
@@ -112,7 +144,10 @@ function RefreshStartGate() {
 
     if (Button.disabled !== ShouldDisable) Button.disabled = ShouldDisable;
     if (Button.getAttribute("aria-disabled") !== AriaValue) Button.setAttribute("aria-disabled", AriaValue);
-    if (Button.dataset.StoreStartReady !== ReadyValue) Button.dataset.StoreStartReady = ReadyValue;
+    if (Button.dataset.storeStartReady !== ReadyValue) Button.dataset.storeStartReady = ReadyValue;
+    Button.style.opacity = StartGate.Ready ? "" : "0.42";
+    Button.style.cursor = StartGate.Ready ? "" : "not-allowed";
+    Button.style.filter = StartGate.Ready ? "" : "grayscale(.35)";
   }
 
   return StartGate.Ready;
@@ -175,10 +210,19 @@ async function OptionalImport(Path, Label) {
 }
 
 function ShowBootError(Error) {
+  const Message = String(Error?.message || Error || "Unknown boot error.");
+  StartGate.CoreReady = false;
+  StartGate.WorldReady = false;
+  StartGate.AssetsReady = false;
+  StartGate.Ready = false;
+  StartGate.Reason = "Store loading failed.";
+  RefreshStartGate();
+
   const Panel = document.getElementById("ErrorPanel");
   const Text = document.getElementById("ErrorText");
-  if (Text) Text.textContent = String(Error?.message || Error || "Unknown boot error.");
+  if (Text) Text.textContent = Message;
   if (Panel) Panel.classList.remove("Hidden");
+  SetBootStage(`Load failed • ${Message}`);
 }
 
 let CoreReady = false;
@@ -244,6 +288,8 @@ try {
 
   SetBootStage("Starting furniture asset warm-up...");
   await import(`./loading-prewarm-r38.js?v=${Cache}`);
+  const AssetWarmupReady = window.__STORE_PRELOAD_COMPLETE__;
+  if (!AssetWarmupReady?.then) throw new Error("Asset warm-up completion gate is unavailable.");
 
   SetBootStage("Checking your saved account...");
   await AccountReady;
@@ -298,6 +344,21 @@ try {
 
   await EnsureCurrentWorldReady();
 
+  SetBootStage("Finishing all tracked assets before entry...");
+  const AssetResult = await AssetWarmupReady;
+  if (
+    !AssetResult ||
+    Number(AssetResult.loaded) !== Number(AssetResult.total) ||
+    Number(AssetResult.failed) !== 0
+  ) {
+    const Failed = Number(AssetResult?.failed) || 0;
+    const Loaded = Number(AssetResult?.loaded) || 0;
+    const Total = Number(AssetResult?.total) || 0;
+    throw new Error(`Asset warm-up incomplete: ${Loaded}/${Total} loaded, ${Failed} failed.`);
+  }
+  StartGate.AssetsReady = true;
+  RefreshStartGate();
+
   SetBootStage("Finalizing movement contact and the main menu...");
   await import(`./movement-contact-compat-r25.js?v=${Cache}`);
   await OptionalImport("./final-contact-r19.js", "Final limb contact");
@@ -315,7 +376,13 @@ if (ReadyButton && CoreReady && RefreshStartGate()) {
   ReadyButton.style.opacity = "";
   ReadyButton.style.cursor = "";
   const Seed = Number(window.__STORE_WORLD_SEED__) || 0;
-  SetWorldProgress(4, 4, `Ready to enter • current world fully generated • seed ${Seed}`, "Start authority verified the current world generation");
+  const Assets = window.__STORE_PRELOAD_PROGRESS__;
+  SetWorldProgress(
+    4,
+    4,
+    `Ready to enter • world and assets complete • seed ${Seed}`,
+    `${Assets?.loaded || 0}/${Assets?.total || 0} assets loaded successfully`
+  );
   window.__STORE_MULTIPLAYER__?.NotifyCoreReady?.();
 }
 
