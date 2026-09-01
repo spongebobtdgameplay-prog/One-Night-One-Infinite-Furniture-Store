@@ -182,6 +182,7 @@ export function IsStocked(Chunk) {
 await PreloadOnlineDecorations().catch(() => {});
 
 function Discover() {
+  if (window.__STORE_BOOT_CRITICAL__) return;
   for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
 }
@@ -191,4 +192,4 @@ function Discover() {
 Discover();
 
 window.__STORE_SHELF_STOCK_R83__ = { ProcessChunk, IsStocked, Discover };
-window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.34-IDLE-BUDGET";
+window.__STORE_SHELF_STOCK_BUILD__ = "V0.35.47-BOOT-OWNER";
