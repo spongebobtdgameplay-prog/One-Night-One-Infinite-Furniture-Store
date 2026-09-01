@@ -1,5 +1,5 @@
-const Cache = "20260831-v03548-collisionrestore1";
-const Version = "0.35.48";
+const Cache = "20260831-v03549-plannedrepair1";
+const Version = "0.35.49";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -256,7 +256,13 @@ async function EnsureCurrentWorldReady() {
 
     const Ready = await Presentation.WaitForPresentationReady(Chunk, 30000);
     if (!Ready) {
-      throw new Error(`Aisle ${Index + 1} did not finish before the boot deadline.`);
+      const Failure = Chunk.Group?.userData?.StrictBootFailureR49;
+      const Missing = Array.isArray(Failure?.Missing) && Failure.Missing.length
+        ? ` Missing: ${Failure.Missing.join(", ")}.`
+        : "";
+      throw new Error(
+        `Aisle ${Index + 1} did not finish before the boot deadline.${Missing}`
+      );
     }
 
     const Report = Presentation.StrictReadinessReport?.(Chunk);
