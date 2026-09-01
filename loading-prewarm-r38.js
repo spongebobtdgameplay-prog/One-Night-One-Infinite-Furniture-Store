@@ -2,6 +2,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const OriginalLoadAsync = GLTFLoader.prototype.loadAsync;
 const AssetTimeoutMs = 9000;
+const AssetRetryCount = 2;
+const WarmupWorkerCount = 3;
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
@@ -17,7 +19,6 @@ const AssetUrls = [
   "Models/Bedroom/GLB/Bed_King.glb",
   "Models/Bedroom/GLB/Bed_Single.glb",
   "Models/Bedroom/GLB/NightStand_2.glb",
-  "Models/Kitchen/GLB/Kitchen_Cabinet1.glb",
   "Models/Kitchen/GLB/Kitchen_Fridge.glb",
   `${KayKitRestaurantBase}stove_multi_decorated.gltf`,
   `${KayKitRestaurantBase}kitchencounter_sink.gltf`,
@@ -53,11 +54,6 @@ const AssetStates = new Map();
 const ActiveAssets = new Set();
 let NextAssetIndex = 0;
 let LastAssetUrl = "";
-let BackgroundWarmupStopped = false;
-
-window.addEventListener("store-gameplay-started", () => {
-  BackgroundWarmupStopped = true;
-}, { once: true });
 
 function Mix32(Value) {
   let NumberValue = Value >>> 0;
@@ -140,7 +136,7 @@ function DispatchProgress() {
 
   const Settled = Loaded + Failed;
   const Total = AssetUrls.length;
-  const Percent = Total > 0 ? Math.round((Settled / Total) * 100) : 100;
+  const Percent = Total > 0 ? Math.round((Loaded / Total) * 100) : 100;
   const ActiveList = [...ActiveAssets];
   const CurrentAsset = ActiveList.length ? ActiveList[ActiveList.length - 1] : "";
   const Detail = {
@@ -237,26 +233,53 @@ function BackgroundYield() {
   });
 }
 
+function RetryDelay(Milliseconds) {
+  return new Promise(Resolve => setTimeout(Resolve, Milliseconds));
+}
+
+async function WarmAsset(Url, Loader) {
+  for (let Attempt = 0; Attempt <= AssetRetryCount; Attempt += 1) {
+    try {
+      await GetOrStartAsset(Url, Loader);
+      return true;
+    } catch (Error) {
+      if (Attempt >= AssetRetryCount) return false;
+      AssetStates.set(Url, "retrying");
+      DispatchProgress();
+      await RetryDelay(140 * (Attempt + 1));
+    }
+  }
+
+  return false;
+}
+
 async function BackgroundWorker() {
   const Loader = new GLTFLoader();
 
-  while (!BackgroundWarmupStopped && NextAssetIndex < AssetUrls.length) {
+  while (NextAssetIndex < AssetUrls.length) {
     await BackgroundYield();
-    if (BackgroundWarmupStopped || window.__STORE_GAMEPLAY_STARTED__) break;
     const AssetIndex = NextAssetIndex;
     NextAssetIndex += 1;
-
-    try {
-      await GetOrStartAsset(AssetUrls[AssetIndex], Loader);
-    } catch {}
+    if (AssetIndex >= AssetUrls.length) break;
+    await WarmAsset(AssetUrls[AssetIndex], Loader);
   }
-
-  window.__STORE_PRELOAD_RESULT__ =
-    NextAssetIndex >= AssetUrls.length ? "finished" : "paused-gameplay";
 }
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = "background";
-window.__STORE_PRELOAD_BUILD__ = "V0.35.39-ASSET-DETAIL-ONLY";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.45-HARD-ASSET-GATE";
 DispatchProgress();
-BackgroundWorker().catch(() => {});
+
+const WorkerCount = Math.max(1, Math.min(WarmupWorkerCount, AssetUrls.length));
+const PreloadCompletion = Promise.all(
+  Array.from({ length: WorkerCount }, () => BackgroundWorker())
+).then(() => {
+  DispatchProgress();
+  const Detail = window.__STORE_PRELOAD_PROGRESS__ || {};
+  const Success = Detail.loaded === Detail.total && Detail.failed === 0;
+  window.__STORE_PRELOAD_RESULT__ = Success ? "finished" : "failed";
+  window.dispatchEvent(new CustomEvent("store-preload-complete", { detail: Detail }));
+  return Detail;
+});
+
+window.__STORE_PRELOAD_COMPLETE__ = PreloadCompletion;
