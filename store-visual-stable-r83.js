@@ -190,6 +190,7 @@ function UpdateDepartmentVisibility() {
 await Promise.allSettled([Preload3DTextFont(), PreloadOnlineDecorations()]);
 
 function Discover() {
+  if (window.__STORE_BOOT_CRITICAL__) return;
   for (const Chunk of Game.PreparedChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
   for (const Chunk of Game.ActiveChunks.values()) if (!Chunk?.Group?.userData?.PresentationReadyR83) ProcessChunk(Chunk).catch(() => {});
   UpdateDepartmentVisibility();
@@ -200,4 +201,4 @@ Discover();
 
 window.__STORE_VISUAL_REDESIGN_R73__ = { Discover, ProcessChunk, UpdateDepartmentVisibility };
 window.__STORE_VISUAL_STABLE_R83__ = { Discover, ProcessChunk, UpdateDepartmentVisibility };
-window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.35.16-PIPELINE";
+window.__STORE_VISUAL_REDESIGN_BUILD__ = "V0.35.47-BOOT-OWNER";
