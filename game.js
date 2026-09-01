@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03547-bootowner2";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03548-collisionrestore1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -2180,7 +2180,7 @@ function UpdateMovement(Delta) {
     Right,
     Moving ? Speed * Delta : 0,
     Delta,
-    null,
+    CollisionBoxes,
     PlayerApi?.GetPlayerRadius?.() || 0.255
   );
 }
@@ -2297,8 +2297,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.47";
-window.__STORE_VERSION__ = "0.35.47";
+window.__STORE_GAME_BUILD__ = "V0.35.48";
+window.__STORE_VERSION__ = "0.35.48";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2325,6 +2325,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.47"
+  Version: "0.35.48"
 };
 Animate();
