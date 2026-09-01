@@ -39,7 +39,14 @@ function RemoveNamed(Chunk) {
 
 async function ReplaceDepartmentSign(Chunk) {
   const Existing = Chunk.Group.getObjectByName("DepartmentHeaderR73");
-  if (Existing) return Existing;
+  if (Existing) {
+    Existing.userData.DecorationNoCollision = false;
+    Existing.userData.ForceSolidCollisionR30 = true;
+    Existing.userData.RayCollisionSolidR35 = true;
+    Existing.userData.SignCollisionR50 = true;
+    return Existing;
+  }
+
   const Sign = await CreateDepartmentSign3D(Chunk.Theme, {
     Name: "DepartmentHeaderR73",
     Width: 5.30,
@@ -49,6 +56,9 @@ async function ReplaceDepartmentSign(Chunk) {
   });
   Sign.userData.ChunkId = Chunk.Id;
   Sign.userData.DecorationNoCollision = false;
+  Sign.userData.ForceSolidCollisionR30 = true;
+  Sign.userData.RayCollisionSolidR35 = true;
+  Sign.userData.SignCollisionR50 = true;
   Sign.position.set(0, 2.54, Chunk.TopZ - 2.52);
   Sign.rotation.set(0, 0, 0);
   Sign.updateWorldMatrix(true, true);
