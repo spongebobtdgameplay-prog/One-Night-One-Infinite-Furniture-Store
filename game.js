@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03541-startauthority2";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03544-cleanretry1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -340,7 +340,7 @@ const ModelDefinitions = {
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
   Shelf_Large: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.08, PreserveMaterials: true },
   Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
-  Kitchen_Cabinet1: { Url: "Models/Kitchen/GLB/Kitchen_Cabinet1.glb", Axis: "y", Target: 0.91, PreserveMaterials: true },
+  Kitchen_Cabinet1: { Url: `${KayKitFurnitureBase}cabinet_medium.gltf`, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
   Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf`, Axis: "y", Target: 0.90, PreserveMaterials: true },
@@ -706,10 +706,33 @@ async function GetModelTemplate(Name) {
   return ModelCache.get(Name);
 }
 
-function AddModelCollision(Chunk, Entry) {
-  void Chunk;
-  void Entry;
-  return null;
+function AddModelCollision(Chunk, Entry, Model) {
+  if (!Chunk || !Entry || !Model?.isObject3D) return null;
+
+  const Bounds = Footprint(
+    Entry.Model,
+    Number(Entry.X) || 0,
+    Number(Entry.Z) || 0,
+    Number(Entry.Rotation) || 0,
+    0.02
+  );
+
+  const Collision = {
+    Box: Bounds.clone(),
+    OriginalBox: Bounds.clone(),
+    OriginalLegacyBox: Bounds.clone(),
+    ChunkId: Chunk.Id,
+    Type: `${Entry.Model}SpawnFootprintR44`,
+    Active: Boolean(Chunk.Active),
+    CollisionObject: Model,
+    SourceModel: Model,
+    LayoutSlot: Entry.Slot,
+    SpawnCollisionR44: true
+  };
+
+  Chunk.CollisionEntries.push(Collision);
+  if (Chunk.Active && !CollisionBoxes.includes(Collision)) CollisionBoxes.push(Collision);
+  return Collision;
 }
 
 function RenderBatchYield() {
@@ -910,7 +933,7 @@ function SpawnLayoutModel(Chunk, Entry) {
       Model.userData.SpawnShapeChecked = true;
       Chunk.Group.add(Model);
       Chunk.Models.push(Model);
-      AddModelCollision(Chunk, Entry);
+      AddModelCollision(Chunk, Entry, Model);
       LoadedDisplays += 1;
       return Model;
     }))
@@ -2243,8 +2266,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.41";
-window.__STORE_VERSION__ = "0.35.41";
+window.__STORE_GAME_BUILD__ = "V0.35.44";
+window.__STORE_VERSION__ = "0.35.44";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2271,6 +2294,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.41"
+  Version: "0.35.44"
 };
 Animate();
