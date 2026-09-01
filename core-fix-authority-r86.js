@@ -338,7 +338,12 @@ function TargetSignature(Model) {
 
 function RemoveExistingCoreEntry(Chunk, Model) {
   for (const Entry of [...(Chunk.CollisionEntries || [])]) {
-    if (Entry?.CoreFixR87 && Entry.CollisionObject === Model) RemoveGlobalEntry(Chunk, Entry);
+    if (
+      Entry?.CollisionObject === Model &&
+      (Entry.CoreFixR87 || Entry.SpawnCollisionR44)
+    ) {
+      RemoveGlobalEntry(Chunk, Entry);
+    }
   }
 }
 
@@ -597,4 +602,4 @@ ProcessAll();
 
 window.__STORE_CORE_FIX_R86__ = { ProcessAll, ProcessChunk, ProcessChunkAsync };
 window.__STORE_CORE_FIX_R87__ = window.__STORE_CORE_FIX_R86__;
-window.__STORE_CORE_FIX_BUILD__ = "V0.35.37-CACHED-EXACT-COLLISION";
+window.__STORE_CORE_FIX_BUILD__ = "V0.35.45-SPAWN-COLLISION-HANDOFF";
