@@ -1,5 +1,5 @@
-const Cache = "20260831-v03546-bootowner1";
-const Version = "0.35.46";
+const Cache = "20260831-v03547-bootowner2";
+const Version = "0.35.47";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
