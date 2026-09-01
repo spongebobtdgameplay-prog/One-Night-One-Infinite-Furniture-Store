@@ -518,6 +518,7 @@ function NextFinalizeCandidate() {
 }
 
 function Discover() {
+  if (window.__STORE_BOOT_CRITICAL__) return null;
   if (DiscoverFlight) return DiscoverFlight;
   const Chunk = NextFinalizeCandidate();
   if (!Chunk) return null;
@@ -586,4 +587,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.41-REAL-ROOT-GATE";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.46-SERIAL-BOOT-OWNER";
