@@ -401,6 +401,7 @@ async function ProcessChunk(Chunk) {
 }
 
 function Discover() {
+  if (window.__STORE_BOOT_CRITICAL__) return;
   for (const Chunk of Game.ActiveChunks.values()) ProcessChunk(Chunk);
   for (const Chunk of Game.PreparedChunks.values()) ProcessChunk(Chunk);
 }
@@ -411,4 +412,4 @@ await Promise.allSettled(Object.keys(AssetFiles).map(Key => LoadTemplate(Key)));
 Discover();
 
 window.__STORE_RETAIL_SHOWROOM_R79__ = { Discover, ProcessChunk };
-window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.34-IDLE-PLACEMENT";
+window.__STORE_RETAIL_SHOWROOM_BUILD__ = "V0.35.47-BOOT-OWNER";
