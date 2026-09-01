@@ -185,12 +185,60 @@ function FullLayoutOccupancyReady(Chunk) {
   );
 }
 
+function CollisionEntryMatchesSlot(Chunk, Slot, Root = null) {
+  return (Chunk.CollisionEntries || []).some(Entry => {
+    if (!Entry || Entry.Active === false && Chunk.Active) return false;
+    if (Root && (
+      Entry.CollisionObject === Root ||
+      Entry.SourceModel === Root ||
+      Entry.Model === Root
+    )) return true;
+    return String(Entry.LayoutSlot || "") === String(Slot || "");
+  });
+}
+
+function SolidPlannedEntries(Chunk) {
+  return PlannedLayoutEntries(Chunk).filter(({ GroupName, Entry }) =>
+    ["Base", "Retail", "Sale", "Zones"].includes(GroupName) &&
+    Entry?.Model !== "Light_Floor1"
+  );
+}
+
+function CollisionCoverageReport(Chunk) {
+  const Solid = SolidPlannedEntries(Chunk);
+  let Covered = 0;
+  const Missing = [];
+
+  for (const { GroupName, Entry } of Solid) {
+    const Slot = String(Entry?.Slot || "");
+    let Root = null;
+
+    if (GroupName === "Base") {
+      Root = (Chunk.Models || []).find(Model =>
+        Model?.parent &&
+        String(Model.userData?.LayoutSlot || "") === Slot
+      ) || null;
+    } else {
+      Root = (Chunk.Group?.children || []).find(Object =>
+        Object?.parent === Chunk.Group &&
+        String(Object.userData?.LayoutSlot || "") === Slot
+      ) || null;
+    }
+
+    if (Root && CollisionEntryMatchesSlot(Chunk, Slot, Root)) Covered += 1;
+    else Missing.push(`${GroupName}:${Slot}`);
+  }
+
+  return { Covered, Total: Solid.length, Missing };
+}
+
 function StrictReadinessReport(Chunk) {
   const Planned = PlannedLayoutEntries(Chunk);
   const Missing = Planned
     .filter(({ GroupName, Entry }) => !EntryPresent(Chunk, GroupName, Entry))
     .map(({ GroupName, Entry }) => `${GroupName}:${String(Entry?.Slot || Entry?.Model || "unknown")}`);
 
+  const CollisionCoverage = CollisionCoverageReport(Chunk);
   const Sellable = SellableCount(Chunk);
   const Tags = CompactTagCount(Chunk);
   const Core = CoreReady(Chunk);
@@ -208,8 +256,12 @@ function StrictReadinessReport(Chunk) {
     Gpu,
     Degraded,
     Presentation,
+    CollisionCovered: CollisionCoverage.Covered,
+    CollisionTotal: CollisionCoverage.Total,
+    MissingCollision: CollisionCoverage.Missing,
     Ready: Boolean(
       !Missing.length &&
+      CollisionCoverage.Covered === CollisionCoverage.Total &&
       Core &&
       Gpu &&
       Presentation &&
@@ -539,7 +591,7 @@ export async function WaitForPresentationReady(Chunk, TimeoutMs = 30000) {
     let Report = StrictReadinessReport(Chunk);
 
     window.__STORE_SET_BOOT_DETAIL__?.(
-      `Aisle ${Chunk.Index + 1} • objects ${Report.Placed}/${Report.Planned} • prices ${Report.Tags}/${Report.Sellable} • ${Report.Gpu ? "GPU ready" : "GPU preparing"}`
+      `Aisle ${Chunk.Index + 1} • objects ${Report.Placed}/${Report.Planned} • collision ${Report.CollisionCovered}/${Report.CollisionTotal} • prices ${Report.Tags}/${Report.Sellable} • ${Report.Gpu ? "GPU ready" : "GPU preparing"}`
     );
 
     if (Report.Ready) return true;
@@ -586,4 +638,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.41-REAL-ROOT-GATE";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.43-COLLISION-COVERAGE";
