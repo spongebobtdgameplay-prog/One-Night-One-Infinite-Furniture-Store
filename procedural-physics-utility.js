@@ -259,9 +259,31 @@ function ResolveEntryMove(Start, Desired, Radius, Entries) {
   );
 }
 
+function EffectiveCollisionEntries(Entries) {
+  if (Array.isArray(Entries)) return Entries;
+  const GlobalEntries = window.__STORE_COLLISION_BOXES__;
+  return Array.isArray(GlobalEntries) ? GlobalEntries : [];
+}
+
+function CurrentChunkExactCollisionReady(Start, Entries) {
+  const Game = window.__STORE_GAME__;
+  if (!Game?.ActiveChunks || typeof Game.ChunkIndexForZ !== "function") return false;
+
+  const ChunkIndex = Game.ChunkIndexForZ(Start.z);
+  const Chunk = Game.ActiveChunks.get(ChunkIndex);
+  if (!Chunk?.Group?.userData?.CoreFixR87) return false;
+
+  return Entries.some(Entry =>
+    Entry?.Active !== false &&
+    Entry.ChunkId === Chunk.Id &&
+    Entry.CoreFixR87 === true
+  );
+}
+
 function ResolveWithSlide(Start, Desired, Radius, Entries) {
   const Scene = window.__STORE_GAME__?.Scene || null;
-  const EntryFirst = ResolveEntryMove(Start, Desired, Radius, Entries);
+  const CollisionEntries = EffectiveCollisionEntries(Entries);
+  const EntryFirst = ResolveEntryMove(Start, Desired, Radius, CollisionEntries);
   const EntryDelta = EntryFirst?.Resolved?.isVector3 ? EntryFirst.Resolved : Desired;
 
   let RayResult = {
@@ -272,7 +294,11 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
     Entry: null
   };
 
-  const ExactCollisionAuthorityReady = Boolean(window.__STORE_CORE_FIX_R86__);
+  const ExactCollisionAuthorityReady = CurrentChunkExactCollisionReady(
+    Start,
+    CollisionEntries
+  );
+
   if (
     !ExactCollisionAuthorityReady &&
     Scene?.isScene &&
@@ -288,13 +314,18 @@ function ResolveWithSlide(Start, Desired, Radius, Entries) {
         EyeHeight,
         AllowSlide: true,
         RangePadding: 2.2,
-        HeightFractions: [0.08, 0.24, 0.48, 0.72, 0.90],
-        LateralRatios: [-0.90, -0.45, 0, 0.45, 0.90]
+        HeightFractions: [0.10, 0.32, 0.62, 0.88],
+        LateralRatios: [-0.82, 0, 0.82]
       }
     );
   }
 
-  const EntryFinal = ResolveEntryMove(Start, RayResult.Resolved, Radius, Entries);
+  const EntryFinal = ResolveEntryMove(
+    Start,
+    RayResult.Resolved,
+    Radius,
+    CollisionEntries
+  );
   const Final = EntryFinal || RayResult;
   const Hit = Boolean(EntryFirst?.Hit || RayResult?.Hit || EntryFinal?.Hit);
 
@@ -395,6 +426,7 @@ function SettleHeight(Camera, Delta, Entries) {
 
 function MoveCharacter(Camera, ForwardAmount, RightAmount, Distance, Delta, Entries, Radius = DefaultRadius) {
   if (!Camera?.position || !Number.isFinite(Distance) || Distance < 0) return null;
+  const CollisionEntries = EffectiveCollisionEntries(Entries);
 
   if (VerticalStateInitialized) Camera.position.y = EyeHeight + AuthoritativeFloorY;
   CameraBasis(Camera);
@@ -403,7 +435,7 @@ function MoveCharacter(Camera, ForwardAmount, RightAmount, Distance, Delta, Entr
     .addScaledVector(Scratch.Right, Number(RightAmount) || 0);
 
   if (Scratch.Desired.lengthSq() <= 0.000001 || Distance <= 0.000001) {
-    const FloorHeight = SettleHeight(Camera, Delta, Entries);
+    const FloorHeight = SettleHeight(Camera, Delta, CollisionEntries);
     return {
       Position: Camera.position.clone(),
       Resolved: new THREE.Vector3(),
@@ -417,7 +449,12 @@ function MoveCharacter(Camera, ForwardAmount, RightAmount, Distance, Delta, Entr
   Scratch.Start.copy(Camera.position);
 
   const SafeRadius = THREE.MathUtils.clamp(Number(Radius) || DefaultRadius, 0.20, 0.32);
-  const Result = ResolveWithSlide(Scratch.Start, Scratch.Desired, SafeRadius, Entries);
+  const Result = ResolveWithSlide(
+    Scratch.Start,
+    Scratch.Desired,
+    SafeRadius,
+    CollisionEntries
+  );
 
   Camera.position.x = Result.Position.x;
   Camera.position.z = Result.Position.z;
@@ -428,7 +465,7 @@ function MoveCharacter(Camera, ForwardAmount, RightAmount, Distance, Delta, Entr
     Camera.position.y = MoveToward(Camera.position.y, TargetEyeY, MaxDelta);
   }
 
-  Result.FloorHeight = SettleHeight(Camera, Delta, Entries);
+  Result.FloorHeight = SettleHeight(Camera, Delta, CollisionEntries);
   RecordContact(Result, Scratch.Desired);
   return Result;
 }
@@ -464,4 +501,4 @@ const ProceduralPhysics = {
 };
 
 window.__STORE_PROCEDURAL_PHYSICS__ = ProceduralPhysics;
-window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.41-ENTRY-COLLISION-NO-RAY-FLOOD";
+window.__STORE_PROCEDURAL_PHYSICS_BUILD__ = "V0.35.48-COLLISION-ENTRY-RESTORE";
