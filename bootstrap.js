@@ -1,5 +1,5 @@
-const Cache = "20260831-v03545-hardready2";
-const Version = "0.35.45";
+const Cache = "20260831-v03546-bootowner1";
+const Version = "0.35.46";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -28,6 +28,7 @@ window.__STORE_VERSION__ = Version;
 
 const BootStatus = document.getElementById("BootStatus");
 const BootStageLabel = document.getElementById("BootStageLabel");
+window.__STORE_BOOT_CRITICAL__ = true;
 const BootWorldPercent = document.getElementById("BootWorldPercent");
 const BootWorldProgressFill = document.getElementById("BootWorldProgressFill");
 const BootWorldCounts = document.getElementById("BootWorldCounts");
@@ -286,10 +287,8 @@ try {
   await import(`./multiplayer.js?v=${Cache}`);
   const AccountReady = window.__STORE_MULTIPLAYER__.WaitForAccount();
 
-  SetBootStage("Starting furniture asset warm-up...");
+  SetBootStage("Starting asset tracking...");
   await import(`./loading-prewarm-r38.js?v=${Cache}`);
-  const AssetWarmupReady = window.__STORE_PRELOAD_COMPLETE__;
-  if (!AssetWarmupReady?.then) throw new Error("Asset warm-up completion gate is unavailable.");
 
   SetBootStage("Checking your saved account...");
   await AccountReady;
@@ -344,8 +343,12 @@ try {
 
   await EnsureCurrentWorldReady();
 
-  SetBootStage("Finishing all tracked assets before entry...");
-  const AssetResult = await AssetWarmupReady;
+  SetBootStage("Warming remaining tracked assets after playable aisles...");
+  const StartAssetWarmup = window.__STORE_START_ASSET_WARMUP__;
+  if (typeof StartAssetWarmup !== "function") {
+    throw new Error("Asset warm-up owner is unavailable.");
+  }
+  const AssetResult = await StartAssetWarmup();
   if (
     !AssetResult ||
     Number(AssetResult.loaded) !== Number(AssetResult.total) ||
@@ -371,8 +374,10 @@ try {
   await OptionalImport("./runtime-main-menu-r83.js", "Start-screen style resumable main menu");
   CoreReady = true;
   StartGate.CoreReady = true;
+  window.__STORE_BOOT_CRITICAL__ = false;
   RefreshStartGate();
 } catch (Error) {
+  window.__STORE_BOOT_CRITICAL__ = false;
   console.error("Core store boot failed.", Error);
   ShowBootError(Error);
 }
