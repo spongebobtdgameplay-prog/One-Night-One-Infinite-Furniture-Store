@@ -192,6 +192,10 @@ async function AddPlannedZoneHeaders(Chunk) {
       Header.userData.LayoutAuthority = Chunk.Layout?.Authority;
       Header.userData.RetailZoneR82 = true;
       Header.userData.WallMountedR82 = HeaderPlan.WallMounted === true;
+      Header.userData.DecorationNoCollision = false;
+      Header.userData.ForceSolidCollisionR30 = true;
+      Header.userData.RayCollisionSolidR35 = true;
+      Header.userData.SignCollisionR50 = true;
       Chunk.Group.add(Header);
       AddCollision(
         Chunk,
@@ -252,4 +256,4 @@ await PreloadRetailZoneAssets();
 Discover();
 
 window.__STORE_RETAIL_ZONES_R82__ = { ProcessChunk, Discover, PreloadRetailZoneAssets };
-window.__STORE_RETAIL_ZONES_BUILD__ = "V0.35.47-BOOT-OWNER";
+window.__STORE_RETAIL_ZONES_BUILD__ = "V0.35.50-SIGN-COLLISION";
