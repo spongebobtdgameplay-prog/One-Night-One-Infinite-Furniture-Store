@@ -17,7 +17,6 @@ const AssetUrls = [
   "Models/Bedroom/GLB/Bed_King.glb",
   "Models/Bedroom/GLB/Bed_Single.glb",
   "Models/Bedroom/GLB/NightStand_2.glb",
-  "Models/Kitchen/GLB/Kitchen_Cabinet1.glb",
   "Models/Kitchen/GLB/Kitchen_Fridge.glb",
   `${KayKitRestaurantBase}stove_multi_decorated.gltf`,
   `${KayKitRestaurantBase}kitchencounter_sink.gltf`,
@@ -257,6 +256,6 @@ async function BackgroundWorker() {
 
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
 window.__STORE_PRELOAD_RESULT__ = "background";
-window.__STORE_PRELOAD_BUILD__ = "V0.35.39-ASSET-DETAIL-ONLY";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.43-CABINET-CLEANUP";
 DispatchProgress();
 BackgroundWorker().catch(() => {});
