@@ -3,7 +3,6 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 const OriginalLoadAsync = GLTFLoader.prototype.loadAsync;
 const AssetTimeoutMs = 9000;
 const AssetRetryCount = 2;
-const WarmupWorkerCount = 3;
 
 const KayKitBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/";
 const KayKitRestaurantBase = "https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/";
@@ -273,21 +272,28 @@ async function BackgroundWorker() {
   }
 }
 
+let PreloadCompletion = null;
+
+function StartAssetWarmup() {
+  if (PreloadCompletion) return PreloadCompletion;
+
+  window.__STORE_PRELOAD_RESULT__ = "warming";
+  PreloadCompletion = BackgroundWorker().then(() => {
+    DispatchProgress();
+    const Detail = window.__STORE_PRELOAD_PROGRESS__ || {};
+    const Success = Detail.loaded === Detail.total && Detail.failed === 0;
+    window.__STORE_PRELOAD_RESULT__ = Success ? "finished" : "failed";
+    window.dispatchEvent(new CustomEvent("store-preload-complete", { detail: Detail }));
+    return Detail;
+  });
+
+  window.__STORE_PRELOAD_COMPLETE__ = PreloadCompletion;
+  return PreloadCompletion;
+}
+
 window.__STORE_PRELOAD_PROMISES__ = AssetPromises;
-window.__STORE_PRELOAD_RESULT__ = "background";
-window.__STORE_PRELOAD_BUILD__ = "V0.35.45-HARD-ASSET-GATE";
+window.__STORE_PRELOAD_RESULT__ = "tracking";
+window.__STORE_PRELOAD_BUILD__ = "V0.35.46-DEFERRED-ASSET-OWNER";
+window.__STORE_START_ASSET_WARMUP__ = StartAssetWarmup;
+window.__STORE_PRELOAD_COMPLETE__ = null;
 DispatchProgress();
-
-const WorkerCount = Math.max(1, Math.min(WarmupWorkerCount, AssetUrls.length));
-const PreloadCompletion = Promise.all(
-  Array.from({ length: WorkerCount }, () => BackgroundWorker())
-).then(() => {
-  DispatchProgress();
-  const Detail = window.__STORE_PRELOAD_PROGRESS__ || {};
-  const Success = Detail.loaded === Detail.total && Detail.failed === 0;
-  window.__STORE_PRELOAD_RESULT__ = Success ? "finished" : "failed";
-  window.dispatchEvent(new CustomEvent("store-preload-complete", { detail: Detail }));
-  return Detail;
-});
-
-window.__STORE_PRELOAD_COMPLETE__ = PreloadCompletion;
