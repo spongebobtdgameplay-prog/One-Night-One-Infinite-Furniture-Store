@@ -428,17 +428,6 @@ function AddDenseDepartmentSlots(Layout, Theme) {
       Slot("Density.Bedroom.Left.Chair", "Chair_2", -6.55, -7.75, 0.10),
       Slot("Density.Bedroom.Right.Chair", "Chair_2", 6.55, 7.75, -0.10)
     );
-  } else if (Theme === "KITCHENS") {
-    Extra.push(
-      Slot("Density.Kitchen.Left.Fridge", "Kitchen_Fridge", -14.00, 0.15, 0),
-      Slot("Density.Kitchen.Left.Sink", "Kitchen_Sink", -12.45, 0.15, 0),
-      Slot("Density.Kitchen.Left.Cabinet", "Kitchen_Cabinet1", -10.85, 0.15, 0),
-      Slot("Density.Kitchen.Left.Oven", "Kitchen_Oven", -9.15, 0.15, 0),
-      Slot("Density.Kitchen.Right.Fridge", "Kitchen_Fridge", 14.00, -0.15, Math.PI),
-      Slot("Density.Kitchen.Right.Sink", "Kitchen_Sink", 12.45, -0.15, Math.PI),
-      Slot("Density.Kitchen.Right.Cabinet", "Kitchen_Cabinet1", 10.85, -0.15, Math.PI),
-      Slot("Density.Kitchen.Right.Oven", "Kitchen_Oven", 9.15, -0.15, Math.PI)
-    );
   } else if (Theme === "BATHROOMS") {
     Extra.push(
       Slot("Density.Bathroom.Left.ToiletA", "Bathroom_Toilet", -9.15, -1.10, 0),
@@ -789,4 +778,4 @@ export const StoreLayoutRules = Object.freeze({
   SlotSpacing: SLOT_SPACING
 });
 
-window.__STORE_LAYOUT_BUILD__ = "V0.35.43-DENSE-KITCHENS";
+window.__STORE_LAYOUT_BUILD__ = "V0.35.37-DEPARTMENT-POOLS";
