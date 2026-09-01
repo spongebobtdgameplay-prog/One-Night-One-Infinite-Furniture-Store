@@ -1,4 +1,4 @@
-const Cache = "20260831-v03545-hardready1";
+const Cache = "20260831-v03545-hardready2";
 const Version = "0.35.45";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
@@ -354,7 +354,13 @@ try {
     const Failed = Number(AssetResult?.failed) || 0;
     const Loaded = Number(AssetResult?.loaded) || 0;
     const Total = Number(AssetResult?.total) || 0;
-    throw new Error(`Asset warm-up incomplete: ${Loaded}/${Total} loaded, ${Failed} failed.`);
+    const FailedNames = Array.isArray(AssetResult?.failedAssetLabels)
+      ? AssetResult.failedAssetLabels.join(", ")
+      : "";
+    throw new Error(
+      `Asset warm-up incomplete: ${Loaded}/${Total} loaded, ${Failed} failed` +
+      (FailedNames ? ` • ${FailedNames}` : ".")
+    );
   }
   StartGate.AssetsReady = true;
   RefreshStartGate();
