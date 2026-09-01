@@ -1,5 +1,5 @@
-const Cache = "20260831-v03542-chunkrace1";
-const Version = "0.35.42";
+const Cache = "20260831-v03543-densecollision1";
+const Version = "0.35.43";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
@@ -240,7 +240,7 @@ async function EnsureCurrentWorldReady() {
       Index + 1,
       BootBufferCount,
       `Aisle ${Index + 1}/${BootBufferCount} complete`,
-      `real objects ${Report.Placed}/${Report.Planned} • prices ${Report.Tags}/${Report.Sellable} • GPU ready`
+      `real objects ${Report.Placed}/${Report.Planned} • collision ${Report.CollisionCovered}/${Report.CollisionTotal} • prices ${Report.Tags}/${Report.Sellable} • GPU ready`
     );
   }
 
