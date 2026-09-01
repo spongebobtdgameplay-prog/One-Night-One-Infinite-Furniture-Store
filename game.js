@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03544-cleanretry1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03546-bootowner1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -1230,28 +1230,49 @@ function CreatePreparedChunk(Index) {
 }
 
 function PrepareChunk(Index) {
-  if (ActiveChunks.has(Index)) return Promise.resolve(ActiveChunks.get(Index));
-  if (PreparedChunks.has(Index)) return Promise.resolve(PreparedChunks.get(Index));
-  if (PreparingChunks.has(Index)) return PreparingChunks.get(Index);
+  const Active = ActiveChunks.get(Index);
+  if (Active?.Ready && !Active.Cancelled) return Promise.resolve(Active);
+
+  const InFlight = PreparingChunks.get(Index);
+  if (InFlight) return InFlight;
+
+  const Prepared = PreparedChunks.get(Index);
+  if (Prepared?.Ready && !Prepared.Cancelled) return Promise.resolve(Prepared);
+
+  if (Prepared && (!Prepared.Ready || Prepared.Cancelled)) {
+    PreparedChunks.delete(Index);
+    if (Prepared.Cancelled) ReleaseChunkReferences(Prepared);
+  }
+
   const PromiseValue = ScheduleGenerationWork(() => CreatePreparedChunk(Index))
     .then(async Chunk => {
-      PreparedChunks.set(Index, Chunk);
-      await Promise.allSettled(Chunk.PendingLoads);
-      if (Chunk.Cancelled) {
-        PreparedChunks.delete(Index);
-        return null;
-      }
-      Chunk.Ready = true;
+      if (!Chunk || Chunk.Cancelled) return null;
 
-      // Runtime chunks finalize immediately when their assets settle. The
-      // presentation poller is only a fallback now.
-      queueMicrotask(() => {
-        window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk?.(Chunk);
-      });
+      const Results = await Promise.allSettled(Chunk.PendingLoads);
+      if (Chunk.Cancelled) return null;
+
+      Chunk.LoadFailures = Results.filter(Result => Result.status === "rejected").length;
+      Chunk.Ready = true;
+      PreparedChunks.set(Index, Chunk);
+
+      if (!window.__STORE_BOOT_CRITICAL__) {
+        queueMicrotask(() => {
+          window.__STORE_PRESENTATION_READY_R83__?.FinalizeChunk?.(Chunk);
+        });
+      }
 
       return Chunk;
     })
+    .catch(Error => {
+      const Stale = PreparedChunks.get(Index);
+      if (Stale && !Stale.Ready) {
+        PreparedChunks.delete(Index);
+        ReleaseChunkReferences(Stale);
+      }
+      throw Error;
+    })
     .finally(() => PreparingChunks.delete(Index));
+
   PreparingChunks.set(Index, PromiseValue);
   return PromiseValue;
 }
@@ -2184,19 +2205,29 @@ PlayerApi?.Attach?.({ Scene, Camera, Renderer, CollisionBoxes });
 window.__STORE_APPLY_PERFORMANCE__?.();
 window.__STORE_SET_BOOT_STAGE__?.(`First aisle playable • finalizing store systems • seed ${WorldSeed}`);
 
-function Animate() {
-  const Delta = Math.min(GameTimer.getDelta(), 0.05);
-  if (Started) {
-    UpdateMovement(Delta);
-    EnsureChunksAroundPlayer();
-    UpdateChunkVisibility();
-    UpdateClock(Delta);
-    UpdateObjective();
-    UpdateInteractionPrompt();
+let LastBootRenderAt = -Infinity;
+const BOOT_RENDER_INTERVAL_MS = 125;
+
+function Animate(Now = performance.now()) {
+  requestAnimationFrame(Animate);
+
+  if (!Started) {
+    if (Now - LastBootRenderAt < BOOT_RENDER_INTERVAL_MS) return;
+    LastBootRenderAt = Now;
+    Renderer.render(Scene, Camera);
+    return;
   }
+
+  const Delta = Math.min(GameTimer.getDelta(), 0.05);
+  UpdateMovement(Delta);
+  EnsureChunksAroundPlayer();
+  UpdateChunkVisibility();
+  UpdateClock(Delta);
+  UpdateObjective();
+  UpdateInteractionPrompt();
+
   if (PlayerApi?.Render) PlayerApi.Render(Renderer, Scene, Camera);
   else Renderer.render(Scene, Camera);
-  requestAnimationFrame(Animate);
 }
 
 StartButton.addEventListener("click", Event => {
@@ -2266,8 +2297,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.44";
-window.__STORE_VERSION__ = "0.35.44";
+window.__STORE_GAME_BUILD__ = "V0.35.46";
+window.__STORE_VERSION__ = "0.35.46";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2294,6 +2325,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.44"
+  Version: "0.35.46"
 };
 Animate();
