@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03542-chunkrace1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03543-densecollision1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -340,7 +340,7 @@ const ModelDefinitions = {
   NightStand_2: { Url: "Models/Bedroom/GLB/NightStand_2.glb", Axis: "y", Target: 0.58 },
   Shelf_Large: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.08, PreserveMaterials: true },
   Bookshelf: { Url: IndustrialShelfUrl, Axis: "y", Target: 2.02, PreserveMaterials: true },
-  Kitchen_Cabinet1: { Url: "Models/Kitchen/GLB/Kitchen_Cabinet1.glb", Axis: "y", Target: 0.91, PreserveMaterials: true },
+  Kitchen_Cabinet1: { Url: `${KayKitFurnitureBase}cabinet_medium.gltf`, Axis: "y", Target: 0.91, PreserveMaterials: true },
   Kitchen_Fridge: { Url: "Models/Kitchen/GLB/Kitchen_Fridge.glb", Axis: "y", Target: 1.86 },
   Kitchen_Oven: { Url: `${KayKitRestaurantBase}stove_multi_decorated.gltf`, Axis: "y", Target: 0.94, PreserveMaterials: true },
   Kitchen_Sink: { Url: `${KayKitRestaurantBase}kitchencounter_sink.gltf`, Axis: "y", Target: 0.90, PreserveMaterials: true },
@@ -706,10 +706,34 @@ async function GetModelTemplate(Name) {
   return ModelCache.get(Name);
 }
 
-function AddModelCollision(Chunk, Entry) {
-  void Chunk;
-  void Entry;
-  return null;
+function AddModelCollision(Chunk, Entry, Model) {
+  if (!Chunk || !Entry || !Model?.isObject3D) return null;
+
+  Model.updateWorldMatrix(true, true);
+  const Box = new THREE.Box3().setFromObject(Model);
+  if (Box.isEmpty()) return null;
+
+  const Existing = (Chunk.CollisionEntries || []).find(Value =>
+    Value?.BootstrapModelCollisionR43 === true &&
+    Value.CollisionObject === Model
+  );
+  if (Existing) return Existing;
+
+  const Collision = {
+    Box: Box.clone(),
+    OriginalBox: Box.clone(),
+    OriginalLegacyBox: Box.clone(),
+    ChunkId: Chunk.Id,
+    Type: `${Entry.Model}BootstrapSolidR43`,
+    Active: Boolean(Chunk.Active),
+    BootstrapModelCollisionR43: true,
+    CollisionObject: Model,
+    LayoutSlot: Entry.Slot
+  };
+
+  Chunk.CollisionEntries.push(Collision);
+  if (Chunk.Active && !CollisionBoxes.includes(Collision)) CollisionBoxes.push(Collision);
+  return Collision;
 }
 
 function RenderBatchYield() {
@@ -910,7 +934,7 @@ function SpawnLayoutModel(Chunk, Entry) {
       Model.userData.SpawnShapeChecked = true;
       Chunk.Group.add(Model);
       Chunk.Models.push(Model);
-      AddModelCollision(Chunk, Entry);
+      AddModelCollision(Chunk, Entry, Model);
       LoadedDisplays += 1;
       return Model;
     }))
@@ -2300,8 +2324,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.42";
-window.__STORE_VERSION__ = "0.35.42";
+window.__STORE_GAME_BUILD__ = "V0.35.43";
+window.__STORE_VERSION__ = "0.35.43";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2328,6 +2352,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.42"
+  Version: "0.35.43"
 };
 Animate();
