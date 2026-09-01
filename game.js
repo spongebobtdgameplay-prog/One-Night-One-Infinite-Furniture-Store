@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03548-collisionrestore1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03549-plannedrepair1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -970,7 +970,7 @@ async function EnsureBaseLayoutModels(Chunk, Attempts = 3) {
     if (!Missing.length) return true;
 
     window.__STORE_SET_BOOT_DETAIL__?.(
-      `Aisle ${Chunk.Index + 1} • retrying ${Missing.length} missing required furniture item${Missing.length === 1 ? "" : "s"}`
+      `Aisle ${Chunk.Index + 1} • retrying ${Missing.length} missing base furniture item${Missing.length === 1 ? "" : "s"}`
     );
 
     const Results = await Promise.all(Missing.map(Entry => SpawnLayoutModel(Chunk, Entry)));
@@ -985,6 +985,62 @@ async function EnsureBaseLayoutModels(Chunk, Attempts = 3) {
   return (Chunk.Layout.Base || []).every(Entry =>
     PlacedLayoutSlots(Chunk).has(String(Entry.Slot || ""))
   );
+}
+
+function EnsureStaticLayoutObjects(Chunk) {
+  if (!Chunk?.Layout || !Chunk.Group || Chunk.Cancelled) return false;
+
+  let Placed = PlacedLayoutSlots(Chunk);
+
+  for (const Entry of Chunk.Layout.Rugs || []) {
+    if (Placed.has(String(Entry.Slot || ""))) continue;
+    AddPlannedRug(Chunk, Entry);
+    Placed.add(String(Entry.Slot || ""));
+  }
+
+  for (const Entry of Chunk.Layout.Partitions || []) {
+    if (Placed.has(String(Entry.Slot || ""))) continue;
+
+    const Wall = Box(
+      "ShowroomPartition",
+      new THREE.Vector3(0.15, 2.25, Entry.Length),
+      new THREE.Vector3(Entry.X, 1.125, Entry.Z),
+      WallMaterial,
+      Chunk,
+      true
+    );
+    const Cap = Box(
+      "PartitionCap",
+      new THREE.Vector3(0.23, 0.07, Entry.Length + 0.08),
+      new THREE.Vector3(Entry.X, 2.285, Entry.Z),
+      TrimMaterial,
+      Chunk
+    );
+    const Base = Box(
+      "PartitionBase",
+      new THREE.Vector3(0.22, 0.11, Entry.Length + 0.06),
+      new THREE.Vector3(Entry.X, 0.055, Entry.Z),
+      TrimMaterial,
+      Chunk
+    );
+
+    for (const Object of [Wall, Cap, Base]) {
+      Object.userData.LayoutSlot = Entry.Slot;
+      Object.userData.LayoutAuthority = Chunk.Layout.Authority;
+    }
+
+    Placed.add(String(Entry.Slot || ""));
+  }
+
+  if (
+    Chunk.Layout.Task &&
+    !Placed.has(String(Chunk.Layout.Task.Slot || ""))
+  ) {
+    AddTask(Chunk, Chunk.Layout.Task);
+    Placed.add(String(Chunk.Layout.Task.Slot || ""));
+  }
+
+  return true;
 }
 
 function CreateRugTexture(Chunk, Entry) {
@@ -2297,8 +2353,8 @@ const PlacementApi = {
   ShapeCastPlacement
 };
 
-window.__STORE_GAME_BUILD__ = "V0.35.48";
-window.__STORE_VERSION__ = "0.35.48";
+window.__STORE_GAME_BUILD__ = "V0.35.49";
+window.__STORE_VERSION__ = "0.35.49";
 window.__STORE_GAME__ = {
   Scene,
   Camera,
@@ -2314,6 +2370,7 @@ window.__STORE_GAME__ = {
   PrepareChunk,
   PrepareBootBuffer,
   EnsureBaseLayoutModels,
+  EnsureStaticLayoutObjects,
   TryActivateIndex,
   UpdateObjectStreaming,
   OptimizeChunkStaticRender,
@@ -2325,6 +2382,6 @@ window.__STORE_GAME__ = {
   SetWorldSeed,
   Placement: PlacementApi,
   RayCollisionMode: true,
-  Version: "0.35.48"
+  Version: "0.35.49"
 };
 Animate();
