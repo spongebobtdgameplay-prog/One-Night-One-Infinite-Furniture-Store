@@ -422,6 +422,12 @@ function Hide() {
 }
 
 function Tick() {
+  if (window.__STORE_BOOT_CRITICAL__ || window.__STORE_GAMEPLAY_STARTED__ !== true) {
+    Hide();
+    requestAnimationFrame(Tick);
+    return;
+  }
+
   const CurrentIndex = Math.max(
     0,
     Game.ChunkIndexForZ(Game.Camera.position.z)
@@ -500,4 +506,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   IsTraversalReady,
   IsAlreadyVisible
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.26-NO-STALE-BARRIER";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.47-GAMEPLAY-ONLY";
