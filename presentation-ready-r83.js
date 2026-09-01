@@ -187,9 +187,16 @@ function FullLayoutOccupancyReady(Chunk) {
 
 function StrictReadinessReport(Chunk) {
   const Planned = PlannedLayoutEntries(Chunk);
-  const Missing = Planned
-    .filter(({ GroupName, Entry }) => !EntryPresent(Chunk, GroupName, Entry))
-    .map(({ GroupName, Entry }) => `${GroupName}:${String(Entry?.Slot || Entry?.Model || "unknown")}`);
+  const MissingEntries = Planned.filter(
+    ({ GroupName, Entry }) => !EntryPresent(Chunk, GroupName, Entry)
+  );
+  const Missing = MissingEntries.map(
+    ({ GroupName, Entry }) =>
+      `${GroupName}:${String(Entry?.Slot || Entry?.Model || "unknown")}`
+  );
+  const MissingGroups = [...new Set(
+    MissingEntries.map(({ GroupName }) => GroupName)
+  )];
 
   const Sellable = SellableCount(Chunk);
   const Tags = CompactTagCount(Chunk);
@@ -202,6 +209,7 @@ function StrictReadinessReport(Chunk) {
     Planned: Planned.length,
     Placed: Planned.length - Missing.length,
     Missing,
+    MissingGroups,
     Sellable,
     Tags,
     Core,
@@ -548,13 +556,52 @@ export async function WaitForPresentationReady(Chunk, TimeoutMs = 30000) {
     const Now = performance.now();
     if (Now - StartedAt >= Math.max(3000, Number(TimeoutMs) || 30000)) {
       console.error(`Strict aisle readiness timed out for ${Chunk.Id}`, Report);
+      Chunk.Group.userData.StrictBootFailureR49 = {
+        Missing: [...Report.Missing],
+        MissingGroups: [...Report.MissingGroups],
+        Placed: Report.Placed,
+        Planned: Report.Planned,
+        Tags: Report.Tags,
+        Sellable: Report.Sellable
+      };
       return false;
     }
 
     if (Now - LastRepairAt >= 220) {
       LastRepairAt = Now;
 
+      const MissingSummary = Report.Missing.length
+        ? Report.Missing.join(", ")
+        : "presentation state";
+      window.__STORE_SET_BOOT_DETAIL__?.(
+        `Aisle ${Chunk.Index + 1} • repairing ${MissingSummary}`
+      );
+
       await Game.EnsureBaseLayoutModels?.(Chunk, 2);
+      Game.EnsureStaticLayoutObjects?.(Chunk);
+
+      if (
+        Report.MissingGroups.includes("Retail") ||
+        !Chunk.Group.userData?.RetailShowroomR79
+      ) {
+        await window.__STORE_RETAIL_SHOWROOM_R79__?.ProcessChunk?.(Chunk);
+      }
+
+      if (
+        Report.MissingGroups.includes("Zones") ||
+        Report.MissingGroups.includes("ZoneHeaders") ||
+        !Chunk.Group.userData?.RetailZonesR82
+      ) {
+        delete Chunk.Group.userData.RetailZonesR82;
+        await window.__STORE_RETAIL_ZONES_R82__?.ProcessChunk?.(Chunk);
+      }
+
+      if (
+        Report.MissingGroups.includes("Sale") ||
+        !window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.Ready?.(Chunk)
+      ) {
+        await window.__STORE_RETAIL_SALE_DISPLAYS_R84__?.ProcessChunk?.(Chunk);
+      }
 
       if (!TraversalReady(Chunk) || !FullLayoutOccupancyReady(Chunk)) {
         await RunContentPasses(Chunk);
@@ -587,4 +634,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.46-SERIAL-BOOT-OWNER";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.49-PLANNED-GROUP-REPAIR";
