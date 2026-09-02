@@ -71,13 +71,19 @@ document.body.appendChild(Overlay);
 const PRIORITY_DISTANCE = 48;
 const NOTICE_DISTANCE = 2.75;
 const NOTICE_MAX_MS = 2200;
-const STRICT_AHEAD = 6;
-const STRICT_BEHIND = 2;
+const STRICT_AHEAD = 2;
+const STRICT_BEHIND = 1;
 
 let HazeGroup = null;
 let HazeChunk = null;
 let HazeActive = false;
 let OverlayVisible = false;
+let HorizonProxyGroup = null;
+let HorizonProxyBoundary = Number.NaN;
+
+const HORIZON_PROXY_LENGTH = 150;
+const HORIZON_PROXY_WIDTH = 34;
+const HORIZON_PROXY_HEIGHT = 3.72;
 let NoticeIndex = Number.NaN;
 let NoticeStartedAt = -Infinity;
 const PriorityFlights = new Map();
@@ -129,6 +135,125 @@ function PurgeLegacyStreamBarriers() {
       Game.Scene.remove(Object);
     }
   }
+}
+
+function EnsureHorizonProxy() {
+  if (HorizonProxyGroup) return HorizonProxyGroup;
+
+  const Group = new THREE.Group();
+  Group.name = "StoreHorizonForward";
+  Group.userData.StoreHorizon = true;
+  Group.userData.StreamAmbientR101 = true;
+  Group.userData.DecorationNoCollision = true;
+  Group.userData.IgnoreRayCollisionR35 = true;
+
+  const FloorMaterial = new THREE.MeshBasicMaterial({ color: 0x4f4a42, fog: true });
+  const CeilingMaterial = new THREE.MeshBasicMaterial({ color: 0x3c3d39, fog: true });
+  const WallMaterial = new THREE.MeshBasicMaterial({ color: 0x56564f, fog: true });
+
+  const Floor = new THREE.Mesh(
+    new THREE.BoxGeometry(HORIZON_PROXY_WIDTH, 0.08, HORIZON_PROXY_LENGTH),
+    FloorMaterial
+  );
+  Floor.name = "HorizonFloorR105";
+  Floor.position.set(0, -0.04, 0);
+
+  const Ceiling = new THREE.Mesh(
+    new THREE.BoxGeometry(HORIZON_PROXY_WIDTH, 0.08, HORIZON_PROXY_LENGTH),
+    CeilingMaterial
+  );
+  Ceiling.name = "HorizonCeilingR105";
+  Ceiling.position.set(0, HORIZON_PROXY_HEIGHT, 0);
+
+  const LeftWall = new THREE.Mesh(
+    new THREE.BoxGeometry(0.16, HORIZON_PROXY_HEIGHT, HORIZON_PROXY_LENGTH),
+    WallMaterial
+  );
+  LeftWall.name = "HorizonWallLeftR105";
+  LeftWall.position.set(-16.92, HORIZON_PROXY_HEIGHT * 0.5, 0);
+
+  const RightWall = LeftWall.clone();
+  RightWall.name = "HorizonWallRightR105";
+  RightWall.position.x = 16.92;
+
+  for (const Object of [Floor, Ceiling, LeftWall, RightWall]) {
+    Object.userData.StreamAmbientR101 = true;
+    Object.userData.DecorationNoCollision = true;
+    Object.frustumCulled = true;
+    Group.add(Object);
+  }
+
+  const LightRows = [];
+  for (let Distance = 6; Distance < HORIZON_PROXY_LENGTH - 4; Distance += 9) {
+    for (const X of [-9, 0, 9]) {
+      LightRows.push({ X, Z: HORIZON_PROXY_LENGTH * 0.5 - Distance });
+    }
+  }
+
+  const LightGeometry = new THREE.BoxGeometry(4.5, 0.045, 0.28);
+  const LightMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffdfaa,
+    fog: true,
+    toneMapped: false
+  });
+  const Lights = new THREE.InstancedMesh(
+    LightGeometry,
+    LightMaterial,
+    LightRows.length
+  );
+  Lights.name = "HorizonLightGlowR105";
+  Lights.userData.StreamAmbientR101 = true;
+  Lights.userData.DecorationNoCollision = true;
+
+  const Matrix = new THREE.Matrix4();
+  for (let Index = 0; Index < LightRows.length; Index += 1) {
+    const Row = LightRows[Index];
+    Matrix.makeTranslation(Row.X, HORIZON_PROXY_HEIGHT - 0.12, Row.Z);
+    Lights.setMatrixAt(Index, Matrix);
+  }
+  Lights.instanceMatrix.needsUpdate = true;
+  Lights.computeBoundingBox?.();
+  Lights.computeBoundingSphere?.();
+  Group.add(Lights);
+
+  Group.visible = false;
+  Game.Scene.add(Group);
+  HorizonProxyGroup = Group;
+  return Group;
+}
+
+function UpdateHorizonProxy() {
+  const Group = EnsureHorizonProxy();
+  let Furthest = null;
+
+  for (const Chunk of Game.ActiveChunks.values()) {
+    if (
+      !Chunk?.Ready ||
+      Chunk.Cancelled ||
+      !Chunk.Active ||
+      Chunk.Group?.parent !== Game.Scene
+    ) continue;
+    if (!Furthest || Chunk.Index > Furthest.Index) Furthest = Chunk;
+  }
+
+  if (!Furthest) {
+    Group.visible = false;
+    return;
+  }
+
+  const Boundary = Number(Furthest.BottomZ) - 0.18;
+  if (Boundary !== HorizonProxyBoundary) {
+    HorizonProxyBoundary = Boundary;
+    Group.position.set(
+      0,
+      0,
+      Boundary - HORIZON_PROXY_LENGTH * 0.5
+    );
+    Group.updateMatrix();
+    Group.updateMatrixWorld(true);
+  }
+
+  Group.visible = true;
 }
 
 function FindChunk(Index) {
@@ -433,6 +558,7 @@ function Tick() {
     Game.ChunkIndexForZ(Game.Camera.position.z)
   );
   const Current = Game.ActiveChunks.get(CurrentIndex);
+  UpdateHorizonProxy();
 
   if (!Current) {
     Hide();
@@ -506,4 +632,4 @@ window.__STORE_STREAM_LOADING_R83__ = {
   IsTraversalReady,
   IsAlreadyVisible
 };
-window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.47-GAMEPLAY-ONLY";
+window.__STORE_STREAM_LOADING_BUILD__ = "V0.35.52-STABLE-VIEW-HORIZON";
