@@ -1,5 +1,5 @@
-const Cache = "20260831-v03550-signcollision1";
-const Version = "0.35.50";
+const Cache = "20260901-v03551-layoutauthority1";
+const Version = "0.35.51";
 const FaviconVersion = "20260824-4";
 const FaviconLinks = [
   { rel: "icon", type: "image/png", sizes: "32x32", href: `favicon_io/favicon-32x32.png?v=${FaviconVersion}` },
