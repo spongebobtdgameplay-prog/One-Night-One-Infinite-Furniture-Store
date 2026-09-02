@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js";
-import { CreateChunkLayout } from "./store-layout.js?v=20260831-v03549-plannedrepair1";
+import { CreateChunkLayout } from "./store-layout.js?v=20260901-v03552-stableview1";
 
 const Canvas = document.getElementById("GameCanvas");
 const StartButton = document.getElementById("StartButton");
@@ -808,6 +808,12 @@ function StaticBatchRoots(Chunk) {
   return Roots;
 }
 
+function StaticBatchSpatialKey(Root, Chunk) {
+  const Side = Number(Root.position?.x || 0) < 0 ? "L" : "R";
+  const Depth = Number(Root.position?.z || 0) < Number(Chunk.CenterZ || 0) ? "F" : "B";
+  return `${Side}${Depth}`;
+}
+
 function FreezeStaticRoot(Root) {
   Root.traverse(Object => {
     if (!Object?.isObject3D) return;
@@ -841,7 +847,8 @@ async function OptimizeChunkStaticRender(Chunk) {
     Root.updateWorldMatrix(true, true);
     Root.traverse(Mesh => {
       if (!CanBatchStaticMesh(Mesh) || Mesh.visible === false) return;
-      const Signature = `${Mesh.geometry.uuid}|${BatchMaterialSignature(Mesh.material)}`;
+      const SpatialKey = StaticBatchSpatialKey(Root, Chunk);
+      const Signature = `${SpatialKey}|${Mesh.geometry.uuid}|${BatchMaterialSignature(Mesh.material)}`;
       let Group = Groups.get(Signature);
       if (!Group) {
         Group = {
@@ -1657,22 +1664,15 @@ function IsStructuralStreamObject(Object) {
   return /^(Floor|Ceiling|WallLeft|WallRight|Baseboard|ShowroomPartition|PartitionCap|PartitionBase|RearStoreClosureR80|RearStoreWallR80|RearStoreBaseboardR80)/i.test(Name);
 }
 
-function IsPersistentCollisionRenderRoot(Object, Chunk) {
+function IsPersistentCollisionRenderRoot(Object) {
   if (!Object) return true;
-  if (Chunk?.Models?.includes?.(Object)) return true;
+  if (Object.name === "StoreTask") return true;
 
   const Data = Object.userData || {};
-  if (
-    Data.RetailImportedR79 ||
-    Data.RetailSellableR84 ||
-    Data.ForceSolidCollisionR30 ||
-    Data.RenderBatchR104 ||
-    Data.SolidCollisionR83 ||
-    Data.RayCollisionSolidR35
-  ) return true;
-
-  const Name = String(Object.name || "");
-  return /^(RetailArmchairR79|RetailLivingShelfR79|RetailBedroomCabinetR79|RetailBedroomChairR79|RetailStorageShelfR79|RetailStorageCabinetR79|RetailDisplayCabinetR79|RetailCoffeeTableR84|RetailSideTableR84|RetailDiningTableR84|RetailBoxShelfR84|RetailFloorLampR84|RetailAccentCabinetR84|WarehouseBoxes|ShoppingCartR82|ShoppingBasketR82|BagShelfR82)/i.test(Name);
+  return Boolean(
+    Data.StreamAmbientR101 ||
+    Data.StreamLoadingR83
+  );
 }
 
 function StreamableRoots(Chunk) {
@@ -1688,7 +1688,7 @@ function StreamableRoots(Chunk) {
   const Roots = [];
   for (const Object of Children) {
     if (IsStructuralStreamObject(Object)) continue;
-    if (IsPersistentCollisionRenderRoot(Object, Chunk)) continue;
+    if (IsPersistentCollisionRenderRoot(Object)) continue;
     Roots.push(Object);
   }
 
@@ -1889,30 +1889,9 @@ function EnsureChunksAroundPlayer() {
     WantedActive.add(PrefetchMax);
   }
 
-  const PreparedViewMin = Math.max(0, CurrentIndex - PREPARED_BACK_CACHE);
-  const PreparedViewMax = PrefetchMax + PREPARED_FORWARD_EXTRA;
-  for (const Chunk of [...PreparedChunks.values()]) {
-    if (
-      !Chunk?.Ready ||
-      Chunk.Cancelled ||
-      Chunk.Index < PreparedViewMin ||
-      Chunk.Index > PreparedViewMax ||
-      ChunkDistance(Chunk) > VIEW_KEEP_DISTANCE
-    ) continue;
-
-    if (ChunkIntersectsView(Chunk) && TryActivateIndex(Chunk.Index)) {
-      Chunk.StreamViewedAt = Now;
-      WantedActive.add(Chunk.Index);
-    }
-  }
-
   for (const Index of [...ActiveChunks.keys()]) {
     if (WantedActive.has(Index)) continue;
     const Chunk = ActiveChunks.get(Index);
-    if (IsChunkViewProtected(Chunk, Now)) {
-      WantedActive.add(Index);
-      continue;
-    }
 
     const KeepPrepared =
       Index >= Math.max(0, CurrentIndex - PREPARED_BACK_CACHE) &&
