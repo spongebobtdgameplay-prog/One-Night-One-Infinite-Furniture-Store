@@ -110,7 +110,6 @@ function OutsideChunk(Chunk, Bounds) {
 
 function ValidatePlannedObjects(Chunk) {
   const PlannedSlots = Chunk.Layout?.Slots || {};
-  const Accepted = [];
   const Roots = [...ManagedRoots(Chunk)].sort((A, B) =>
     String(A.userData?.LayoutSlot || "").localeCompare(String(B.userData?.LayoutSlot || ""))
   );
@@ -139,14 +138,8 @@ function ValidatePlannedObjects(Chunk) {
       RemoveUnplannedObject(Chunk, Object, "intersects a structural wall or partition");
       continue;
     }
-    const Conflict = Accepted.find(Entry => OverlapXZ(Bounds, Entry.Bounds, 0.04));
-    if (Conflict) {
-      RemoveUnplannedObject(Chunk, Object, `overlaps planned slot ${Conflict.Slot}`);
-      continue;
-    }
 
     TightenLegacyCollision(Chunk, Object);
-    Accepted.push({ Slot, Bounds });
   }
 }
 
@@ -177,8 +170,6 @@ export function ProcessAll() {
 }
 
 ProcessAll();
-const Interval = setInterval(ProcessAll, 240);
-addEventListener("pagehide", () => clearInterval(Interval), { once: true });
 
 window.__STORE_GENERATOR_INTEGRITY_R77__ = { ProcessAll, ProcessChunk };
-window.__STORE_GENERATOR_INTEGRITY_BUILD__ = "V0.27.0";
+window.__STORE_GENERATOR_INTEGRITY_BUILD__ = "V0.35.51-LAYOUT-AUTHORITY";
