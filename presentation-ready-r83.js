@@ -284,6 +284,7 @@ async function RunContentPasses(Chunk) {
   const ShelfStock = window.__STORE_SHELF_STOCK_R83__;
   const SaleDisplays = window.__STORE_RETAIL_SALE_DISPLAYS_R84__;
   const Materials = window.__STORE_VISIBLE_MATERIALS_R77__;
+  const Integrity = window.__STORE_GENERATOR_INTEGRITY_R77__;
   const CoreFix = window.__STORE_CORE_FIX_R86__;
 
   if (Visual?.ProcessChunk) await Visual.ProcessChunk(Chunk);
@@ -304,6 +305,7 @@ async function RunContentPasses(Chunk) {
   if (Chunk.Index === 0) await Finish?.EnsureRearClosure?.();
   await IdleYield();
 
+  Integrity?.ProcessChunk?.(Chunk);
   RemoveTerminalBeacons(Chunk);
   if (CoreFix?.ProcessChunkAsync) {
     await CoreFix.ProcessChunkAsync(Chunk, true);
@@ -634,4 +636,4 @@ window.__STORE_PRESENTATION_READY_R83__ = {
   CoreReady,
   Discover
 };
-window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.49-PLANNED-GROUP-REPAIR";
+window.__STORE_PRESENTATION_READY_BUILD__ = "V0.35.51-LAYOUT-AUTHORITY";
